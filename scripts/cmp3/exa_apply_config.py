@@ -9,10 +9,6 @@ for line in open(os.path.expanduser("~/.hermes/.env")):
         API_KEY = line.split("=", 1)[1].strip()
         break
 SID = ""
-for line in open(os.path.expanduser("~/.hermes/.env")):
-    if line.startswith("EXAROTON_SERVER_ID="):
-        SID = line.split("=", 1)[1].strip()
-        break
 UA = {"User-Agent": "Mozilla/5.0", "Authorization": f"Bearer {API_KEY}"}
 BASE = "https://api.exaroton.com/v1"
 

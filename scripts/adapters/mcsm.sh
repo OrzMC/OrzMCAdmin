@@ -4,13 +4,9 @@
 # 依赖环境变量（~/.hermes/.env）: MCSM_URL MCSM_API_KEY MCSM_DAEMON_ID MCSM_INSTANCE_ID
 set -euo pipefail
 
-# 载入 .env（若未手动 export）——支持 ~/.hermes/.env 或当前目录 .env
-if [ -z "${MCSM_URL:-}" ]; then
-  if [ -f "$HOME/.hermes/.env" ]; then
-    set -a; source "$HOME/.hermes/.env"; set +a
-  elif [ -f "$(dirname "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)")/.env" ]; then
-    set -a; source "$(dirname "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)")/.env"; set +a
-  fi
+# 载入 .env（若未手动 export）
+if [ -z "${MCSM_URL:-}" ] && [ -f "$HOME/.hermes/.env" ]; then
+  set -a; source "$HOME/.hermes/.env"; set +a
 fi
 
 MCSM_URL="${MCSM_URL:-}"
@@ -19,12 +15,6 @@ DAEMON="${MCSM_DAEMON_ID:-}"
 INSTANCE="${MCSM_INSTANCE_ID:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HDRS=(-H "Content-Type: application/json; charset=utf-8" -H "X-Requested-With: XMLHttpRequest")
-
-# 配置校验
-if [ -z "${MCSM_URL:-}" ] || [ -z "${APIKEY:-}" ] || [ -z "${DAEMON:-}" ] || [ -z "${INSTANCE:-}" ]; then
-  echo "❌ 缺少 MCSM 配置：请设置 MCSM_URL / MCSM_API_KEY / MCSM_DAEMON_ID / MCSM_INSTANCE_ID（环境变量或 .env）" >&2
-  exit 1
-fi
 
 api_get() {
   # api_get <path> -> 输出 JSON 到 stdout
