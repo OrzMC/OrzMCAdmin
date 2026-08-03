@@ -136,6 +136,10 @@ python3 $CMP/exa_verify_config.py
 # 5. MCSM 插件热更新（上传 plugins/update/ + 验证）
 python3 $CMP/mcsm_upload_update.py pluginA.jar pluginB.jar
 python3 $CMP/mcsm_verify_update.py
+# 6. MCSM 批量改配置（M1-M10 类型任务：改后重启生效）
+python3 $CMP/mcsm_backup_download.py        # 改前快照（MCSM_BACKUP_DIR 指定备份目录）
+python3 $CMP/mcsm_apply_config.py           # 读→替换→PUT 写回（按需编辑脚本内替换列表）
+python3 $CMP/mcsm_verify_config.py          # 真实 GET 读回验证
 ```
 
 **MCSM 文件操作注意**：download 凭证 API 对不存在文件也返回 200，**必须真实 GET**
@@ -144,6 +148,54 @@ python3 $CMP/mcsm_verify_update.py
 ## 环境变量模板
 
 见 `templates/env.example`——复制为 `.env` 填入自己的值即可。
+
+## Spark 性能分析（Paper 内置，无需装插件）
+
+> PaperMC 1.19+ **内置 Spark**，直接 `/spark` 命令即可，**不要另装插件**。卡顿排查首选。
+
+### 命令速查
+
+| 命令 | 用途 |
+|:----|:----|
+| `/spark health` | 一键健康报告（TPS/MSPT/CPU/内存/磁盘）|
+| `/spark tps` | TPS 历史（5s/10s/1m/5m/15m）|
+| `/spark profiler --timeout 60` | CPU 采样，生成报告链接 |
+| `/spark profiler --timeout 60 --only-ticks-over 100` | 只采卡顿 tick（>100ms）|
+| `/spark tickmonitor` | 实时 tick 监测（卡顿 tick 时长+增幅）|
+| `/spark gc` | GC 统计（Young/Concurrent/Old 次数+时长+频率）|
+| `/spark heapsummary` | 堆内存对象分布（.sparkheap 需 viewer 解析）|
+
+### 读取报告数据（关键技巧）
+
+- **报告链接后加 `?raw` 直接得 JSON**（2026-08-03 实测）：
+  ```bash
+  curl -sL "https://spark.lucko.me/{code}?raw" -o report.json
+  # metadata.systemStatistics → CPU/内存/GC/磁盘/Java 参数
+  # metadata.platformStatistics → tps/mspt/memory 均值+峰值
+  ```
+- 报告页是 Next.js SPA（无内嵌数据），**必须用 `?raw`** 拿数据
+- profiler 完成后控制台输出 `https://spark.lucko.me/{code}` 链接
+
+### 判断标准
+
+| 指标 | 健康 | 需关注 | 严重 |
+|:--|:--|:--|:--|
+| TPS | 20.0（满帧）| <19 | <15 |
+| MSPT 中位 | <50ms | 50-60ms | >60ms |
+| MSPT 95% | <60ms | 60-100ms | >100ms |
+| 内存占用 | <70% | 70-85% | >85% |
+| 磁盘 | <80% | 80-90% | >90% |
+
+### 典型诊断流程（卡顿排查）
+
+1. `/spark health` 看整体 → 2. 内存高跑 `/spark gc` 看 GC 频率 → 3. TPS 低但 CPU 低（<10%）= **主线程被阻塞**（实体 AI/插件同步/GC）→ 4. `/spark profiler --only-ticks-over 100` 采 60-90s → `?raw` 分析热点 → 5. `/spark tickmonitor` 持续观察
+
+### 踩坑（2026-08-03 实测）
+
+- ⚠️ **Windows 服务器 async-profiler 不可用**，自动降级 built-in Java 引擎（功能正常）——日志提示属正常
+- ⚠️ **`/spark activity` 报 `NoClassDefFoundError: net/kyori/examination/Examinable`**：内置 Spark 1.10.152 bug——用 profiler/tickmonitor 替代
+- ⚠️ `/spark exporter` 不是子命令（打印帮助）；导出用报告链接 `?raw` 即可
+- ✅ profiler 有采样开销，选玩家少时段；tickmonitor 先跑 6s 基线后持续报告卡顿 tick
 
 ## Pitfalls（跨后端通用）
 
@@ -156,7 +208,7 @@ python3 $CMP/mcsm_verify_update.py
 - ⚠️ 有玩家在线时严禁破坏性操作（stop/restart/改配置/文件写）——先查玩家数
 - ⚠️ MCSM 操作端点全为 **GET + `/api/protected_instance/` 前缀**（open/stop/restart/command），误用 POST 会 404
 - ⚠️ MCSM 读文件两步法：POST /api/files/download 拿凭证 → GET {addr}/download/{pwd}/{文件名}
-- ⚠️ MCSM 写文件 body 字段是 `text`（不是 content！content 假成功）
+- ⚠️ **MCSM 写文件（PUT /api/files/）三要点**（2026-08-03 实测）：① **必须带 `daemonId`+`uuid` 参数**——只带 apikey → 403「参数不正确或非法访问实例」；② **只能写已存在的文件**——新文件路径 → 500 `Illegal access path`；③ **body 字段是 `text`**——用 `content` 返回 200 但实际不生效。改配置后**需重启才生效**
 - ⚠️ Exaroton 写配置：`POST files/config` 仅支持白名单 35 项（白名单外假成功）；**全量写用 `PUT files/data + {"text": 全文}`**；`POST files/data` 假成功（返回旧内容）
 - ⚠️ Exaroton start/stop/restart 是 **GET**（POST 触发 Cloudflare 人机验证）
 - ⚠️ Exaroton 高频调用触发 Cloudflare 风控（error 1010 全端点 403），冷却 30s+，脚本间隔 ≥5s
