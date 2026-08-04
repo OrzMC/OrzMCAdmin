@@ -64,6 +64,8 @@ $SKILL_DIR/scripts/adapters/mcsm.sh status
 - **PaperMC 26.x 需要 Java 25**（老版本需旧 JDK）
 - **插件升级机制（plugins/update/）**：新 jar 放入 `plugins/update/` → 重启时 PaperMC 自动
   原子替换 `plugins/` 下同名插件 → update/ 自动清空。**升级无需备份 jar**（官方源可重下）
+- ⚠️⚠️ **update 按【文件名】覆盖**：带版本号命名的 jar（如 `OrzMC-1.0.13.jar`）升级后文件名变了 →
+  不覆盖 → 重启后新旧两个 jar 并存冲突。**先删 plugins/ 下旧 jar 再放 update/**（或重命名新 jar 与旧文件名一致）
 - **插件对齐判定 = sha256**：文件名相同 ≠ 内容相同，必须对比 sha256
 - **下载 jar 后校验 sha256sum 与页面一致**
 
@@ -112,6 +114,8 @@ $SKILL_DIR/scripts/plugin_manager.sh remove essentialsx.jar   # 卸载
 - ⚠️ GitHub Release 滞后（手动打 tag 才出正式版）
 - ⚠️ Modrinth 发布报错（项目搜不到）——**查版本/下载一律用 Hangar API**
 
+**升级走 PaperMC 官方 `plugins/update` 机制**：
+
 ```bash
 # 1. 查最新版本
 curl -s "https://hangar.papermc.io/api/v1/projects/<项目>/versions?limit=5" | jq -r '.result[] | .name + " | " + .createdAt'
@@ -119,10 +123,12 @@ curl -s "https://hangar.papermc.io/api/v1/projects/<项目>/versions?limit=5" | 
 curl -s "https://hangar.papermc.io/api/v1/projects/<项目>/versions/<版本>" | jq -r '.downloads[].downloadUrl'
 #    → https://hangarcdn.papermc.io/plugins/<项目>/<项目>/versions/<版本>/PAPER/<项目>-<版本>.jar
 # 3. 下载 + 校验：unzip -p xxx.jar paper-plugin.yml | head 看 version 字段
-# 4. 停服（全杀 java + rm -f world/session.lock）→ 备份旧 jar → 替换
-# 5. ⚠️ 删旧 jar！plugins/ 下同名插件两个 jar 会冲突（勿留两个 OrzMC-*.jar）
+# 4. ⚠️ 先删 plugins/ 下旧 jar（update 按文件名覆盖，带版本号文件名不匹配 → 新旧并存冲突）
+# 5. 新 jar 放入 plugins/update/ → 重启时 PaperMC 自动原子替换，update/ 自动清空
 # 6. 重启 → 日志 `[OrzMC] Loading server plugin OrzMC v1.0.14` 验证
 ```
+
+**三端差异**：本地可不停服放 update/（重启时应用）；MCSM 运行中可上传 update/（jar 上传不触发锁定），玩家下线后 restart 自动替换；Exaroton 运行中禁写文件须先 stop。
 
 ### 5. 备份（local）
 ```bash
