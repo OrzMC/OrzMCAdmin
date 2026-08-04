@@ -23,7 +23,7 @@ cp "$SRC/scripts/"*.sh "$SRC/scripts/"parse_*.py "$DST/scripts/" 2>/dev/null || 
 cp "$SRC/scripts/bot/"*.js "$DST/scripts/bot/" 2>/dev/null || true
 
 # 脱敏处理（只处理 Python/bash 脚本中的默认值）
-for f in "$DST"/scripts/adapters/*.sh "$DST"/scripts/cmp3/*.py; do
+for f in "$DST"/scripts/adapters/*.sh "$DST"/scripts/cmp3/*.py "$DST"/scripts/bot/*.js; do
   # 私有域名 → 空（从 .env 读）
   sed -i '' 's|http://mc\.fantuantim\.xyz:23333/||g' "$f"
   # 服务器 ID → 空（从 .env 读）
@@ -35,6 +35,9 @@ for f in "$DST"/scripts/adapters/*.sh "$DST"/scripts/cmp3/*.py; do
   # jokerhub 服名 → 通用
   sed -i '' 's|jokerhub|{SERVER_NAME}|g' "$f"
   sed -i '' 's|jockerhubMC|{SERVER_NAME}|g' "$f"
+  # bot 私有：域名 + 登录密码（从环境变量读）
+  sed -i '' 's|mc\.fantuantim\.xyz|{SERVER_HOST}|g' "$f"
+  sed -i '' 's|HermesBotPass123|{BOT_PASSWORD}|g' "$f"
 done
 echo "✅ scripts/ 已同步 + 脱敏"
 

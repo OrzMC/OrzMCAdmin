@@ -33,9 +33,9 @@ try {
 }
 
 const USER = process.env.BOT_USER || process.argv[2] || 'HermesBot';
-const HOST = process.env.BOT_HOST || process.argv[3] || 'mc.fantuantim.xyz';
+const HOST = process.env.BOT_HOST || process.argv[3] || '{SERVER_HOST}';
 const PORT = parseInt(process.env.BOT_PORT || process.argv[4] || '25565', 10);
-const PASSWORD = process.env.BOT_PASSWORD || 'HermesBotPass123';
+const PASSWORD = process.env.BOT_PASSWORD || '{BOT_PASSWORD}';
 
 // 随机密码（用于自动注册）
 const genPwd = () => Array.from({length: 12}, () => 

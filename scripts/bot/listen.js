@@ -8,7 +8,7 @@ const bot = mineflayer.createBot({
 });
 
 let loggedIn = false;
-bot.on('login', () => { bot.chat('/login HermesBotPass123'); });
+bot.on('login', () => { bot.chat('/login {BOT_PASSWORD}'); });
 
 // 1. chat 事件：任何玩家说话（含私信）
 bot.on('chat', (username, message) => {

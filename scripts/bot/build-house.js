@@ -188,7 +188,7 @@ async function buildHouse() {
 bot.on('login', () => {
   console.log('[BOT] 登录成功');
   // 密码必须 6-32 字符；已注册过则 login，未注册则 register
-  bot.chat('/login HermesBotPass123');
+  bot.chat('/login {BOT_PASSWORD}');
 });
 
 bot.on('spawn', async () => {

@@ -8,7 +8,7 @@ const bot = mineflayer.createBot({
 });
 
 let loggedIn = false;
-bot.on('login', () => { bot.chat('/login HermesBotPass123'); });
+bot.on('login', () => { bot.chat('/login {BOT_PASSWORD}'); });
 bot.on('message', (msg) => {
   const t = msg.toString().replace(/§[0-9a-fk-or]/g, '');
   if (t.includes('登录成功')) { loggedIn = true; console.log('[TEST] ✅ 已登录'); }
