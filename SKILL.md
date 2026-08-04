@@ -62,8 +62,9 @@ $SKILL_DIR/scripts/adapters/mcsm.sh status
   官网下载页 `https://papermc.io/downloads/paper` 内嵌每个构建 sha256 → 直链
   `https://fill-data.papermc.io/v1/objects/{sha256}/{jar名}`（`scripts/parse_papermc.py` 已封装）
 - **PaperMC 26.x 需要 Java 25**（老版本需旧 JDK）
-- **插件升级机制（plugins/update/）**：新 jar 放入 `plugins/update/` → 重启时 PaperMC 自动
-  原子替换 `plugins/` 下同名插件 → update/ 自动清空。**升级无需备份 jar**（官方源可重下）
+- **插件安装/升级机制（PaperMC 官方，两条路径）**：🆕 **新插件首次安装** → jar 直接放 `plugins/`
+  （重启扫描加载；放 update/ 无效/非标准）；🔄 **已有插件升级** → 新 jar 放 `plugins/update/` → 重启时
+  PaperMC 自动原子替换 `plugins/` 下同名插件 → update/ 自动清空。**升级无需备份 jar**（官方源可重下）
 - ⚠️⚠️ **update 按【文件名】覆盖**：带版本号命名的 jar（如 `OrzMC-1.0.13.jar`）升级后文件名变了 →
   不覆盖 → 重启后新旧两个 jar 并存冲突。**先删 plugins/ 下旧 jar 再放 update/**（或重命名新 jar 与旧文件名一致）
 - **插件对齐判定 = sha256**：文件名相同 ≠ 内容相同，必须对比 sha256
@@ -114,7 +115,7 @@ $SKILL_DIR/scripts/plugin_manager.sh remove essentialsx.jar   # 卸载
 - ⚠️ GitHub Release 滞后（手动打 tag 才出正式版）
 - ⚠️ Modrinth 发布报错（项目搜不到）——**查版本/下载一律用 Hangar API**
 
-**升级走 PaperMC 官方 `plugins/update` 机制**：
+**升级走 PaperMC 官方 `plugins/update` 机制**（首次新装则直接放 `plugins/`）：
 
 ```bash
 # 1. 查最新版本
