@@ -16,10 +16,11 @@ DST="$HOME/OrzMCAdmin"
 echo "=== 1. 同步 scripts/（自动脱敏） ==="
 # 清空旧 scripts 再复制（保证删除同步）
 rm -rf "$DST/scripts"
-mkdir -p "$DST/scripts/adapters" "$DST/scripts/cmp3"
+mkdir -p "$DST/scripts/adapters" "$DST/scripts/cmp3" "$DST/scripts/bot"
 cp "$SRC/scripts/adapters/"*.sh "$DST/scripts/adapters/"
 cp "$SRC/scripts/cmp3/"*.py "$DST/scripts/cmp3/"
 cp "$SRC/scripts/"*.sh "$SRC/scripts/"parse_*.py "$DST/scripts/" 2>/dev/null || true
+cp "$SRC/scripts/bot/"*.js "$DST/scripts/bot/" 2>/dev/null || true
 
 # 脱敏处理（只处理 Python/bash 脚本中的默认值）
 for f in "$DST"/scripts/adapters/*.sh "$DST"/scripts/cmp3/*.py; do
