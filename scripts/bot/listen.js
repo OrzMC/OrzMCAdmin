@@ -8,7 +8,7 @@ const bot = mineflayer.createBot({
 });
 
 let loggedIn = false;
-bot.on('login', () => { bot.chat('/login {BOT_PASSWORD}'); });
+bot.on('login', () => { bot.chat('/login ' + (process.env.BOT_PASSWORD || 'changeMe123')); });
 
 // 1. chat 事件：任何玩家说话（含私信）
 bot.on('chat', (username, message) => {
