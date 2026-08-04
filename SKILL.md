@@ -1,28 +1,41 @@
 ---
-name: paper-mc-server-admin
-description: "PaperMC 服务器全生命周期运维：创建/升级/插件管理/备份/状态监控/配置对齐，一套动作适配 local / Exaroton / MCSManager 三种部署后端。"
-version: 1.0.0
-author: OrzMC
-tags: [minecraft, papermc, server, devops, exaroton, mcsm, automation]
+name: papermc-server-maintenance
+description: "PaperMC 服务器日常维护：创建/升级/插件管理/备份，一套动作适配 local / Exaroton / MCSManager 三种部署。"
+version: 1.1.0
+author: Hermes Agent
+tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm]
 platforms: [macos, linux]
-required_commands: [java, curl, python3]
-when_to_use: >
-  用户要求操作 Minecraft Paper 服务器（创建、升级、装/卸插件、备份、看状态、改配置、
-  三端配置对齐、插件版本对比）时。适用于本地目录部署、Exaroton 云服务器、
-  MCSManager 面板托管的任意组合。
+required_commands: [java, curl, tar]
 ---
 
-# PaperMC 服务器运维技能（通用版）
+# PaperMC 服务器维护
 
-> 由 OrzMC 实战沉淀（2026-08）：本地 + Exaroton + MCSM 三后端统一运维。
-> 本文件是**通用可复用版**，所有私有信息（域名/账号/服务器 ID）已占位化，
-> 使用者通过环境变量注入自己的部署信息。
+> **知识分类索引**：本 SKILL.md 只留决策路径；详细知识在 `references/`（后端 API 表 / Spark / 实体统计 / 机器人）：
+>
+> | 主题 | 文档 |
+> |:--|:--|
+> | 本机服务器操作（创建/升级/备份/状态） | `references/local-backend.md` |
+> | Exaroton 云端（API 端点表 + 平台要点） | `references/exaroton-backend.md` |
+> | MCSM 面板（API 端点表 + 平台要点 + 适配器） | `references/mcsm-backend.md` |
+> | Spark 性能分析（命令/JSON/判断/踩坑） | `references/spark-analysis.md` |
+> | 快速实体统计（paper entity list / Spark / 计分板） | `references/entity-statistics.md` |
+> | 机器人玩家 Mineflayer（运维视角；开发细节见独立技能 `minecraft-bot-mineflayer`） | `references/mineflayer-bot.md` |
+> | DeathChest 回归测试（死亡瞬间下线→物品丢失；脚本 scripts/regression/） | `references/deathchest-regression.md` |
+
+## 使用时机
+- 用户要创建新的 PaperMC 服务器（本机/Exaroton/MCSM）
+- 用户要升级 PaperMC 服务端版本或构建
+- 用户要安装/更新/卸载插件
+- 用户要备份或查看服务器状态/日志
+- 用户要排查性能/卡顿（→ `references/spark-analysis.md`）
+- 用户要统计实体或定位 FPS 问题（→ `references/entity-statistics.md`）
+- 用户要机器人玩家/自动操作（→ `references/mineflayer-bot.md`）
 
 ## 架构：一套动作，三种后端
 
 ```
 统一动作: create / status / start / stop / restart / logs
-         upgrade / plugin / backup / command / config-sync
+         upgrade / plugin / backup / command
               │
     ┌─────────┼──────────┐
     ▼         ▼          ▼
@@ -30,184 +43,131 @@ when_to_use: >
   本机目录   云端API    面板API
 ```
 
-后端通过环境变量选择（`scripts/adapters/*.sh` 均从环境变量读取）：
+后端通过环境变量 `PAPER_BACKEND` 选择（默认 `local`）：
+- `local` — 本机目录操作（`PAPER_DIR`）→ `references/local-backend.md`
+- `exaroton` — Exaroton 云端（`EXAROTON_API_KEY` + `EXAROTON_SERVER_ID`）→ `references/exaroton-backend.md`
+- `mcsm` — MCSManager 面板（`MCSM_URL` + `MCSM_API_KEY` + `MCSM_INSTANCE_ID`）→ `references/mcsm-backend.md`
 
-| 后端 | 必需环境变量 | 可选 |
-|:--|:--|:--|
-| `local` | `PAPER_DIR`（服务器目录） | `PAPER_JAVA` |
-| `exaroton` | `EXAROTON_API_KEY`、`EXAROTON_SERVER_ID` | — |
-| `mcsm` | `MCSM_URL`、`MCSM_API_KEY`、`MCSM_DAEMON_ID`、`MCSM_INSTANCE_ID` | — |
+## 关键事实（2026-08 实测）
 
-**凭据建议**：写入 `~/.hermes/.env`（或用户目录 `.env`）并 `chmod 600`，脚本自动读取；
-也支持直接 export 环境变量。**禁止在脚本/文档中硬编码凭据**。
-
-## 快速开始
-
-```bash
-SKILL_DIR=/path/to/paper-mc-server-admin
-
-# 本地服务器状态
-PAPER_DIR=~/minecraft-server $SKILL_DIR/scripts/adapters/local.sh status
-
-# Exaroton 状态
-EXAROTON_API_KEY=xxx EXAROTON_SERVER_ID=yyy $SKILL_DIR/scripts/adapters/exaroton.sh status
-
-# MCSM 状态（玩家数）
-$SKILL_DIR/scripts/adapters/mcsm.sh status
-```
-
-## 关键事实（2026-08 实测，三端通用）
-
-- **旧 API `api.papermc.io/v2` 已废弃（410 Gone）**——不要再用。新下载机制唯一正解：
-  官网下载页 `https://papermc.io/downloads/paper` 内嵌每个构建 sha256 → 直链
-  `https://fill-data.papermc.io/v1/objects/{sha256}/{jar名}`（`scripts/parse_papermc.py` 已封装）
-- **PaperMC 26.x 需要 Java 25**（老版本需旧 JDK）
-- **插件安装/升级机制（PaperMC 官方，两条路径）**：🆕 **新插件首次安装** → jar 直接放 `plugins/`
-  （重启扫描加载；放 update/ 无效/非标准）；🔄 **已有插件升级** → 新 jar 放 `plugins/update/` → 重启时
-  PaperMC 自动原子替换 `plugins/` 下同名插件 → update/ 自动清空。**升级无需备份 jar**（官方源可重下）
-- ⚠️⚠️ **update 按【文件名】覆盖**：带版本号命名的 jar（如 `OrzMC-1.0.13.jar`）升级后文件名变了 →
-  不覆盖 → 重启后新旧两个 jar 并存冲突。**先删 plugins/ 下旧 jar 再放 update/**（或重命名新 jar 与旧文件名一致）
-- **插件对齐判定 = sha256**：文件名相同 ≠ 内容相同，必须对比 sha256
-- **下载 jar 后校验 sha256sum 与页面一致**
-
-详细 API 参考见：
-- `references/exaroton-api.md` — Exaroton 29 端点 + 平台要点
-- `references/mcsm-api.md` — MCSManager 面板 API + 平台要点
-- `references/papermc-versioning.md` — PaperMC 版本/构建机制
+- **旧 API `api.papermc.io/v2` 已完全废弃（410 Gone）**——用 fill-data 新机制（`parse_papermc.py` 封装）
+- **最新稳定版**：paper-26.2-92（2026-08-02）；**Java 要求**：26.x 需要 Java 25
+- **插件基线**（三端对齐 17/17 sha256 一致，2026-08-03；OrzMC 2026-08-04 升 1.0.14）：BackOnDeath 0.4 / DeathChest 3.0.1 / Essentials 2.22.0 / EzShops 2.5.9 / GetMeHome 3.0.0 / Geyser 2.11.0-SNAPSHOT / GriefPrevention 16.18.7 / LoginSecurity 3.3.2-SNAPSHOT / LuckPerms 5.5.59 / OrzMC 1.0.14 / SkinsRestorer 15.12.5 / Vault 1.7.3-b131 / ViaBackwards 5.11.0 / ViaRewind 4.1.3 / ViaVersion 5.11.0 / WorldEdit 7.4.4 / WorldGuard 7.0.18
+- ⚠️ **死亡位置传送覆盖关系（2026-08-05 反编译实证）**：**Essentials `/back` 不能覆盖 BackOnDeath**——`/back` 传送目标是 `LastLocation`（只在 `PlayerTeleportEvent` PLUGIN/COMMAND 原因时更新），**死亡事件不更新 LastLocation** → `/back` 回的是「最后传送点」**不是死亡点**。BackOnDeath 监听死亡事件记录死亡位置。**线上依赖 BackOnDeath 回死亡点功能 → 保留**（仅 SpigotMC 渠道，无 Hangar/Modrinth）。同理 GetMeHome 保留（线上 60+ 玩家用，迁移 Essentials 需脚本转换+多 home 权限，方案未成熟前不动）
 
 ## 操作步骤
 
 ### 1. 获取最新版本信息
 ```bash
-curl -s https://papermc.io/downloads/paper | python3 $SKILL_DIR/scripts/parse_papermc.py
-# 输出: paper-26.2-92 <sha256>
-# 直链: https://fill-data.papermc.io/v1/objects/{sha256}/paper-26.2-92.jar
+curl -s https://papermc.io/downloads/paper | python3 ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/parse_papermc.py
+# 输出: paper-26.2-92 059d00bbce0fa1707739618b3276f5c80b9655dc0f964306fa799a9c7cb01cc2
 ```
 
-### 2. 创建服务器（local）
+### 2. 创建/升级/备份/状态（local）
 ```bash
-PAPER_DIR=~/minecraft-server $SKILL_DIR/scripts/adapters/local.sh create
+# 创建
+PAPER_BACKEND=local PAPER_DIR=~/minecraft-server \
+  ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/local.sh create
+# 升级核心 jar（自动备份旧 jar 可回滚）
+PAPER_BACKEND=local PAPER_DIR=~/minecraft-server \
+  ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/local.sh upgrade
+# 备份 world + plugins + server.properties（保留 24 份）
+PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/backup.sh
+# 状态 / 日志 / 命令
+PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/local.sh status
+PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/local.sh logs 50
 ```
-创建：下载最新 jar → eula.txt=true → 生成 server.properties → 生成启动脚本。
+> 详细（含 local 坑：无 rcon、运行时改 whitelist 不生效、macOS 无 timeout）→ `references/local-backend.md`
 
-### 3. 升级核心（local）
+### 3. 插件安装/更新/卸载
 ```bash
-PAPER_DIR=~/minecraft-server $SKILL_DIR/scripts/adapters/local.sh upgrade
+~/.hermes/skills/gaming/papermc-server-maintenance/scripts/plugin_manager.sh install essentialsx
+~/.hermes/skills/gaming/papermc-server-maintenance/scripts/plugin_manager.sh install https://example.com/plugin.jar
+~/.hermes/skills/gaming/papermc-server-maintenance/scripts/plugin_manager.sh update   # 全部更新
+~/.hermes/skills/gaming/papermc-server-maintenance/scripts/plugin_manager.sh remove essentialsx.jar
 ```
-升级：解析最新版 → 备份旧 jar（`backups/`）→ 下载新 jar（sha256 校验）→ 替换 → 重启 →
-验证日志 `Done`。幂等（已最新不重复下载）。
 
-### 4. 插件安装/更新/卸载
-```bash
-$SKILL_DIR/scripts/plugin_manager.sh install essentialsx      # Modrinth 搜索安装
-$SKILL_DIR/scripts/plugin_manager.sh install https://...jar   # URL 安装
-$SKILL_DIR/scripts/plugin_manager.sh update                   # 全部更新（plugins/update/）
-$SKILL_DIR/scripts/plugin_manager.sh remove essentialsx.jar   # 卸载
-```
-- ⚠️ 插件必须匹配 MC 版本（Modrinth API 用 `game_versions` 过滤）
-- ⚠️ Exaroton **运行中禁止写文件**（API 返回 File access unavailable），上传插件/升级须先停服
-- ✅ MCSM 运行中可上传到 `plugins/update/`（jar 上传不触发锁定，仅读取被锁）
+**插件安装/升级机制（PaperMC 官方，两条路径要分清）**：
+- 🆕 **新插件首次安装** → jar **直接放 `plugins/`**（重启时扫描加载；放 update/ 无效/非标准）
+- 🔄 **已有插件升级** → 新 jar 放 `plugins/update/` → 重启时 PaperMC **自动替换** `plugins/` 下同名插件（原子操作），update/ 自动清空
+- ✅ **插件升级无需备份 jar**：官方源可重下，update 机制原子替换
+- ⚠️⚠️ **PaperMC update 按【文件名】覆盖**：带版本号命名的 jar（如 `OrzMC-1.0.13.jar`）升级后文件名变了 → 不覆盖 → **重启后新旧两个 jar 并存冲突**。**先删 plugins/ 下旧 jar 再放 update/**（或重命名新 jar 与旧文件名一致）
+- ⚠️ Exaroton **运行中禁止写文件**，上传/升级必须先停服
+- ✅ MCSM 端 plugins/update 实测可用（`mcsm_upload_update.py` 上传 → restart → 自动替换）
+- ⚠️ **三端插件对齐必须对比 sha256**（文件名相同≠内容相同）；MCSM 运行中 jar 读取 500（锁定），对比用启动日志 `Enabling X vY` 行
 
-### 4b. 自有插件升级（Hangar 发布，2026-08-04 实测）
+### 3b. OrzMC 自定义插件升级（Hangar 发布 + PaperMC update 机制）
 
-自有插件（如 OrzMC，GitHub 仓库 `OrzMC/OrzMCPlugin`）不走 Modrinth/PaperMC，**发布渠道特殊**：
-- ✅ **Hangar 活跃**：CI 每天自动发布 dev 版（`主.次.补丁-dev.[构建号]`，如 `1.0.14-dev.237`；`pr` 后缀 = PR 构建）
-- ⚠️ GitHub Release 滞后（手动打 tag 才出正式版）
-- ⚠️ Modrinth 发布报错（项目搜不到）——**查版本/下载一律用 Hangar API**
+**OrzMC 是自有插件**（GitHub `OrzMC/OrzMCPlugin`），发布渠道特殊：**Hangar 活跃（CI 每天自动发布 dev 版）**、GitHub Release 滞后（手动 tag 才出）、Modrinth 发布报错（查不到）。
 
-**升级走 PaperMC 官方 `plugins/update` 机制**（首次新装则直接放 `plugins/`）：
+**升级走 PaperMC 官方 `plugins/update` 机制**（不是手动替换 `plugins/` 下 jar）；**首次新装**则直接放 `plugins/`（无需 update/）：
 
 ```bash
-# 1. 查最新版本
-curl -s "https://hangar.papermc.io/api/v1/projects/<项目>/versions?limit=5" | jq -r '.result[] | .name + " | " + .createdAt'
+# 0. 首次新装（非升级）：jar 直接放 plugins/，重启加载
+mv OrzMC-1.0.14-dev.237.jar plugins/
+# 升级流程如下：
+# 1. 查最新版本（Hangar API；dev=每日自动构建，pr=PR 构建）
+curl -s "https://hangar.papermc.io/api/v1/projects/OrzMC/versions?limit=5" | jq -r '.result[] | .name + " | " + .createdAt'
 # 2. 拿下载链接
-curl -s "https://hangar.papermc.io/api/v1/projects/<项目>/versions/<版本>" | jq -r '.downloads[].downloadUrl'
-#    → https://hangarcdn.papermc.io/plugins/<项目>/<项目>/versions/<版本>/PAPER/<项目>-<版本>.jar
-# 3. 下载 + 校验：unzip -p xxx.jar paper-plugin.yml | head 看 version 字段
-# 4. ⚠️ 先删 plugins/ 下旧 jar（update 按文件名覆盖，带版本号文件名不匹配 → 新旧并存冲突）
-# 5. 新 jar 放入 plugins/update/ → 重启时 PaperMC 自动原子替换，update/ 自动清空
+curl -s "https://hangar.papermc.io/api/v1/projects/OrzMC/versions/<版本>" | jq -r '.downloads[].downloadUrl'
+#    → https://hangarcdn.papermc.io/plugins/OrzMC/OrzMC/versions/<版本>/PAPER/OrzMC-<版本>.jar
+# 3. 下载 + 校验（unzip -p xxx.jar paper-plugin.yml | head 看 version 字段）
+# 4. ⚠️ 先删 plugins/ 下旧 jar（PaperMC update 按【文件名】覆盖：OrzMC jar 带版本号，
+#    新文件名 ≠ 旧文件名 → 不覆盖 → 重启后新旧两个 jar 并存冲突）
+rm plugins/OrzMC-1.0.13-pr.153.394.jar
+# 5. 新 jar 放入 plugins/update/（PaperMC 重启时自动原子替换，update/ 自动清空）
+mv /tmp/OrzMC-1.0.14-dev.237.jar plugins/update/
 # 6. 重启 → 日志 `[OrzMC] Loading server plugin OrzMC v1.0.14` 验证
 ```
 
-**三端差异**：本地可不停服放 update/（重启时应用）；MCSM 运行中可上传 update/（jar 上传不触发锁定），玩家下线后 restart 自动替换；Exaroton 运行中禁写文件须先 stop。
+**三端差异**：
+- ✅ 本地：删旧 jar + 放 update/ 可不停服（重启时应用），重启用 `start.sh`
+- ✅ MCSM：运行中可上传到 `plugins/update/`（jar 上传不触发锁定），玩家下线后 restart 自动替换（`mcsm_upload_update.py` 上传 → restart → 验证）
+- ⚠️ Exaroton：**运行中禁止写文件**，须先 stop → 传 update/ → start
 
-### 5. 备份（local）
-```bash
-PAPER_DIR=~/minecraft-server $SKILL_DIR/scripts/backup.sh
-```
-打包 world/ + plugins/ + server.properties 到 `backups/`，保留最近 24 份。
-> 备份分层：插件无需备 jar；核心 jar 升级自动备份；**世界/玩家数据/配置必须定期备份**。
+> 版本号体系：`主.次.补丁-[dev|pr].[构建号]`（如 `1.0.14-dev.237`）；插件基线已更新到 OrzMC 1.0.14。
 
-### 6. 状态/日志/命令
-```bash
-PAPER_DIR=~/minecraft-server $SKILL_DIR/scripts/adapters/local.sh status
-PAPER_DIR=~/minecraft-server $SKILL_DIR/scripts/adapters/local.sh logs 50
-PAPER_DIR=~/minecraft-server $SKILL_DIR/scripts/adapters/local.sh command "say Hello"
-```
-
-### 7. 三端配置对比与同步（scripts/cmp3/）
-
-配置一致性治理工具集（多服务器对齐场景）：
+### 4. 三端配置对比与同步（scripts/cmp3/）
 
 ```bash
-CMP=$SKILL_DIR/scripts/cmp3
-# 1. 拉取配置到本地目录（Exaroton 用 files/data GET；MCSM 用 download 两步法）
+CMP=~/.hermes/skills/gaming/papermc-server-maintenance/scripts/cmp3
+# 1. 拉取配置到目录（Exaroton: exa_backup_config.py / MCSM: mcsm_pull_all.py）
 # 2. 全量语义对比（核心+插件，排除数据文件）
-python3 $CMP/cmp3_configs.py /tmp/exa_configs /tmp/mcsm_configs ~/minecraft-server
-# 3. 插件 jar sha256 对比（三端一致判定）
+python3 $CMP/cmp3_configs.py /tmp/exa_configs2 /tmp/mcsm_configs2 ~/papermc-test
+# 3. 插件 jar sha256 对比
 python3 $CMP/cmp3_plugins_sha.py
-# 4. Exaroton 批量改配置（PUT files/data 全量覆盖）→ 验证
-python3 $CMP/exa_apply_config.py    # 按需编辑脚本内 apply() 列表
-python3 $CMP/exa_verify_config.py
-# 5. MCSM 插件热更新（上传 plugins/update/ + 验证）
-python3 $CMP/mcsm_upload_update.py pluginA.jar pluginB.jar
+# 4. Exaroton 批量改配置（PUT files/data 全量覆盖）
+python3 $CMP/exa_apply_config.py && python3 $CMP/exa_verify_config.py
+# 5. MCSM 插件更新（上传到 plugins/update/ + 验证）
+python3 $CMP/mcsm_upload_update.py deathchest.jar GriefPrevention.jar
 python3 $CMP/mcsm_verify_update.py
-# 6. MCSM 批量改配置（M1-M10 类型任务：改后重启生效）
-python3 $CMP/mcsm_backup_download.py        # 改前快照（MCSM_BACKUP_DIR 指定备份目录）
-python3 $CMP/mcsm_apply_config.py           # 读→替换→PUT 写回（按需编辑脚本内替换列表）
-python3 $CMP/mcsm_verify_config.py          # 真实 GET 读回验证
 ```
 
-**MCSM 文件操作注意**：download 凭证 API 对不存在文件也返回 200，**必须真实 GET**
-（500=不存在、`PK` 头=真实 jar）；运行中 jar 读取会 500（锁定），对比版本用日志 `Enabling X vY` 行。
+**凭据约定**：全部从 `~/.hermes/.env` 读取（`mcsm_env.py` 共享模块），**禁止硬编码 API key**。
 
-## 环境变量模板
-
-见 `templates/env.example`——复制为 `.env` 填入自己的值即可。
-
-## 专题知识（详细文档）
-
-| 主题 | 文档 |
-|:--|:--|
-| Spark 性能分析（命令/JSON/判断/踩坑） | `references/spark-analysis.md` |
-| 快速实体统计（paper entity list / Spark / 计分板） | `references/entity-statistics.md` |
-| 机器人玩家 Mineflayer（搭建/坑/常用操作） | `references/mineflayer-bot.md` |
-| Exaroton 29 端点 + 平台要点 | `references/exaroton-api.md` |
-| MCSManager 面板 API + 平台要点 | `references/mcsm-api.md` |
-| PaperMC 版本/构建机制 | `references/papermc-versioning.md` |
-
-> Spark 是 Paper 内置（无需装插件）的卡顿排查首选：`/spark health` → `/spark gc` → `/spark profiler --only-ticks-over 100` → `?raw` 拿 JSON。实体统计最快一行命令：`/paper entity list * minecraft:overworld`。
+### 5. MCSM / Exaroton 日常操作
+```bash
+# MCSM（有玩家在线时 stop/restart/command 自动拒绝）
+~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/mcsm.sh status|players|logs 50
+~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/mcsm.sh start|stop|restart
+~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/mcsm.sh command "list"
+```
+> 端点表/认证/踩坑 → `references/mcsm-backend.md` 和 `references/exaroton-backend.md`
 
 ## Pitfalls（跨后端通用）
 
-- ⚠️ 旧 v2 API 410 Gone；一律用 fill-data 新机制
-- ⚠️ 下载必须校验 sha256
+- ⚠️ 下载必须校验 sha256，防止损坏 jar
+- ⚠️ **备份分层**：插件升级无需备份 jar；服务器核心 jar 升级需备份旧 jar 回滚（upgrade 自动做）；**世界/玩家/LuckPerms H2/配置必须定期备份**
 - ⚠️ 服务器运行中不要替换 jar（先 stop 再升级）
-- ⚠️ eula.txt 不写 `eula=true` 拒绝启动
-- ⚠️ Java 25 只能跑 26.x
-- ⚠️ macOS bash 3.2：`$var` 后接全角字符要写 `${var}`（无 timeout 命令）
-- ⚠️ 有玩家在线时严禁破坏性操作（stop/restart/改配置/文件写）——先查玩家数
-- ⚠️ MCSM 操作端点全为 **GET + `/api/protected_instance/` 前缀**（open/stop/restart/command），误用 POST 会 404
-- ⚠️ MCSM 读文件两步法：POST /api/files/download 拿凭证 → GET {addr}/download/{pwd}/{文件名}
-- ⚠️ **MCSM 写文件（PUT /api/files/）三要点**（2026-08-03 实测）：① **必须带 `daemonId`+`uuid` 参数**——只带 apikey → 403「参数不正确或非法访问实例」；② **只能写已存在的文件**——新文件路径 → 500 `Illegal access path`；③ **body 字段是 `text`**——用 `content` 返回 200 但实际不生效。改配置后**需重启才生效**
-- ⚠️ Exaroton 写配置：`POST files/config` 仅支持白名单 35 项（白名单外假成功）；**全量写用 `PUT files/data + {"text": 全文}`**；`POST files/data` 假成功（返回旧内容）
-- ⚠️ Exaroton start/stop/restart 是 **GET**（POST 触发 Cloudflare 人机验证）
-- ⚠️ Exaroton 高频调用触发 Cloudflare 风控（error 1010 全端点 403），冷却 30s+，脚本间隔 ≥5s
-- ⚠️ Exaroton 大文件（>10MB）上传易 524，停服重试
-- ⚠️ Exaroton 无备份 API（面板功能）；MCSM daemon 文件操作不稳定（list/mkdir/move 常 500）
+- ⚠️ 插件必须匹配 MC 版本（Modrinth API 用 `game_versions` 过滤）
+- ⚠️ eula.txt 不写 `eula=true` 服务器拒绝启动
+- ⚠️ Java 25 只能跑 26.x；老版本需要旧 JDK
+- ⚠️ macOS bash 3.2：`$var` 后接全角字符（如 `（`）会报 unbound variable，必须写 `${var}`
+- ⚠️ MCSM 有玩家在线时严禁 stop/restart/command/文件操作（先查 `info.currentPlayers`）
+- ⚠️ **MCSM 升级跨大版本（如 26.1→26.2）**：世界数据首次启动自动转换（日志 `Starting upgrade for world`），确认无玩家时段操作
 
 ## 验证
-
-- `curl -s localhost:25565` 返回 Minecraft 协议字节 = 在线
-- 日志 `Done (Xs)!` = 启动成功
-- `ls plugins/` 见 jar = 插件已装
+- `curl -s localhost:25565` 返回 Minecraft 协议字节 = 服务器在线
+- 日志出现 `Done (Xs)! For help, type "help"` = 启动成功
+- `ls plugins/` 看到 jar = 插件已安装
+- 三端对齐：插件 sha256 一致 + 版本号一致
