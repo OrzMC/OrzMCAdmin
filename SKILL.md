@@ -105,6 +105,25 @@ $SKILL_DIR/scripts/plugin_manager.sh remove essentialsx.jar   # 卸载
 - ⚠️ Exaroton **运行中禁止写文件**（API 返回 File access unavailable），上传插件/升级须先停服
 - ✅ MCSM 运行中可上传到 `plugins/update/`（jar 上传不触发锁定，仅读取被锁）
 
+### 4b. 自有插件升级（Hangar 发布，2026-08-04 实测）
+
+自有插件（如 OrzMC，GitHub 仓库 `OrzMC/OrzMCPlugin`）不走 Modrinth/PaperMC，**发布渠道特殊**：
+- ✅ **Hangar 活跃**：CI 每天自动发布 dev 版（`主.次.补丁-dev.[构建号]`，如 `1.0.14-dev.237`；`pr` 后缀 = PR 构建）
+- ⚠️ GitHub Release 滞后（手动打 tag 才出正式版）
+- ⚠️ Modrinth 发布报错（项目搜不到）——**查版本/下载一律用 Hangar API**
+
+```bash
+# 1. 查最新版本
+curl -s "https://hangar.papermc.io/api/v1/projects/<项目>/versions?limit=5" | jq -r '.result[] | .name + " | " + .createdAt'
+# 2. 拿下载链接
+curl -s "https://hangar.papermc.io/api/v1/projects/<项目>/versions/<版本>" | jq -r '.downloads[].downloadUrl'
+#    → https://hangarcdn.papermc.io/plugins/<项目>/<项目>/versions/<版本>/PAPER/<项目>-<版本>.jar
+# 3. 下载 + 校验：unzip -p xxx.jar paper-plugin.yml | head 看 version 字段
+# 4. 停服（全杀 java + rm -f world/session.lock）→ 备份旧 jar → 替换
+# 5. ⚠️ 删旧 jar！plugins/ 下同名插件两个 jar 会冲突（勿留两个 OrzMC-*.jar）
+# 6. 重启 → 日志 `[OrzMC] Loading server plugin OrzMC v1.0.14` 验证
+```
+
 ### 5. 备份（local）
 ```bash
 PAPER_DIR=~/minecraft-server $SKILL_DIR/scripts/backup.sh
