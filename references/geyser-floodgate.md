@@ -26,7 +26,7 @@
 
 ### 1. 加载验证
 ```bash
-grep -i floodgate ~/papermc-test/logs/latest.log | grep -v DEBUG
+grep -i floodgate <服务器目录>/logs/latest.log | grep -v DEBUG
 # 期望: [floodgate] Enabling floodgate v2.2.5-SNAPSHOT
 #       [SkinsRestorer] Floodgate skin listener registered  ← 联动正常
 ```
