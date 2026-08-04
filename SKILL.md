@@ -21,6 +21,7 @@ required_commands: [java, curl, tar]
 > | 快速实体统计（paper entity list / Spark / 计分板） | `references/entity-statistics.md` |
 > | 机器人玩家 Mineflayer（运维视角；开发细节见独立技能 `minecraft-bot-mineflayer`） | `references/mineflayer-bot.md` |
 > | DeathChest 回归测试（死亡瞬间下线→物品丢失；脚本 scripts/regression/） | `references/deathchest-regression.md` |
+> | Geyser + floodgate 基岩支持（渠道/UDP 验证/握手测试脚本） | `references/geyser-floodgate.md` |
 
 ## 使用时机
 - 用户要创建新的 PaperMC 服务器（本机/Exaroton/MCSM）
