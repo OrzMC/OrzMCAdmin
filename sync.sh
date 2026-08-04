@@ -16,14 +16,15 @@ DST="$HOME/OrzMCAdmin"
 echo "=== 1. 同步 scripts/（自动脱敏） ==="
 # 清空旧 scripts 再复制（保证删除同步）
 rm -rf "$DST/scripts"
-mkdir -p "$DST/scripts/adapters" "$DST/scripts/cmp3" "$DST/scripts/bot"
+mkdir -p "$DST/scripts/adapters" "$DST/scripts/cmp3" "$DST/scripts/bot" "$DST/scripts/regression"
 cp "$SRC/scripts/adapters/"*.sh "$DST/scripts/adapters/"
 cp "$SRC/scripts/cmp3/"*.py "$DST/scripts/cmp3/"
 cp "$SRC/scripts/"*.sh "$SRC/scripts/"parse_*.py "$DST/scripts/" 2>/dev/null || true
 cp "$SRC/scripts/bot/"*.js "$DST/scripts/bot/" 2>/dev/null || true
+cp "$SRC/scripts/regression/"*.js "$DST/scripts/regression/" 2>/dev/null || true
 
 # 脱敏处理（只处理 Python/bash 脚本中的默认值）
-for f in "$DST"/scripts/adapters/*.sh "$DST"/scripts/cmp3/*.py "$DST"/scripts/bot/*.js; do
+for f in "$DST"/scripts/adapters/*.sh "$DST"/scripts/cmp3/*.py "$DST"/scripts/bot/*.js "$DST"/scripts/regression/*.js; do
   # 私有域名 → 空（从 .env 读）
   sed -i '' 's|http://mc\.fantuantim\.xyz:23333/||g' "$f"
   # 服务器 ID → 空（从 .env 读）
