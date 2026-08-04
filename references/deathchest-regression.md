@@ -34,7 +34,7 @@ PlayerDeathEvent
 ## 测试流程（回归）
 
 ### 前置
-- 测试服运行中（papermc-test）
+- 测试服运行中（本地 papermc 测试目录）
 - 玩家账号（HermesBot）已注册，密码用环境变量注入：`BOT_PASSWORD=xxx node <脚本>`
 - **服务器需开 DeathChest debug**（定位用）：`plugins/DeathChest/config.yml` → `debug: true`（测完可关）
 
