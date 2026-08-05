@@ -20,11 +20,12 @@ bot.on('login', () => { bot.chat('/login ' + (process.env.BOT_PASSWORD || 'chang
 bot.on('message', (msg) => {
   const t = msg.toString().replace(/§[0-9a-fk-or]/g, '');
   if (t.includes('登录成功')) { loggedIn = true; }
-  if (/Successfully|成功/.test(t)) {
+  // /execute if block 回显：中文服 "Test passed" / "Test failed"（英文服 "Successfully"）
+  if (/Test passed|Successfully|成功/.test(t)) {
     successCount++;
     console.log('[CHECK3] ✅ 命中:', t.slice(0, 80));
   }
-  if (/没有找到|未找到|找不到|not found/.test(t)) {
+  if (/Test failed|没有找到|未找到|找不到/.test(t)) {
     failures.push(t.slice(0, 60));
   }
 });

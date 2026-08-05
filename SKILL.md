@@ -20,7 +20,7 @@ required_commands: [java, curl, tar]
 > | Spark 性能分析（命令/JSON/判断/踩坑） | `references/spark-analysis.md` |
 > | 快速实体统计（paper entity list / Spark / 计分板） | `references/entity-statistics.md` |
 > | 机器人玩家 Mineflayer（运维视角；开发细节见独立技能 `minecraft-bot-mineflayer`） | `references/mineflayer-bot.md` |
-> | DeathChest 回归测试（死亡瞬间下线→物品丢失；脚本 scripts/regression/） | `references/deathchest-regression.md` |
+> | DeathChest 回归测试（死亡瞬间下线→物品丢失；✅已修复 v3.0.1-fix1；脚本 scripts/regression/） | `references/deathchest-regression.md` |
 > | Geyser + floodgate 基岩支持（渠道/UDP 验证/握手测试脚本） | `references/geyser-floodgate.md` |
 
 ## 使用时机
