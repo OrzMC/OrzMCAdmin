@@ -3,6 +3,26 @@
 > 用途：基岩版玩家（手机/PE/Win10 版）通过 Geyser 进 Java 服；floodgate 负责身份映射（基岩 ID → Java UUID），让 LuckPerms/白名单/LoginSecurity 可适配。
 > ⚠️ **没有 floodgate = 基岩玩家以 Geyser 生成前缀名身份进服**（如 `.joker_1234`），权限/白名单完全无法适配——**必须装**。
 
+## ⚠️ 渠道铁律：官方下载站优先（用户拍板 2026-08-05）
+
+**Geyser 和 floodgate 的安装/更新/优化一律走官方下载站 `download.geysermc.org`**——Hangar/Modrinth 平台相对更新更慢，可能落后多个版本/缺失 spigot 平台版。
+
+| 组件 | 官方渠道 | Hangar | Modrinth |
+|:--|:--|:--|:--|
+| Geyser | ✅ `download.geysermc.org` | 有（但慢）| 有（但慢）|
+| Floodgate | ✅ `download.geysermc.org`（唯一正确）| ⚠️ **2023-03 停更** | ❌ **只有 fabric/neoforge，无 spigot** |
+
+**查最新版 + 下载（官方站 API）**：
+```bash
+# 1. 查最新版本/构建
+curl -s https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest
+curl -s https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest
+
+# 2. 下载 spigot 平台版（= Paper 兼容）
+curl -sL -o floodgate-spigot.jar "https://download.geysermc.org/v2/projects/floodgate/versions/<版本>/builds/<构建>/downloads/spigot"
+# Geyser 同理（项目名 geyser）
+```
+
 ## 版本匹配（2026-08-05 测试服实证）
 
 | 组件 | 版本 | 渠道 |
@@ -26,7 +46,7 @@
 
 ### 1. 加载验证
 ```bash
-grep -i floodgate <服务器目录>/logs/latest.log | grep -v DEBUG
+grep -i floodgate ~/papermc-test/logs/latest.log | grep -v DEBUG
 # 期望: [floodgate] Enabling floodgate v2.2.5-SNAPSHOT
 #       [SkinsRestorer] Floodgate skin listener registered  ← 联动正常
 ```
@@ -52,6 +72,7 @@ python3 scripts/regression/geyser_udp_test.py
 - SkinsRestorer 自动注册 floodgate skin listener（基岩皮肤）
 
 ## 坑
-- **Hangar Floodgate 是旧版（2023）**——别从那下
-- **Modrinth 无 spigot 版**——别浪费时间
+- **Hangar Floodgate 是旧版（2023）**——别从那下（官方站优先）
+- **Modrinth 无 spigot 版**——别浪费时间（官方站优先）
+- **更新勿等 Hangar/Modrinth 推送**——它们比官方站慢，Geyser/floodgate 一律官方站查版本
 - 版本号带 `-SNAPSHOT` 是 GeyserMC 下载站的正常命名（build 号才是关键）
