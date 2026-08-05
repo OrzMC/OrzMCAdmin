@@ -95,6 +95,25 @@ grep -A 5 "diamond" <服务器>/world/dimensions/minecraft/overworld/death-chest
 
 > ⚠️ fall.js（保持在线对照）命中 0 是**脚本查错坐标**（记录坠落起点而非死亡落地位置）——用服务器日志 `Death chest block created at` 确认实际建箱位置即可，不影响判定。
 
+## 阶段 4 完整回归记录（2026-08-05，修复版 v3.0.1-fix1）
+
+| 回归项 | 结果 | 说明 |
+|:--|:--|:--|
+| TPS | ✅ 20.0/20.0/20.0 | 满 TPS 无退化 |
+| 插件加载 | ✅ 18 全加载 | Bukkit 17 + Paper 1（含 floodgate）|
+| 启动错误 | ⚠️ 2 条已知 | Essentials 版本警告 / EzShops YAML 回退（原版就有）|
+| 死亡+下线建箱 | ✅ 8/8 (100%) | 核心修复场景 |
+| 物品完整性 | ✅ 0 丢失 | 存档全有物品 |
+| 过期机制 | ✅ 60s 测试通过 | 到期自动销毁+存档延迟写盘（关服时 saveChests）|
+| 远距离建箱 | ✅ (100,61,100) | 区块加载修复覆盖 |
+| 重启滞留补建 | ✅ 正常 | 过期滞留箱补建后清理 |
+
+**已知问题（不阻塞，记录）**：
+1. **Invalid model 启动竞态**：重启时过期滞留箱子与补建任务竞争 → destroyChest 抛 1 条 IllegalArgumentException（ExpirationRunnable 调 destroyChest 时模型已被移除）。一次性不影响运行，原版潜在。可优化：`destroyChest` 中 `loadedChests.remove()` 返回 null 时静默返回而非抛异常
+2. **mineflayer 开箱失败**：DeathChest 用自定义 inventory holder（非方块原生 NBT），mineflayer openContainer 等不到 windowOpen——**真人客户端正常**，验证物品用存档（death-chests.yml）而非开箱
+
+**测试辅助**：`regress-tps.js`（TPS/插件查询）、`regress-expire.js`（精确坐标查箱）、`bugtest-world.js`（跨世界死亡）、`regression-loop.sh`（自动化多轮）
+
 ## 坑（实测踩过）
 - **粒子崩溃**：26.2→1.21.11 边界，坠亡掉落粒子触发 `PartialReadError: f32` —— 脚本需内置粒子 patch（115/116 映射）或 `hideErrors: true` 绕过
 - **OP 默认创造模式**：创造模式死亡不掉落物品/不触发 DeathChest —— 必须先 `/minecraft:gamemode survival`
