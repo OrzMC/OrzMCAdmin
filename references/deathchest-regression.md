@@ -108,6 +108,20 @@ grep -A 5 "diamond" <服务器>/world/dimensions/minecraft/overworld/death-chest
 | 远距离建箱 | ✅ (100,61,100) | 区块加载修复覆盖 |
 | 重启滞留补建 | ✅ 正常 | 过期滞留箱补建后清理 |
 
+## 压力测试记录（2026-08-05，fix2 = 区块加载 + destroyChest 幂等双修复）
+
+| 场景 | 数据 | 结果 |
+|:--|:--|:--|
+| 密集死亡+下线 | 6 轮（10:30-10:37）| ✅ 6/6 通过（命中 2/1/2/2/1/2）|
+| 并发死亡+下线 | 2 bot 同时 | ✅ HermesBot 3 命中；TestPlayer kill 未生效（命令时序）非修复问题 |
+| 累计回归 | 8（早前）+ 6 = **14 轮** | ✅ **14/14 = 100%** |
+| TPS（压力后）| 20.0/20.0/19.9 | ✅ 满 |
+| 异常（压力后）| Invalid model / exception | ✅ 0 |
+| JVM 内存 | 2.55GB RSS | ✅ 稳定无泄漏 |
+| 日志新增错误 | — | ✅ 无（仅已知 EasyBot/Essentials/EzShops）|
+
+**并发测试注意**：新账号会被白名单拦（EasyBot whitelist）——并发测试须用已有白名单账号（HermesBot/joker/TestPlayer，`/whitelist list` 可查）；kill 命令偶发未生效（区块加载时序）→ 判定以服务器日志 `Killed` + `created at` 为准
+
 **已知问题（已修复）**：
 1. ~~**Invalid model 启动竞态**~~ ✅ 已修复（commit 3572396，已入 PR #101）：
    - **复现条件**：服务器有已过期滞留箱子（expireAt 已过）+ 重启 → 必现 1 条 `IllegalArgumentException: Invalid model`
