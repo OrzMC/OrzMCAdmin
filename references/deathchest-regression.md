@@ -108,8 +108,12 @@ grep -A 5 "diamond" <服务器>/world/dimensions/minecraft/overworld/death-chest
 | 远距离建箱 | ✅ (100,61,100) | 区块加载修复覆盖 |
 | 重启滞留补建 | ✅ 正常 | 过期滞留箱补建后清理 |
 
-**已知问题（不阻塞，记录）**：
-1. **Invalid model 启动竞态**：重启时过期滞留箱子与补建任务竞争 → destroyChest 抛 1 条 IllegalArgumentException（ExpirationRunnable 调 destroyChest 时模型已被移除）。一次性不影响运行，原版潜在。可优化：`destroyChest` 中 `loadedChests.remove()` 返回 null 时静默返回而非抛异常
+**已知问题（已修复）**：
+1. ~~**Invalid model 启动竞态**~~ ✅ 已修复（commit 3572396，已入 PR #101）：
+   - **复现条件**：服务器有已过期滞留箱子（expireAt 已过）+ 重启 → 必现 1 条 `IllegalArgumentException: Invalid model`
+   - **根因**：启动 loadChests 先 `listener.onLoad(model)`（调度 ExpirationRunnable 到下一 tick）后 `loadedChests.put()`；ExpirationRunnable 抢先执行 → destroyChest 里 `loadedChests.remove()` 返回 null → 抛异常
+   - **修复**：`DeathChestService.destroyChest` 中 remove 返回 null 时静默返回（销毁幂等），不再抛异常
+   - **验证**：同条件（11 过期箱重启）修复前 1 次异常 → 修复后连续 2 次 0 异常，过期清理功能正常
 2. **mineflayer 开箱失败**：DeathChest 用自定义 inventory holder（非方块原生 NBT），mineflayer openContainer 等不到 windowOpen——**真人客户端正常**，验证物品用存档（death-chests.yml）而非开箱
 
 **测试辅助**：`regress-tps.js`（TPS/插件查询）、`regress-expire.js`（精确坐标查箱）、`bugtest-world.js`（跨世界死亡）、`regression-loop.sh`（自动化多轮）
