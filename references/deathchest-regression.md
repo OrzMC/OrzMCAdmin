@@ -79,6 +79,22 @@ grep -A 5 "diamond" <服务器>/world/dimensions/minecraft/overworld/death-chest
 - **回归通过**：步骤 3 箱子命中 ≥1 + 步骤 4 物品 count 完整（死亡+下线也不丢物品）
 - **回归失败**：命中 0 且日志有 `Creating death chest block...` 无 `created at` 确认
 
+## 多轮回归实测记录（2026-08-05，修复版 v3.0.1-fix1）
+
+自动化循环：`regression-loop.sh`（每轮 death3/precise + check3，轮间 30s 冷却防同账号重连拦截）
+
+| 批次 | 轮次 | 场景 | 结果 |
+|:--|:--|:--|:--|
+| 1 | 1-4 | 死亡+2s 下线 | ✅ 4/4 通过（命中 1/1/1/1）|
+| 2 | 5-8 | 死亡+2s 下线 | ✅ 4/4 通过（命中 2/2/2/2）|
+| — | — | **累计 8/8 = 100%** | ✅ 物品 0 丢失 |
+
+存档校验（world/dimensions/minecraft/overworld/death-chests.yml）：
+- 12 个箱子条目全部含 diamond（count 5 或 10），**空箱 0**
+- 修复前该场景 100% 失败（0 命中 + 物品丢失），修复后 100% 通过 → **非偶然**
+
+> ⚠️ fall.js（保持在线对照）命中 0 是**脚本查错坐标**（记录坠落起点而非死亡落地位置）——用服务器日志 `Death chest block created at` 确认实际建箱位置即可，不影响判定。
+
 ## 坑（实测踩过）
 - **粒子崩溃**：26.2→1.21.11 边界，坠亡掉落粒子触发 `PartialReadError: f32` —— 脚本需内置粒子 patch（115/116 映射）或 `hideErrors: true` 绕过
 - **OP 默认创造模式**：创造模式死亡不掉落物品/不触发 DeathChest —— 必须先 `/minecraft:gamemode survival`
