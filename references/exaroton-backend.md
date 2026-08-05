@@ -29,6 +29,9 @@
 
 ## 平台要点（2026-08 实测）
 
+- ⚠️ **Exaroton 是正版服（online-mode=true）**：Geyser 用 `online` 认证（基岩玩家微软账号登录），**不需要 floodgate**——Geyser 检测 online-mode=true 自动回退 online，即使 config 写 floodgate 也会被改回（这是正确行为，勿强行改）
+- ✅ **MCSM 是离线服（online-mode=false）**：Geyser 需要 `auth-type: floodgate`；floodgate 首次启动生成 16B 二进制 key.pem（**正常格式**，非 RSA PEM）；成功标志=日志 `Generating keypair` + auth-type 保持
+- ✅ **MCSM 写文件 API（PUT /api/files/）在此实例 404**（2026-08-05 实测，技能 2026-08-03 记载曾成功——面板版本差异）；替代方案：**上传覆盖**（download 改 → `POST /api/files/upload?upload_dir=/plugins/Geyser-Spigot` 同名覆盖）
 - ⚠️ **上传必须用 PUT**（POST 会触发 Cloudflare 人机验证 403）；**PUT 也必须带 `User-Agent: Mozilla/5.0`**（2026-08-05 实测：不带 UA 直接 403 error code 1010 Cloudflare 拦截；`exa_upload_update.py` 已内置）
 - ⚠️ 上传到 plugins/update/ 用 `files/data/plugins/update/{name}.jar/`（PUT 裸字节 body，Content-Type application/java-archive）——离线时可直接写
 - ⚠️ **文件端点必须带尾部斜杠**：`files/data/plugins/x.jar/`
