@@ -42,3 +42,11 @@
 - **配置对齐**：三端 config 与 `paper_plugins_config/` 对照（cmp3 脚本工作流）
 - **世界瘦身**：`thanos`/`rust-thanos`/`OrzMCBackup` 均可离线处理 world 目录，处理前必须备份
 - **备份**：OrzMCBackup CLI 可替代/补充 `backup.sh`（按 inhabited time 而非全量）
+
+## Bot 命令调试（orzdebug，2026-08-06 实测）
+
+- **模拟群里发 Bot 命令**：测试服控制台输入 `orzdebug $h`（等价群里用户发 `$h`）→ 插件以管理员身份处理，结果打到服务器日志（`cmd debug:` 开头）。
+- ⚠️ **不要用 `debug` 前缀**（PR #159 修复前）：Paper 1.20+ 原版 `/debug` 命令抢占前缀 + **未注册命令不触发 ServerCommandEvent** → `debug $h` 报 `Incorrect argument`，功能完全不可用。修复 = 前缀改 `orzdebug` + FeatureModule 注册该命令。
+- ⚠️ **ServerCommandEvent 只对真实控制台 stdin 触发**：RCON 通道、玩家 `/orzdebug` 都不触发（命令执行但监听器收不到）→ 必须用 screen 喂 stdin：`screen -S mc -p 0 -X stuff 'orzdebug $h\r'`（后台裸 java 进程 stdin=/dev/null，喂不进去）。
+- **9 个 Bot 命令实测**（Paper 26.2 + 1.0.14-dev.237）：`$h` 帮助 / `$l` 在线 / `$w` 白名单（分页）/ `$a <名>` 加白 / `$r <名>` 移白 / `$d` 黑名单（**语法：`$d IP` 添加、`$d -IP` 移除、`$d` 查询**——不是 `add/remove` 子命令）/ `$b` 地图备份（三阶段进度）/ `$e <命令>` 控制台命令 / `$o` 地图优化（配置关则提示"已禁用"）——全部通过。
+- **RCON 注入**：`server.properties` 开 `enable-rcon=true` + 密码（本机测试服已开 orztest2026）；用 `/tmp/rcon.py`（简易 Python RCON 客户端）发命令。注意 RCON 不触发 ServerCommandEvent。
