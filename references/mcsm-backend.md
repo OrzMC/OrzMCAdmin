@@ -19,7 +19,7 @@
 | **删除文件/目录** | **`DELETE /api/files/?daemonId={d}&uuid={i}` body `{"targets":["/路径1","/路径2"]}`** | ✅✅ **200 实测删文件+目录都成功** | 删后必须真实 GET 验证（daemon 偶发假 200）|
 | **新建目录** | `POST /api/files/mkdir?daemonId={d}&uuid={i}` body `{"target":"/路径"}` | ✅ 200 实测 | |
 | 上传 | `POST /api/files/upload?upload_dir={目录}&daemonId={d}&uuid={i}` → daemon `/upload/{pwd}` multipart | ✅ 实测 | |
-| **列目录** | `GET /api/files/list?target={路径}&page=1&page_size=50` | ⚠️ **200 但 items 恒空** | **端点存在且参数正确（必须 page+page_size 两个都要），但此 daemon 返回空 items——功能实际不可用**；absolutePath 字段可看真实路径 |
+| **列目录** | `GET /api/files/list?target={路径}&page=0&page_size=50&file_name={过滤词}` | ⚠️✅ **可用但需 fileName** | **必须带 `page`（从 0 开始！）+ `page_size` + `file_name` 三个参数**；`file_name` 是**过滤词**（不填 → total=0 items 空，daemon 全量列出 bug）；`type` 字段 0=目录 1=文件；偶发 `Remote end closed connection`（重试即可）。源码（MCSManager Daemon `system_file.ts` list 实现）实证 |
 
 ⚠️ **操作端点全部是 GET + `/api/protected_instance/` 前缀**（不是 POST /api/instance/xxx！）——这是 MCSM 10 的坑，首次按 POST 调用全 404。
 
@@ -57,10 +57,10 @@
 - ✅ **升级流程（2026-08-03 实测）**：上传新 paper jar 到实例根目录（`POST /api/files/upload?upload_dir=/` → daemon `/upload/{pwd}` multipart）→ `PUT /api/files/` body `{"target":"/Start.bat","text":"新内容"}` 更新 jar 引用 → restart。旧 jar 保留作回滚
 - ⚠️ **MCSM 写文件（PUT /api/files/）四要点**：① **必须带 `daemonId`+`uuid` 参数**——只带 apikey → 403「参数不正确或非法访问实例」；② **只能写已存在的文件**——新文件路径 → 500 `Illegal access path`（改配置/Start.bat 都满足，无需新建文件）；③ **body 字段是 `text`**——用 `content` 返回 200 但实际不生效；④ 改配置后**需重启才生效**
 - ✅✅ **MCSM 删除文件/目录可用（2026-08-06 推翻旧结论）**：`DELETE /api/files/?daemonId={d}&uuid={i}` body `{"targets":["/路径1",...]}` —— 实测删普通文件+目录都 200 成功。**旧结论「无 delete API、只能上传覆盖」是错的**（此前按 `DELETE /api/files/delete` 探测 404 误判；正确端点是 `DELETE /api/files/`）。删后必须真实 GET 验证（daemon 偶发假 200）
-- ✅ **MCSM 列目录端点存在但此 daemon 不可用**：`GET /api/files/list?target={路径}&page=1&page_size=50` 返回 200 + 正确 absolutePath（`C:\...\InstanceData\{uuid}\...`）但 **items 恒空**——列目录实际不可用（非 404，是 daemon 端 bug）
+- ✅ **MCSM 列目录 API 可用（2026-08-06 深挖修正）**：`GET /api/files/list?target={路径}&page=0&page_size=50&file_name={过滤词}`——**必须带 `page`（从 0 开始）+`page_size`+`file_name`**；`file_name` 是过滤词（不填返回 total=0，daemon 全量列出有 bug）；`type`: 0=目录 1=文件。源码实证：MCSManager Daemon `system_file.ts`（`list(page, pageSize, searchFileName)` 实现）；面板 `filemananger_router.ts` 校验 query `{daemonId,uuid,target,page,page_size}`（page 默认 0、page_size 默认 10 上限 100）
 - ⚠️ **MCSM download API 不校验文件存在性**：`POST /api/files/download` 对任何文件名都返回 200（不存在的文件也发凭证）！判断文件是否存在必须**真实 GET 下载**：500=不存在，`PK` 魔数开头=真实 jar
 - ⚠️ **Paper 26.x 首次启动需下载 mojang_26.x.jar**：MCSM 服务器若下载失败会 `Hash check failed for downloaded file mojang_26.x.jar` 崩溃循环（每次自动重启重下）；**kill 恢复法**：`mcsm.sh kill` 终止 → `start` 重新启动，通常第二次下载即成功
-- ⚠️ **daemon 文件操作稳定性**（2026-08-06 复核）：list 返回空 items、move 500；**delete（DELETE /api/files/）与 mkdir 实测稳定可用**；旧记载「delete 偶发假 200」仍建议**删后真实 GET 验证**
+- ⚠️ **daemon 文件操作稳定性**（2026-08-06 复核）：**list 需带 fileName 过滤（不填返回空）、move 500**；**delete（DELETE /api/files/）与 mkdir 实测稳定可用**；删后仍建议**真实 GET 验证**
 - ⚠️ **command 空格原样**：命令中空格不要 URL 编码成 %20（MCSM 不解析），直接原始字符
 - ⚠️ **命令长度限制**：过长命令被截断，日志出现 `<--[HERE]` 标记——长命令拆短
 
