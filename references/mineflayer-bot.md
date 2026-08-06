@@ -8,7 +8,7 @@
 ## 启动（运维视角）
 
 ```bash
-# 线上（默认连 mc.fantuantim.xyz:25565）
+# 线上（默认连 {SERVER_HOST}:25565）
 cd ~/minecraft-bot && ./start.sh HermesBot
 # 本地测试服
 BOT_HOST=127.0.0.1 BOT_PORT=25565 node minecraft-bot.js
@@ -23,7 +23,7 @@ BOT_HOST=127.0.0.1 BOT_PORT=25565 node minecraft-bot.js
 
 - ⚠️ **MCSM command API 转发丢玩家上下文**：`execute as HermesBot run tp ...` 会被 MCSM 当 CONSOLE 命令简化执行（日志 `CONSOLE issued server command: /tp`，玩家位置不变）——**需要玩家身份的操作必须由 bot 自己通过 mineflayer 执行**（`bot.chat('/home')`），不走 MCSM command API
 - ⚠️ **有 Essentials 时原版命令加 `minecraft:` 域**：`/minecraft:tp`（绕 teleport-safety）、`/minecraft:whitelist add`、`/minecraft:tell`（私信）——详细见独立技能
-- ✅ **本地测试服（papermc-test）验证价值**：本地出生点有苦力怕等实体，能暴露线上不常触发的崩溃路径（粒子/实体交互），改 bot 后先本地验证再上生产
+- ✅ **本地测试服验证价值**：本地出生点有苦力怕等实体，能暴露线上不常触发的崩溃路径（粒子/实体交互），改 bot 后先本地验证再上生产
 - ⚠️ bot 项目持久化在 `~/minecraft-bot/`（勿放 /tmp）
 
 ## 常用操作（bot 侧聊天命令，minecraft-bot.js 内置）

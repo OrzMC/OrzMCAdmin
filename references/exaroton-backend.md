@@ -24,7 +24,7 @@
 | 延长停止计时 | `POST /v1/servers/{id}/extend-time/`（body `{"time": 60}` 秒） | ✅ 实测（HTTP 200） |
 | 玩家名单列表 | `GET /v1/servers/{id}/playerlists/` | ✅ 4 名单：whitelist/ops/banned-players/banned-ips |
 | 名单内容 | `GET/PUT/DELETE /v1/servers/{id}/playerlists/{list}/`（body `{"entries": ["notch"]}`） | ✅ 全部实测（PUT 加→DELETE 删→恢复） |
-| 账号信息 | `GET /v1/account/` | ✅ jokerhub / 824219521@qq.com |
+| 账号信息 | `GET /v1/account/` | ✅ {SERVER_NAME} / {EMAIL} |
 | 余额池 | `GET /v1/billing/pools/` | ✅ 1 池 309.14 积分 |
 
 ## 平台要点（2026-08 实测）
@@ -41,7 +41,7 @@
 - ✅ **插件残留目录可安全删除**（2026-08-03 实测）：卸载插件后 `plugins/{插件名}/` 配置残留（config.yml + 空子目录）可用 `DELETE /files/data/plugins/{名}/` 整目录删除，不影响运行（Chunky 案例）
 - ⚠️ 服务器无玩家在线会自动停止（Exaroton 默认行为，省配额，日志会正常保存世界）
 - ⚠️ **启动时自动更新软件**：Exaroton 检测到 PaperMC 有新构建会在启动流程中自动更新（状态流转：STARTING→LOADING→OFFLINE→需再启动一次），用户无需手动升级核心
-- ✅ 本机 Java 25 兼容 PaperMC 26.2；本地测试服与线上 jokerhub 均为 **26.2 (92)**（2026-08-03 三端对齐）
+- ✅ 本机 Java 25 兼容 PaperMC 26.2；本地测试服与线上 {SERVER_NAME} 均为 **26.2 (92)**（2026-08-03 三端对齐）
 - ✅ **无玩家自动停止**：启动后约 3-4 分钟无玩家会自动停（日志显示正常关闭、世界完整保存），属预期行为
 - ✅ **官方状态码枚举**（OpenAPI spec 权威）：0=OFFLINE 1=ONLINE 2=STARTING 3=STOPPING 4=RESTARTING 5=SAVING 6=LOADING 7=CRASHED 8=PENDING 9=TRANSFERRING 10=PREPARING
 - ✅ **生命周期实测**（2026-08-03）：start = LOADING(6)→STARTING(2)→ONLINE(1) 约 40s；stop = SAVING(5)→OFFLINE(0) 约 10s；restart（在线）= STARTING→ONLINE 约 32s；**restart 在离线时返回 400「Server is not online」**（官方预期）
