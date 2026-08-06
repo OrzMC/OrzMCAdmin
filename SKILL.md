@@ -61,6 +61,7 @@ required_commands: [java, curl, tar]
 - **旧 API `api.papermc.io/v2` 已完全废弃（410 Gone）**——用 fill-data 新机制（`parse_papermc.py` 封装）
 - **最新稳定版**：paper-26.2-92（2026-08-02）；**Java 要求**：26.x 需要 Java 25
 - **插件基线**（三端对齐 17/17 sha256 一致，2026-08-03；**2026-08-06 全面升级**：OrzMC 1.0.14 正式版、LuckPerms 5.5.71（官方 download.luckperms.net，平台滞后官方 12 版）、Geyser 2.11.1-b1209（官方稳定构建）；ViaVersion 系列保持 5.11.0 稳定版不升 SNAPSHOT）：BackOnDeath 0.4 / DeathChest 3.0.1 / Essentials 2.22.0 / EzShops 2.5.9 / GetMeHome 3.0.0 / Geyser 2.11.1-b1209 / GriefPrevention 16.18.7 / LoginSecurity 3.3.2-SNAPSHOT / LuckPerms 5.5.71 / OrzMC 1.0.14 / SkinsRestorer 15.12.5 / Vault 1.7.3-b131 / ViaBackwards 5.11.0 / ViaRewind 4.1.3 / ViaVersion 5.11.0 / WorldEdit 7.4.4 / WorldGuard 7.0.18
+- **force-gamemode 三端已统一 false（2026-08-06）**：MCSM 原为 true（玩家每次登录被强制回 survival，切创造后退出重登丢失模式），已改 false 与本地/Exaroton 对齐；改 server.properties 用 `PUT /api/files/`（保留 CRLF），重启生效，不影响在线玩家
 - ⚠️ **死亡位置传送覆盖关系（2026-08-05 反编译实证）**：**Essentials `/back` 不能覆盖 BackOnDeath**——`/back` 传送目标是 `LastLocation`（只在 `PlayerTeleportEvent` PLUGIN/COMMAND 原因时更新），**死亡事件不更新 LastLocation** → `/back` 回的是「最后传送点」**不是死亡点**。BackOnDeath 监听死亡事件记录死亡位置。**线上依赖 BackOnDeath 回死亡点功能 → 保留**（仅 SpigotMC 渠道，无 Hangar/Modrinth）。同理 GetMeHome 保留（线上 60+ 玩家用，迁移 Essentials 需脚本转换+多 home 权限，方案未成熟前不动）
 
 ## 操作步骤
