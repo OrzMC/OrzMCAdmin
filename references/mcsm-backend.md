@@ -20,6 +20,11 @@
 | **新建目录** | `POST /api/files/mkdir?daemonId={d}&uuid={i}` body `{"target":"/路径"}` | ✅ 200 实测 | |
 | 上传 | `POST /api/files/upload?upload_dir={目录}&daemonId={d}&uuid={i}` → daemon `/upload/{pwd}` multipart | ✅ 实测 | |
 | **列目录** | `GET /api/files/list?target={路径}&page=0&page_size=50&file_name={过滤词}` | ⚠️✅ **可用但需 fileName** | **必须带 `page`（从 0 开始！）+ `page_size` + `file_name` 三个参数**；`file_name` 是**过滤词**（不填 → total=0 items 空，daemon 全量列出 bug）；`type` 字段 0=目录 1=文件；偶发 `Remote end closed connection`（重试即可）。源码（MCSManager Daemon `system_file.ts` list 实现）实证 |
+| **touch 新建文件** | `POST /api/files/touch` body `{"target":"/路径"}` | ✅ 200 实测 | 2026-08-06 新发现 |
+| **copy 复制** | `POST /api/files/copy` body `{"targets":[["源","目标"],...]}` | ✅ 200 实测 | ⚠️ **targets 是二维数组** `[["源","目标"]]`（源码注释 `// [["a.txt","b.txt"],["cxz","zzz"]]`）——一维数组会 500 |
+| **move 移动** | **`PUT /api/files/move`** body `{"targets":[["源","目标"],...]}` | ✅ 200 实测 | ⚠️ **方法必须是 PUT**（POST → 500）+ **targets 二维数组**（同 copy）——2026-08-06 修正「move 不可用」误判 |
+| **compress 压缩** | `POST /api/files/compress` body `{"source":"/输出.zip","targets":[文件数组],"type":1,"code":"utf-8"}` | ✅ 200 实测 | **type=1 压缩**（promiseZip：source=zip输出路径, targets=文件数组）；**type=0 解压**（promiseUnzip：source=zip路径, targets=目标目录字符串）；异步任务（fileLock 计数） |
+| **URL 下载** | `POST /api/files/download_from_url` body `{"url":"...","file_name":"..."}` | 📚 源码确认未实测 | daemon 直传 URL 到实例；`download_from_url_stop` 可停止 |
 
 ⚠️ **操作端点全部是 GET + `/api/protected_instance/` 前缀**（不是 POST /api/instance/xxx！）——这是 MCSM 10 的坑，首次按 POST 调用全 404。
 
@@ -60,7 +65,7 @@
 - ✅ **MCSM 列目录 API 可用（2026-08-06 深挖修正）**：`GET /api/files/list?target={路径}&page=0&page_size=50&file_name={过滤词}`——**必须带 `page`（从 0 开始）+`page_size`+`file_name`**；`file_name` 是过滤词（不填返回 total=0，daemon 全量列出有 bug）；`type`: 0=目录 1=文件。源码实证：MCSManager Daemon `system_file.ts`（`list(page, pageSize, searchFileName)` 实现）；面板 `filemananger_router.ts` 校验 query `{daemonId,uuid,target,page,page_size}`（page 默认 0、page_size 默认 10 上限 100）
 - ⚠️ **MCSM download API 不校验文件存在性**：`POST /api/files/download` 对任何文件名都返回 200（不存在的文件也发凭证）！判断文件是否存在必须**真实 GET 下载**：500=不存在，`PK` 魔数开头=真实 jar
 - ⚠️ **Paper 26.x 首次启动需下载 mojang_26.x.jar**：MCSM 服务器若下载失败会 `Hash check failed for downloaded file mojang_26.x.jar` 崩溃循环（每次自动重启重下）；**kill 恢复法**：`mcsm.sh kill` 终止 → `start` 重新启动，通常第二次下载即成功
-- ⚠️ **daemon 文件操作稳定性**（2026-08-06 复核）：**list 需带 fileName 过滤（不填返回空）、move 500**；**delete（DELETE /api/files/）与 mkdir 实测稳定可用**；删后仍建议**真实 GET 验证**
+- ⚠️ **daemon 文件操作**（2026-08-06 全面复核）：**list 需 fileName 过滤（不填空）、move 必须 PUT+二维数组、mkdir 只建单层（父目录不存在 500）、compress type=1 压缩/type=0 解压**；delete/mkdir/touch/copy 稳定可用；删后建议**真实 GET 验证**
 - ⚠️ **command 空格原样**：命令中空格不要 URL 编码成 %20（MCSM 不解析），直接原始字符
 - ⚠️ **命令长度限制**：过长命令被截断，日志出现 `<--[HERE]` 标记——长命令拆短
 
