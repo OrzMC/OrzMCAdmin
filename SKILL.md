@@ -1,188 +1,159 @@
 ---
-name: papermc-server-maintenance
-description: "PaperMC 服务器日常维护：创建/升级/插件管理/备份，一套动作适配 local / Exaroton / MCSManager 三种部署。"
-version: 1.2.0
+name: minecraft-bot-mineflayer
+description: "Use when 需要 Minecraft 机器人玩家（Mineflayer bot）进服执行玩家身份操作或模拟玩家。"
+version: 1.0.0
 author: Hermes Agent
-tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm]
+tags: [minecraft, mineflayer, bot, nodejs, automation]
 platforms: [macos, linux]
-required_commands: [java, curl, tar]
+required_commands: [node, npm]
 ---
 
-# PaperMC 服务器维护
-
-> **知识分类索引**：本 SKILL.md 只留决策路径；详细知识在 `references/`（后端 API 表 / Spark / 实体统计 / 机器人）：
->
-> | 主题 | 文档 |
-> |:--|:--|
-> | 本机服务器操作（创建/升级/备份/状态） | `references/local-backend.md` |
-> | Exaroton 云端（API 端点表 + 平台要点） | `references/exaroton-backend.md` |
-> | MCSM 面板（API 端点表 + 平台要点 + 适配器） | `references/mcsm-backend.md` |
-> | Spark 性能分析（命令/JSON/判断/踩坑） | `references/spark-analysis.md` |
-> | 快速实体统计（paper entity list / Spark / 计分板） | `references/entity-statistics.md` |
-> | 机器人玩家 Mineflayer（运维视角；开发细节见独立技能 `minecraft-bot-mineflayer`） | `references/mineflayer-bot.md` |
-> | DeathChest 回归测试（死亡瞬间下线→物品丢失；✅已修复 v3.0.1-fix1；脚本 scripts/regression/） | `references/deathchest-regression.md` |
-> | Geyser 基岩支持（当前 offline 直连模式；floodgate 已回退 2026-08-05） | `references/geyser-floodgate.md` |
-> | OrzMC 统一代码仓库（submodule 资产地图：插件源码/配置库/备份工具/世界瘦身） | `references/orzmc-repo.md` |
-> | OrzMC 真实环境验收报告（2026-08-06：全功能测试矩阵 + 双服 transfer + 发现的 bug） | `references/orzmc-acceptance-20260806.md` |
-> | OrzMC 功能测试用例（28 项，玩家命令/Bot 命令/事件拦截，含前置条件/步骤/预期） | 插件仓库 `plugin/docs/test-cases.md`（OrzMCPlugin） |
-> | OrzMC 端到端测试报告（2026-08-06：机器人+真实玩家，28/28 通过，transfer 闭环） | 插件仓库 `plugin/docs/e2e-test-report-20260806.md`（OrzMCPlugin） |
-> | RCON 客户端（`scripts/rcon.py <命令> [端口]`，密码从环境变量 RCON_PASSWORD 读） | `scripts/rcon.py` |
-> | LoginSecurity 注册状态查询（`scripts/check_lsdb.py [db路径] [玩家名]`） | `scripts/check_lsdb.py` |
-> | PaperMC 插件 E2E 测试方案调研（MockBukkit/WatchWolf/GameTest/真实环境/容器化 + 推荐组合） | `references/plugin-e2e-testing.md` |
+# Mineflayer 机器人玩家
 
 ## 使用时机
-- 用户要创建新的 PaperMC 服务器（本机/Exaroton/MCSM）
-- 用户要升级 PaperMC 服务端版本或构建
-- 用户要安装/更新/卸载插件
-- 用户要备份或查看服务器状态/日志
-- 用户要排查性能/卡顿（→ `references/spark-analysis.md`）
-- 用户要统计实体或定位 FPS 问题（→ `references/entity-statistics.md`）
-- 用户要机器人玩家/自动操作（→ `references/mineflayer-bot.md`）
+- 用户要一个 bot 玩家进服执行**玩家身份**操作（/home、/tps、/sethome、触发区块加载）
+- 用户要模拟玩家活动（走动触发区块 tick）或做登录/传送链自动化测试
+- MCSM command API 无法提供玩家身份（见下）时的替代方案
 
-## 架构：一套动作，三种后端
+## 关键事实：为什么需要 bot（2026-08-04 实测）
 
-```
-统一动作: create / status / start / stop / restart / logs
-         upgrade / plugin / backup / command
-              │
-    ┌─────────┼──────────┐
-    ▼         ▼          ▼
-  local    exaroton    mcsm
-  本机目录   云端API    面板API
-```
+- **MCSM command API 永远以 CONSOLE 身份执行**：`execute as X run tp ...` 会被剥成 CONSOLE 命令（日志显示 `CONSOLE issued server command: /tp`），玩家上下文丢失，`/home` 等玩家专属命令无法用控制台触发
+- 需要真实玩家身份的命令 / 行为，只能用 bot 进服
+- bot 是 headless，**测不了 FPS/渲染**（那是客户端显卡指标）——别用 bot 测渲染性能
 
-后端通过环境变量 `PAPER_BACKEND` 选择（默认 `local`）：
-- `local` — 本机目录操作（`PAPER_DIR`）→ `references/local-backend.md`
-- `exaroton` — Exaroton 云端（`EXAROTON_API_KEY` + `EXAROTON_SERVER_ID`）→ `references/exaroton-backend.md`
-- `mcsm` — MCSManager 面板（`MCSM_URL` + `MCSM_API_KEY` + `MCSM_INSTANCE_ID`）→ `references/mcsm-backend.md`
+## 搭建步骤（已实测：Paper 26.2 服务器，2026-08-04）
 
-## 关键事实（2026-08 实测）
-
-- **旧 API `api.papermc.io/v2` 已完全废弃（410 Gone）**——用 fill-data 新机制（`parse_papermc.py` 封装）
-- **最新稳定版**：paper-26.2-92（2026-08-02）；**Java 要求**：26.x 需要 Java 25
-- **插件基线**（三端对齐 17/17 sha256 一致，2026-08-03；**2026-08-06 全面升级**：OrzMC 1.0.14 正式版、LuckPerms 5.5.71（官方 download.luckperms.net，平台滞后官方 12 版）、Geyser 2.11.1-b1209（官方稳定构建）；ViaVersion 系列保持 5.11.0 稳定版不升 SNAPSHOT）：BackOnDeath 0.4 / DeathChest 3.0.1 / Essentials 2.22.0 / EzShops 2.5.9 / GetMeHome 3.0.0 / Geyser 2.11.1-b1209 / GriefPrevention 16.18.7 / LoginSecurity 3.3.2-SNAPSHOT / LuckPerms 5.5.71 / OrzMC 1.0.14 / SkinsRestorer 15.12.5 / Vault 1.7.3-b131 / ViaBackwards 5.11.0 / ViaRewind 4.1.3 / ViaVersion 5.11.0 / WorldEdit 7.4.4 / WorldGuard 7.0.18
-- **GeoIP 内网误拦截（2026-08-06 修复，OrzMC 1.0.15）**：MCSM allow_country_code=[CN,JP,TW] 时内网玩家（192.168.x/10.x）被拦截——geojs.io 无法解析私有段返回未知国家码。1.0.15 加内网 IP 短路（RFC1918/环回/CGNAT 直接放行，公网仍检查）。OrzMC 配置读取为实时（改 config.yml 后 /orzconfig reload 即生效，无需重启）；临时缓解=allow_country_code 改 []
-- **权限系统（2026-08-06 实施，LuckPerms 4 组）**：default(新手生存)→member(进阶飞行)→builder(创造+WE)→admin(全权限)；坑：RCON 不回显 LP 命令输出（用 bot 玩家身份验证）、default 勿显式设 false 覆盖子组 true、Essentials 权限默认拒绝。详见 references/permission-system.md
-- **force-gamemode 三端已统一 false（2026-08-06）**：MCSM 原为 true（玩家每次登录被强制回 survival，切创造后退出重登丢失模式），已改 false 与本地/Exaroton 对齐；改 server.properties 用 `PUT /api/files/`（保留 CRLF），重启生效，不影响在线玩家
-- ⚠️ **死亡位置传送覆盖关系（2026-08-05 反编译实证）**：**Essentials `/back` 不能覆盖 BackOnDeath**——`/back` 传送目标是 `LastLocation`（只在 `PlayerTeleportEvent` PLUGIN/COMMAND 原因时更新），**死亡事件不更新 LastLocation** → `/back` 回的是「最后传送点」**不是死亡点**。BackOnDeath 监听死亡事件记录死亡位置。**线上依赖 BackOnDeath 回死亡点功能 → 保留**（仅 SpigotMC 渠道，无 Hangar/Modrinth）。同理 GetMeHome 保留（线上 60+ 玩家用，迁移 Essentials 需脚本转换+多 home 权限，方案未成熟前不动）
-
-## 操作步骤
-
-### 1. 获取最新版本信息
+### 1. 安装
 ```bash
-curl -s https://papermc.io/downloads/paper | python3 ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/parse_papermc.py
-# 输出: paper-26.2-92 059d00bbce0fa1707739618b3276f5c80b9655dc0f964306fa799a9c7cb01cc2
+mkdir -p ~/minecraft-bot && cd ~/minecraft-bot
+npm init -y && npm install mineflayer   # 实测 4.37.1
 ```
 
-### 2. 创建/升级/备份/状态（local）
+### 2. 版本协议（最容易踩的坑）
+- 服务器是 MC 26.2（protocol 776），但 **minecraft-protocol 4.37.1 的 supportedVersions 最高只到 1.21.11**
+- 用 `version: '26.2'` 直接报 `unsupported protocol version: 26.2`（minecraft-data 有 26.2 数据但 minecraft-protocol 客户端实现没跟上）
+- ✅ **正解：`version: '1.21.11'`**——服务器装 ViaVersion（block-protocols 为空时不限制旧版），自动转换到 26.2
+
+### 3. 前置条件（一次性，服务器侧）
 ```bash
-# 创建
-PAPER_BACKEND=local PAPER_DIR=~/minecraft-server \
-  ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/local.sh create
-# 升级核心 jar（自动备份旧 jar 可回滚）
-PAPER_BACKEND=local PAPER_DIR=~/minecraft-server \
-  ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/local.sh upgrade
-# 备份 world + plugins + server.properties（保留 24 份）
-PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/backup.sh
-# 状态 / 日志 / 命令
-PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/local.sh status
-PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/local.sh logs 50
+# 白名单（Minecraft 原版命令；若装有 OrzMC 等 force_whitelist 插件，也认原版 whitelist）
+whitelist add <bot名>
+# 验证
+whitelist list
 ```
-> 详细（含 local 坑：无 rcon、运行时改 whitelist 不生效、macOS 无 timeout）→ `references/local-backend.md`
+- 连接地址必须用**公网游戏地址**（如 `mc.fantuantim.xyz:25565`），不是面板地址、更不是 127.0.0.1（本机可能另有测试服，会连错）
+- 服务器 online-mode=false（离线模式）→ bot 用任意用户名 + `auth: 'offline'` 即可
+- LoginSecurity 等登录插件：首次进服自动 `/register <密码> <密码>`（registration.enabled=true 时），之后自动 `/login`；被踢说明需手动注册
+- ⚠️⚠️ **未登录时所有命令静默失败（2026-08-04 实测，最难查的坑）**：LoginSecurity 密码必须 **6-32 字符**，太短（如 `pwd`）注册被拒 → bot 未登录 → `/seed`、`/tp`、`/gamemode` 全部只显示 `issued server command` 但**无执行结果**（无输出/无报错/位置不变），像"命令被静默吞掉"。**诊断**：监听 `bot.on('message')`，出现「请输入 /login <密码>」= 未登录；已注册过必须 `/login`（发 `/register` 提示「这个账户已被注册过」）。**修复**：≥6 字符密码 + 已注册则 `/login`
 
-### 3. 插件安装/更新/卸载
-```bash
-~/.hermes/skills/gaming/papermc-server-maintenance/scripts/plugin_manager.sh install essentialsx
-~/.hermes/skills/gaming/papermc-server-maintenance/scripts/plugin_manager.sh install https://example.com/plugin.jar
-~/.hermes/skills/gaming/papermc-server-maintenance/scripts/plugin_manager.sh update   # 全部更新
-~/.hermes/skills/gaming/papermc-server-maintenance/scripts/plugin_manager.sh remove essentialsx.jar
-```
+### 4. 验证成功
+- 服务器日志：`X issued server command: /home` = 玩家身份成功（对比 CONSOLE 的 `[Essentials] CONSOLE issued...`）
+- bot 侧输出 `[BOT] 已生成，位置: x, y, z` = 进服成功
 
-**插件安装/升级机制（PaperMC 官方，两条路径要分清）**：
-- 🆕 **新插件首次安装** → jar **直接放 `plugins/`**（重启时扫描加载；放 update/ 无效/非标准）
-- 🔄 **已有插件升级** → 新 jar 放 `plugins/update/` → 重启时 PaperMC **自动替换** `plugins/` 下同名插件（原子操作），update/ 自动清空
-- ✅ **插件升级无需备份 jar**：官方源可重下，update 机制原子替换
-- ⚠️⚠️ **PaperMC update 按【文件名】覆盖**：带版本号命名的 jar（如 `OrzMC-1.0.13.jar`）升级后文件名变了 → 不覆盖 → **重启后新旧两个 jar 并存冲突**。**先删 plugins/ 下旧 jar 再放 update/**（或重命名新 jar 与旧文件名一致）
-- ⚠️ Exaroton **运行中禁止写文件**，上传/升级必须先停服
-- ✅ MCSM 端 plugins/update 实测可用（`mcsm_upload_update.py` 上传 → restart → 自动替换）
-- ⚠️ **三端插件对齐必须对比 sha256**（文件名相同≠内容相同）；MCSM 运行中 jar 读取 500（锁定），对比用启动日志 `Enabling X vY` 行
+## 关键坑链（2026-08-04 实测，按踩坑顺序）
 
-### 3b. OrzMC 自定义插件升级（Hangar 发布 + PaperMC update 机制）
+### ⚠️⚠️ 未登录时所有命令静默失败（最难查的坑）
+- **症状**：`/seed`、`/tp`、`/gamemode` 全部只显示 `issued server command` 但**无任何执行结果**（无输出/无报错/位置不变）——看起来像"命令被静默吞掉"
+- **根因**：LoginSecurity 密码必须 **6-32 字符**，测试脚本用 `pwd`（3 字符）被拒 → bot 处于**未登录态** → 所有命令静默失败
+- **诊断法**：监听 `bot.on('message')`，若出现「请输入 /login <密码>」= 未登录
+- **修复**：用 ≥6 字符密码；**已注册过的账户必须 `/login`**（发 `/register` 会提示「这个账户已被注册过」）
 
-**OrzMC 是自有插件**（GitHub `OrzMC/OrzMCPlugin`），发布渠道特殊：**Hangar 活跃（CI 每天自动发布 dev 版）**、GitHub Release 滞后（手动 tag 才出）、Modrinth 发布报错（查不到）。
+### ⚠️ Essentials 覆盖原版命令 → 必须用 `minecraft:` 权限域
+- 服务器有 Essentials 时，`/tp` 是 Essentials 的（`teleport-safety: true` **拦截传送到空中/不安全位置**，命令执行但位置不变）
+- ✅ **用 `/minecraft:tp x y z` 走原版命令绕过**（实测 `Teleported HermesBot to ...` 生效）；同理 `/minecraft:gamemode`、`/minecraft:seed`、`/minecraft:whitelist` 均可
+- 实测对比：`/whitelist add X`（Essentials 被吞无反馈）vs `/minecraft:whitelist add X`（立刻生效 `Added X to the whitelist`）
 
-**升级走 PaperMC 官方 `plugins/update` 机制**（不是手动替换 `plugins/` 下 jar）；**首次新装**则直接放 `plugins/`（无需 update/）：
+### ⚠️ `bot.creative.flyTo` 在 1.21.11 下挂起
+- flyTo 等服务器 ack，ViaVersion 场景下不 resolve → **永远卡住**
+- **别用 flyTo 移动，用 `/minecraft:tp` 命令**（玩家身份+OP）
+- `bot.entity.position.set` 不可靠（服务器会拉回）
 
-```bash
-# 0. 首次新装（非升级）：jar 直接放 plugins/，重启加载
-mv OrzMC-1.0.14-dev.237.jar plugins/
-# 升级流程如下：
-# 1. 查最新版本（Hangar API；dev=每日自动构建，pr=PR 构建）
-curl -s "https://hangar.papermc.io/api/v1/projects/OrzMC/versions?limit=5" | jq -r '.result[] | .name + " | " + .createdAt'
-# 2. 拿下载链接
-curl -s "https://hangar.papermc.io/api/v1/projects/OrzMC/versions/<版本>" | jq -r '.downloads[].downloadUrl'
-#    → https://hangarcdn.papermc.io/plugins/OrzMC/OrzMC/versions/<版本>/PAPER/OrzMC-<版本>.jar
-# 3. 下载 + 校验（unzip -p xxx.jar paper-plugin.yml | head 看 version 字段）
-# 4. ⚠️ 先删 plugins/ 下旧 jar（PaperMC update 按【文件名】覆盖：OrzMC jar 带版本号，
-#    新文件名 ≠ 旧文件名 → 不覆盖 → 重启后新旧两个 jar 并存冲突）
-rm plugins/OrzMC-1.0.13-pr.153.394.jar
-# 5. 新 jar 放入 plugins/update/（PaperMC 重启时自动原子替换，update/ 自动清空）
-mv /tmp/OrzMC-1.0.14-dev.237.jar plugins/update/
-# 6. 重启 → 日志 `[OrzMC] Loading server plugin OrzMC v1.0.14` 验证
-```
+### ⚠️ `bot.creative` 默认不加载
+- 4.37.1 需 `bot.loadPlugin(require('mineflayer/lib/plugins/creative'))`
+- API 是 `setInventorySlot(slot, item, waitTimeout)`（**无 setSlot/getSlot**）；`waitTimeout=0` 跳过 ack 等待防挂起
+- item 需 `new Item(id, count)`（prismarine-item 实例，否则 `components.length` 崩溃）
 
-**三端差异**：
-- ✅ 本地：删旧 jar + 放 update/ 可不停服（重启时应用），重启用 `start.sh`
-- ✅ MCSM：运行中可上传到 `plugins/update/`（jar 上传不触发锁定），玩家下线后 restart 自动替换（`mcsm_upload_update.py` 上传 → restart → 验证）
-- ⚠️ Exaroton：**运行中禁止写文件**，须先 stop → 传 update/ → start
+### ⚠️ 搭房子用 `/setblock` 命令最可靠
+- `bot.placeBlock(ref, face)` 依赖手持方块+raycast，1.21.11 下易失败（无参考方块）
+- **OP 身份直接 `/setblock x y z block[properties]`**——100% 成功且逐块执行有"人在建"效果
+- 门特殊处理：`oak_door[facing=east,half=lower]` + 上层单独 `half=upper`
+- 模板：`templates/build-house.js`（实测 7×7×6 小屋 7/7 验证通过，含地基/墙/门/窗/屋顶 + 传送/放置逻辑）
 
-> 版本号体系：`主.次.补丁-[dev|pr].[构建号]`（如 `1.0.14-dev.237`）；插件基线已更新到 OrzMC 1.0.14。
+## 接收玩家消息（2026-08-04 实测）
 
-### 4. 三端配置对比与同步（scripts/cmp3/）
+- ✅ **公屏消息** → `bot.on('chat', (username, message) => ...)`——任何玩家公屏说话都触发
+- ✅ **私信** → `bot.on('message', ...)`——原版私信到达 bot 时消息为 `TestPlayer whispers to you: <内容>`（chat 事件**不**触发私信，只在 message 事件）
+- ⚠️ **私信命令用原版 `/minecraft:tell`**：Essentials 的 `/msg`/`/tell` 需要权限（普通玩家报「你没有使用该命令的权限」）
+- ⚠️ **新玩家反垃圾**：Essentials 默认新玩家须**先移动一段时间**才能聊天（`Sorry, but you have to move a little more...`）——发送消息前用 `bot.setControlState('forward', true)` 走几秒
+- ⚠️ **同账号重连冷却**：LoginSecurity 踢出后重连报 `You must wait N seconds before logging-in again`（约 20-30s）
+- 模板：`templates/listen.js`（监听 + 打印 chat/message 事件）
 
-```bash
-CMP=~/.hermes/skills/gaming/papermc-server-maintenance/scripts/cmp3
-# 1. 拉取配置到目录（Exaroton: exa_backup_config.py；MCSM: mcsm_download 逐文件拉取）
-# 2. 全量语义对比（核心+插件，排除数据文件）
-python3 $CMP/cmp3_configs.py /tmp/exa_configs2 /tmp/mcsm_configs2 ~/minecraft-server
-# 3. 插件 jar sha256 对比
-python3 $CMP/cmp3_plugins_sha.py
-# 4. Exaroton 批量改配置（PUT files/data 全量覆盖）
-python3 $CMP/exa_apply_config.py && python3 $CMP/exa_verify_config.py
-# 5. MCSM 插件更新（上传到 plugins/update/ + 验证）
-python3 $CMP/mcsm_upload_update.py deathchest.jar GriefPrevention.jar
-python3 $CMP/mcsm_verify_update.py
-```
+## 粒子包解析崩溃（26.2→1.21.11 必现，2026-08-04 本地测试服发现并修复）
 
-**凭据约定**：全部从 `~/.hermes/.env` 读取（`mcsm_env.py` 共享模块），**禁止硬编码 API key**。
+- **症状**：bot 突然断线，stderr 一堆 `PartialReadError: Read error for undefined`，栈指向 `packet_world_particles → Object.Particle → f32`
+- **根因**：26.2 新增粒子 ID 115(block_crumble)/116(firefly) 在 1.21.11 的 `Particle` 协议 mappings 里不存在 → protodef 读错字节 → 解析崩溃。**任何触发新粒子的动作（苦力怕爆炸/新方块粒子）都会杀掉 bot**——线上"稳定"只是没触发新粒子，属运气
+- **修复（模板已内置）**：bot 启动时运行时 patch `node_modules/minecraft-data/minecraft-data/data/pc/1.21.11/protocol.json` 的 `types.Particle[1][0].type[1].mappings`，补 `"115": "block_crumble", "116": "firefly"`（映射到无数据粒子，protodef 不读附加字节）
+- **验证法**：本地测试服出生点有苦力怕，bot 被炸后不再断线 = 修复成功
+- ⚠️ **本地测试服验证价值**：本地出生点有苦力怕等实体，能暴露线上不常触发的崩溃路径（粒子/实体交互）——改 bot 后先本地验证再上生产
+- ⚠️⚠️ **patch 115/116 后坠亡仍可能崩（2026-08-04 实测）**：`/minecraft:tp` 高空坠落死亡时仍触发 `f32 PartialReadError`（坠亡粒子可能是其他 ID 或带附加字节）。**兜底方案**：`hideErrors: true` + `process.on('uncaughtException')` 吞掉继续跑 + 死亡检测不依赖客户端解析（用 health 轮询或服务器日志）
 
-### 5. MCSM / Exaroton 日常操作
-```bash
-# MCSM（有玩家在线时 stop/restart/command 自动拒绝）
-~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/mcsm.sh status|players|logs 50
-~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/mcsm.sh start|stop|restart
-~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/mcsm.sh command "list"
-# MCSM 文件操作（2026-08-06 源码对照+全量实测，12/12 端点可用）
-python3 $CMP/mcsm_delete.py /plugins/xxx.jar        # 删除（DELETE /api/files/）
-python3 $CMP/mcsm_list_filter.py                     # 列目录（需 file_name 过滤）
-```
-> 端点表/认证/踩坑 → `references/mcsm-backend.md` 和 `references/exaroton-backend.md`
-> **MCSM 文件 API 全面复核（2026-08-06）**：12 个端点全部实测可用（读/写/删/列目录/建文件/建目录/复制/移动/压缩/解压/上传/URL直传）。关键参数坑：list 需 `page=0+page_size+file_name`、move/copy 用二维数组、move 必须 PUT、compress type=1 压缩/type=0 解压。旧结论「无 delete API」「move 不可用」已推翻（详见 mcsm-backend.md）
+## 模拟玩家死亡（死亡测试，2026-08-04 实测）
 
-## Pitfalls（跨后端通用）
+> 用途：测死亡类插件（DeathChest/墓碑/死亡掉落）或复现「死亡瞬间下线」类 bug。
 
-- ⚠️ 下载必须校验 sha256，防止损坏 jar
-- ⚠️ **备份分层**：插件升级无需备份 jar；服务器核心 jar 升级需备份旧 jar 回滚（upgrade 自动做）；**世界/玩家/LuckPerms H2/配置必须定期备份**
-- ⚠️ 服务器运行中不要替换 jar（先 stop 再升级）
-- ⚠️ 插件必须匹配 MC 版本（Modrinth API 用 `game_versions` 过滤）
-- ⚠️ eula.txt 不写 `eula=true` 服务器拒绝启动
-- ⚠️ Java 25 只能跑 26.x；老版本需要旧 JDK
-- ⚠️ macOS bash 3.2：`$var` 后接全角字符（如 `（`）会报 unbound variable，必须写 `${var}`
-- ⚠️ MCSM 有玩家在线时严禁 stop/restart/command/文件操作（先查 `info.currentPlayers`）
-- ⚠️ **MCSM 升级跨大版本（如 26.1→26.2）**：世界数据首次启动自动转换（日志 `Starting upgrade for world`），确认无玩家时段操作
+### 死亡检测的正确姿势
+- ⚠️ **`bot.on('death')` 事件不可靠**：`/minecraft:kill` 生效（服务器日志 `[HermesBot: Killed HermesBot]`）但 **death 事件不触发**（可能需 respawn 流程才发）
+- ⚠️⚠️ **`bot.health` 轮询也不可靠（2026-08-05 实测）**：坠亡瞬间 health **不降到 0.5 以下**（一直显示 20，死亡消息 `fell from a high place` 都出现了 health 还是 20）——mineflayer 的 health 事件和服务器死亡状态不同步。**死亡判定最稳的是 `bot.on('message')` 捕获死亡消息文本**（`你死了`/`died`/`fell from`/`was slain`），或 kill 后用 spawn 二次触发判定
+- ⚠️ **死亡后不自动重生**：mineflayer 不会点重生按钮——需主动 `bot.respawn()`（或等待），复活成功 = spawn 事件二次触发 + health 回升 >15
+- ⚠️ **`/minecraft:kill` 的死亡消息可能也被吞**：kill 死亡（`Killed`）时 message 事件未必收到死亡文本（2026-08-05 实测）——用 kill 方案就靠 **spawn 二次触发**判定复活，不依赖死亡消息
+- ⚠️ **OP 默认创造模式**：日志 `HermesBot(op) 创造模式`——创造模式死亡**不掉落物/不触发掉落逻辑**。测试前必须 `bot.chat('/minecraft:gamemode survival HermesBot')`
+- ⚠️ **spawn 事件会重复触发**：死亡重生后 `spawn` 事件再次触发 → 脚本主逻辑会**跑多轮**（give/tp/kill 反复执行）。必须加 `started` 标志 `if (started) return; started = true;`——但**spawn 二次触发也是判定复活的好信号**（`if (started && deathPos && !respawned)` 分支）
+- ⚠️ **`/minecraft:kill` vs 坠落死亡**：kill 是 OP 自杀命令，部分死亡插件（如 DeathChest）**不响应 kill 死亡**——要用真实死亡就 `tp 到高空 y=200` 自由落体（日志 `fell from a high place`）
+- ✅ 坠亡=最真实的死亡制造法：`/minecraft:tp <x> 200 <z>` → 等 5-8s → message 捕获死亡消息
+- ✅ **验证 `/back` 等死亡传送命令的正确姿势**：原地 kill（无坠落偏差）→ 记当前位置为死亡点 → respawn → `/back` → 对比水平距离 <3 格。⚠️ 坠落死亡会有位置偏差（落点 vs 死亡判定点），别用坠落验证 `/back`
+
+### 检查"死亡点有没有生成 X"（避开客户端解析）
+- ⚠️ **`/execute if block <x> <y> <z> <block>` 的回显发给执行者 chat，不进服务器日志**——查结果必须 `bot.on('message')` 捕获 `Successfully`/`成功`，不能 grep 服务器日志
+- 3x3x3 扫描：对每个坐标发 if block 查询（chest/trapped_chest/barrel），`setTimeout 100-120ms` 间隔防刷屏
+- 客户端 `bot.blockAt()` 在坠亡后易撞粒子崩溃 → 优先用服务器命令查询
+
+### 实测结论（DeathChest 3.0.1，2026-08-05 debug 定案）
+- **保持在线死亡 → 箱子正常生成**，但创建是**分步异步**且有 **~6s 延迟**：`Clearing drops...`（清掉落物）→ `Starting break animation` → `Creating death chest block` → `Spawning block crack particle` + `Resetting`（完成）。**死亡后立即查会误判"没生成"——必须等 ≥10s 再查**
+- **死亡瞬间下线（kill + 800ms 内 quit）→ bug 确认**：`Clearing drops` 已清空掉落物，但 `Creating death chest block` 后玩家离线 → ③④ 步中断（无 crack/reset）→ **箱子未建 + 掉落物已清 = 物品永久丢失**。重启服务器时会出现滞留创建任务（`[null] Creating death chest block`）证明事件链中断
+- 早期"三场景全部不生成"结论是**误判**（查询太早 + spawn 重复触发脚本 bug），debug 日志推翻——**判定回归必须按死亡+下线场景 + 等 15s + 查箱子**
+- 开启 debug 定位：`plugins/DeathChest/config.yml` → `debug: true` → 日志见 `[DeathChest] [DEBUG]` 完整创建链；重启后滞留 `[null]` 任务 = 历史死亡事件未完成
+- 候选替代 AxGraves（Hangar，Artillex-Studios，同步处理死亡事件理论上无此竞态）——替换后回归测试见 papermc 技能 `references/deathchest-regression.md`
+
+## 自动重连架构（生产可用，模板已内置）
+
+- `createBot()` 封装成函数，`bot.on('end')` 非主动退出时 10s 后 `createBot()` 重连
+- `process.on('uncaughtException')` 兜底：粒子/PartialReadError 类错误 → 结束旧连接 + 10s 重连；未知异常才 exit
+- `SIGTERM`/`SIGINT` 优雅退出（manualQuit 标志阻止重连）
+- ⚠️ 别用 `const bot = createBot()` 顶层一次性创建——重连无法重新赋值；必须函数化
+
+## 模板与参考
+- `templates/minecraft-bot.js` — 完整可用脚本（**含粒子 patch + 自动重连**）：连接/自动注册/待机心跳/聊天命令（!tp !pos !stats）
+- `templates/build-house.js` — OP 身份 `/setblock` 搭房子（7×7×6 小屋实测 7/7 验证通过：地基/墙/门/窗/屋顶）
+- `templates/listen.js` — 监听玩家消息（chat 公屏 + message 私信），聊天交互起点
+- `scripts/portal-cmd.js` — 传送门命令执行器（bot 玩家身份跑 `/portal` 系列命令，RCON 无玩家身份）：`node portal-cmd.js <端口> "<命令>"`
+- `scripts/portal-probe.js` — 传送门方块探测器（blockAt 扫描 portal/obsidian/gold_block）：`node portal-probe.js <端口> <中心x> <中心y> <中心z>`
+- `scripts/portal-transfer-test.js` — transfer 触发测试（跳+前进穿过 portal 方块；⚠️ 已知 mineflayer 位置同步限制不触发，仅服务端链路观察用）
+- `scripts/perm-check.js` — 权限系统验证（bot 玩家身份跑 LP 查询捕获输出；RCON 不回显 LP 命令的替代方案）：`node perm-check.js <端口> [密码]`
+- `references/entity-diagnostics.md` — 服务器侧实体统计与卡顿定位（/paper entity list 双计数、Spark entityCounts、选择器坑、FPS vs TPS、清理分级）
+- `references/orzmc-plugin-hangar.md` — OrzMC 插件版本渠道（Hangar API / dev-pr 版本体系）+ 本地 jar 替换升级流程
+- `references/plugin-sources.md` — 插件发布渠道清单（哪些插件不能从 Modrinth/Hangar 升级 + 手动渠道 + 精确 slug 验证方法）
+
+## Pitfalls
+- ⚠️ **`bot.look` 的 yaw 方向映射与直觉相反（实测）**：yaw=0 → 朝 **-z** 方向，yaw=π（≈3.14）→ 朝 **+z**。想让 bot 朝 +z 走必须 `bot.look(Math.PI, 0, true)`，朝 -z 用 `bot.look(0, 0, true)`。用错方向 bot 会背对目标跳走（传送门测试踩过）——**写移动脚本前先小步验证方向**，别假设 yaw=0 朝 +z
+- ⚠️ **`setControlState('jump')` + `('forward')` 组合可让 bot 跳进上方非固体方块层**（如 nether_portal，跳跃碰撞箱顶 y≈+2 格可触及 portal 方块 y+1~+3 层）——比 `bot.creative.flyTo`/`placeBlock` 可靠；跳跃时长用 `setTimeout 350-500ms` 短跳，避免穿过去
+- ⚠️ **部署目录别放 /tmp**（重启丢失）；持久化到 `~/minecraft-bot/`
+- ⚠️ 长驻进程用 `terminal(background=true)` 启动，勿用 `&` 前台后台化（macOS 会拒）
+- ⚠️ macOS 无 `timeout` 命令；测试限时用脚本内 `setTimeout(() => { bot.quit(); process.exit(0) }, 60000)`
+- ⚠️ 同名 bot 重复连接会被顶下线；先 kill 旧进程再连
+- ⚠️ 被踢时读取 `reason.toString()` 前 200 字符判断原因（白名单/注册/keepalive）
+- ✅ keepalive 超时踢出是网络问题（服务器侧日志 `kicked due to keepalive timeout`），bot 重连即可
+- ✅ 心跳日志间隔 60s 便于观察在线状态
 
 ## 验证
-- `curl -s localhost:25565` 返回 Minecraft 协议字节 = 服务器在线
-- 日志出现 `Done (Xs)! For help, type "help"` = 启动成功
-- `ls plugins/` 看到 jar = 插件已安装
-- 三端对齐：插件 sha256 一致 + 版本号一致
+- `bot.on('spawn')` 触发 + 服务器日志玩家上线 = 进服成功
+- 服务器日志 `X issued server command` = 玩家身份命令成功
