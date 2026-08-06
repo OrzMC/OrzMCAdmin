@@ -53,7 +53,7 @@ required_commands: [java, curl, tar]
 
 - **旧 API `api.papermc.io/v2` 已完全废弃（410 Gone）**——用 fill-data 新机制（`parse_papermc.py` 封装）
 - **最新稳定版**：paper-26.2-92（2026-08-02）；**Java 要求**：26.x 需要 Java 25
-- **插件基线**（三端对齐 17/17 sha256 一致，2026-08-03；OrzMC 2026-08-04 升 1.0.14）：BackOnDeath 0.4 / DeathChest 3.0.1 / Essentials 2.22.0 / EzShops 2.5.9 / GetMeHome 3.0.0 / Geyser 2.11.0-SNAPSHOT / GriefPrevention 16.18.7 / LoginSecurity 3.3.2-SNAPSHOT / LuckPerms 5.5.59 / OrzMC 1.0.14 / SkinsRestorer 15.12.5 / Vault 1.7.3-b131 / ViaBackwards 5.11.0 / ViaRewind 4.1.3 / ViaVersion 5.11.0 / WorldEdit 7.4.4 / WorldGuard 7.0.18
+- **插件基线**（三端对齐 17/17 sha256 一致，2026-08-03；OrzMC 2026-08-04 升 1.0.14；Geyser 2026-08-06 升 2.11.1）：BackOnDeath 0.4 / DeathChest 3.0.1 / Essentials 2.22.0 / EzShops 2.5.9 / GetMeHome 3.0.0 / Geyser 2.11.1-SNAPSHOT / GriefPrevention 16.18.7 / LoginSecurity 3.3.2-SNAPSHOT / LuckPerms 5.5.59 / OrzMC 1.0.14 / SkinsRestorer 15.12.5 / Vault 1.7.3-b131 / ViaBackwards 5.11.0 / ViaRewind 4.1.3 / ViaVersion 5.11.0 / WorldEdit 7.4.4 / WorldGuard 7.0.18
 - ⚠️ **死亡位置传送覆盖关系（2026-08-05 反编译实证）**：**Essentials `/back` 不能覆盖 BackOnDeath**——`/back` 传送目标是 `LastLocation`（只在 `PlayerTeleportEvent` PLUGIN/COMMAND 原因时更新），**死亡事件不更新 LastLocation** → `/back` 回的是「最后传送点」**不是死亡点**。BackOnDeath 监听死亡事件记录死亡位置。**线上依赖 BackOnDeath 回死亡点功能 → 保留**（仅 SpigotMC 渠道，无 Hangar/Modrinth）。同理 GetMeHome 保留（线上 60+ 玩家用，迁移 Essentials 需脚本转换+多 home 权限，方案未成熟前不动）
 
 ## 操作步骤
@@ -134,7 +134,7 @@ mv /tmp/OrzMC-1.0.14-dev.237.jar plugins/update/
 CMP=~/.hermes/skills/gaming/papermc-server-maintenance/scripts/cmp3
 # 1. 拉取配置到目录（Exaroton: exa_backup_config.py / MCSM: mcsm_pull_all.py）
 # 2. 全量语义对比（核心+插件，排除数据文件）
-python3 $CMP/cmp3_configs.py /tmp/exa_configs2 /tmp/mcsm_configs2 ~/papermc-test
+python3 $CMP/cmp3_configs.py /tmp/exa_configs2 /tmp/mcsm_configs2 ~/minecraft-server
 # 3. 插件 jar sha256 对比
 python3 $CMP/cmp3_plugins_sha.py
 # 4. Exaroton 批量改配置（PUT files/data 全量覆盖）
@@ -152,8 +152,12 @@ python3 $CMP/mcsm_verify_update.py
 ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/mcsm.sh status|players|logs 50
 ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/mcsm.sh start|stop|restart
 ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/mcsm.sh command "list"
+# MCSM 文件操作（2026-08-06 源码对照+全量实测，12/12 端点可用）
+python3 $CMP/mcsm_delete.py /plugins/xxx.jar        # 删除（DELETE /api/files/）
+python3 $CMP/mcsm_list_filter.py                     # 列目录（需 file_name 过滤）
 ```
 > 端点表/认证/踩坑 → `references/mcsm-backend.md` 和 `references/exaroton-backend.md`
+> **MCSM 文件 API 全面复核（2026-08-06）**：12 个端点全部实测可用（读/写/删/列目录/建文件/建目录/复制/移动/压缩/解压/上传/URL直传）。关键参数坑：list 需 `page=0+page_size+file_name`、move/copy 用二维数组、move 必须 PUT、compress type=1 压缩/type=0 解压。旧结论「无 delete API」「move 不可用」已推翻（详见 mcsm-backend.md）
 
 ## Pitfalls（跨后端通用）
 
