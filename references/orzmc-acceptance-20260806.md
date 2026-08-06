@@ -1,13 +1,13 @@
 # OrzMC 插件真实环境验收报告（2026-08-06）
 
-> **范围**：Paper 26.2-92 + OrzMC 1.0.14-dev.237 修复版，本地测试服（~/papermc-test，25565）+ 双服 transfer 测试（~/papermc-test2，25566）
+> **范围**：Paper 26.2-92 + OrzMC 1.0.14-dev.237 修复版，本地测试服（~/minecraft-server，25565）+ 双服 transfer 测试（~/minecraft-server2，25566）
 > **方式**：mineflayer bot（HermesBot/TestPlayer）+ screen 控制台注入 + RCON
 > **结论**：核心功能全过，无功能性 bug；发现 1 个真实 bug（debug 命令不可用）已修复（PR #159）
 
 ## 测试环境
 
-- 测试服：`~/papermc-test`（25565，screen 会话 mc）；双服测试：`~/papermc-test2`（25566，复制自测试服改端口）
-- RCON：主服 25575 / 第二服 25576（`enable-rcon=true`，`/tmp/rcon.py` 客户端）
+- 测试服：`~/minecraft-server`（25565，screen 会话 mc）；双服测试：`~/minecraft-server2`（25566，复制自测试服改端口）
+- RCON：主服 25575 / 第二服 25576（`enable-rcon=true`，`rcon.py` 客户端）
 - 控制台注入：`screen -S mc -p 0 -X stuff '命令\r'`（后台裸 java 进程 stdin=/dev/null，必须 screen）
 - Bot：mineflayer（`~/minecraft-bot/`），HermesBot 是 OP，LoginSecurity 需 `/login` + 35s 冷却
 - **日志坑**：测试服重启后 latest.log 可能停止刷新（Paper 缓冲），服务正常但日志不更新——用 RCON/进程缓冲确认状态
@@ -66,10 +66,12 @@
 - ⚠️ **mineflayer 无法触发/完成 transfer（工具限制，非插件缺陷）**：
   1. **客户端不支持 transfer 协议包**（minecraft-protocol 未实现）——收到 `transfer` 命令不会自动重连目标服
   2. **PlayerPortalEvent 触发需要"行走进入 portal 方块"**——mineflayer 的 tp 被原版"吸入"机制拉到门口（y=64 地面），跳跃碰撞箱进入 portal 区域（y=65+）也不触发；pathfinder 行走穿过 portal 也不停留触发
-  3. pathfinder 默认 `canDig: true` **会挖方块**——测试时挖了传送门前地面（已恢复 sand）——**必须设 `mc.canDig = false`**
+  3. **位置同步限制（最终定论）**：tp 到传送门正中心（30.5, 66, -454.5）落点 (30.5, 64.88, -454.5)，碰撞箱覆盖 portal 方块（y=65-66）仍不触发——mineflayer 客户端位置报告与服务器端判定不一致，服务器端认定玩家在 y=64（底梁）不在 portal 方块内 → PlayerPortalEvent 不触发。**真实玩家验证是唯一可靠方式**
+  4. pathfinder 默认 `canDig: true` **会挖方块**——测试时挖了传送门前地面（已恢复 sand）——**必须设 `mc.canDig = false`**；跳跃测试会把 bot 送进传送门附近刷怪区（被骷髅射杀）——**测试前先清怪或设和平**
 - 📌 传送门命令用法：`/portal 127.0.0.1 25566`（**不带 create 字面量**——带 create 会把 "create" 当 host 解析报「端口需为数字」）
 - 📌 **传送门目标 IP 必须是玩家可达地址**：`127.0.0.1` 只对同机玩家有效（transfer 由客户端主动连接目标，127.0.0.1 = 玩家自己的机器 → Connection refused error -61）；局域网玩家应填服务器局域网 IP（如 `192.168.0.35`）
 - 📌 **传送门内部禁止放置方块**：setblock 垫块在框架内部（y=64 处）会破坏结构判定 → portal 方块全部消失（传送门失效）——重建需 remove 后重新 /portal create
+- 📌 **传送门结构（实测）**：y=68 obsidian 顶梁 / y=65-67 nether_portal（两列）/ y=64 obsidian 底梁 / y=63 gold pad——真实玩家站 pad（脚 y=64）身体进 portal（y=65）触发；传送门中心坐标以 portals.yml 为准（创建消息"轴向"与存储可能相反）
 
 ## 发现的 Bug（已修复）
 
@@ -81,5 +83,6 @@
 
 - 测试服跑修复版 jar（保留）；原版备份 `backups/OrzMC-1.0.14-dev.237.jar.bak`
 - tnt.enable=false、黑名单空、白名单 3 人完整
-- 第二服 ~/papermc-test2（双服测试用，可删）
+- 第二服 ~/minecraft-server2（双服测试用，可删）
 - 测试脚本清理完毕（/tmp 残留 rcon.py 保留）
+- **测试文档**：插件仓库 `plugin/docs/test-cases.md`（28 项用例）+ `plugin/docs/e2e-test-report-20260806.md`（端到端报告，28/28 通过）——OrzMCPlugin commit 0a727b7（fix/orzdebug-command 分支）
