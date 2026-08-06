@@ -47,7 +47,7 @@
 ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/mcsm.sh command "list"
 ```
 
-日志解析依赖 `scripts/parse_mcsm_players.py` / `scripts/parse_mcsm_logs.py`（剥离 ANSI 控制字符 + 提取「当前在线(n/max)」行）。
+日志解析依赖 `scripts/parse_mcsm_players.py` / `scripts/parse_mcsm_logs.py`（剥离 ANSI 控制字符 + 提取「当前在线(n/max)」行，位于 scripts/ 根目录非 cmp3/）。
 
 ## 平台要点（2026-08-03 实测）
 

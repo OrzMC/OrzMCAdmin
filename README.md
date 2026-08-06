@@ -12,22 +12,31 @@
 - ✅ 备份（world + plugins + 配置）
 - ✅ 多服务器**配置对齐**（语义级 diff）与**插件版本一致性**（sha256 对比）
 - ✅ 跨后端统一动作（`create/status/start/stop/restart/logs/upgrade/plugin/backup/command`）
+- ✅ **MCSManager 文件 API 全集**（2026-08-06 源码对照 + 12/12 端点实测）：读 / 写 / 删 / 列目录 / 建文件 / 建目录 / 复制 / 移动 / 压缩 / 解压 / 上传 / URL 直传
+- ✅ 基岩版玩家支持（Geyser，三端 offline 直连模式）
 
 ## 目录结构
 
 ```
 OrzMCAdmin/
-├── SKILL.md                  # 技能主文件（frontmatter + 使用指引 + 操作步骤）
-├── references/               # 背景知识（按后端拆分）
-│   ├── exaroton-api.md       #   Exaroton 29 端点 + 平台要点
-│   ├── mcsm-api.md           #   MCSManager API + 平台要点
-│   └── papermc-versioning.md #   PaperMC 版本/构建机制
+├── SKILL.md                  # 技能主文件（frontmatter + 决策路径 + 操作步骤）
+├── references/               # 背景知识（按主题拆分，全部实测沉淀）
+│   ├── local-backend.md      #   本地服务器（创建/升级/备份/坑）
+│   ├── exaroton-backend.md   #   Exaroton 云端（29 端点 API 表 + 平台要点）
+│   ├── mcsm-backend.md       #   MCSManager 面板（12 文件端点 + 实例 API + 踩坑）
+│   ├── geyser-floodgate.md   #   基岩支持（Geyser offline 直连；floodgate 回退记录）
+│   ├── spark-analysis.md     #   Spark 性能分析（命令/JSON/判断标准）
+│   ├── entity-statistics.md  #   快速实体统计（paper entity list / Spark / 计分板）
+│   ├── deathchest-regression.md  # DeathChest 回归测试记录（修复验证）
+│   └── mineflayer-bot.md     #   机器人玩家（运维视角）
 ├── scripts/
 │   ├── adapters/             # 三后端适配器（local.sh / exaroton.sh / mcsm.sh）
-│   ├── cmp3/                 # 多服务器配置对比/同步工具集
+│   ├── cmp3/                 # 多服务器配置对比/同步/文件操作工具集
 │   ├── plugin_manager.sh     # 插件管理（Modrinth/URL）
 │   ├── backup.sh             # 备份
-│   └── parse_*.py            # 版本/日志解析
+│   ├── parse_*.py            # 版本/日志解析
+│   ├── bot/                  # 机器人玩家脚本
+│   └── regression/           # 回归测试（DeathChest / Geyser UDP）
 └── templates/
     └── env.example           # 环境变量模板
 ```
@@ -40,7 +49,7 @@ cp templates/env.example ~/.hermes/.env   # 或 export 环境变量
 
 # 2. 服务器状态
 PAPER_DIR=~/minecraft-server scripts/adapters/local.sh status
-EXAROTON_API_KEY=xxx EXAROTON_SERVER_ID=yyy scripts/adapters/exaroton.sh status
+scripts/adapters/exaroton.sh status       # Exaroton（读 .env）
 scripts/adapters/mcsm.sh status           # MCSM（读 .env）
 
 # 3. 升级 PaperMC 核心
@@ -52,11 +61,15 @@ scripts/plugin_manager.sh update
 
 # 5. 三端配置对比
 python3 scripts/cmp3/cmp3_configs.py /tmp/exa_configs /tmp/mcsm_configs ~/minecraft-server
+
+# 6. MCSM 文件操作（DELETE /api/files/ 标准方案）
+python3 scripts/cmp3/mcsm_delete.py /plugins/xxx.jar
+python3 scripts/cmp3/mcsm_list_filter.py   # 列目录（file_name 过滤）
 ```
 
 ## 给 AI Agent 的使用说明
 
-1. **加载 `SKILL.md`** 作为技能定义（标准 frontmatter：name/description/when_to_use/version）
+1. **加载 `SKILL.md`** 作为技能定义（标准 frontmatter：name/description/version）
 2. `references/` 是背景知识，需要 API 细节时按需读取
 3. `scripts/` 是可执行逻辑，**不要改脚本内部逻辑**，通过环境变量/参数注入自己的部署信息
 4. 凭据统一从 `.env` 读取，**禁止硬编码**

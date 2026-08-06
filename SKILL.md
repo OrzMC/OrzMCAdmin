@@ -132,7 +132,7 @@ mv /tmp/OrzMC-1.0.14-dev.237.jar plugins/update/
 
 ```bash
 CMP=~/.hermes/skills/gaming/papermc-server-maintenance/scripts/cmp3
-# 1. 拉取配置到目录（Exaroton: exa_backup_config.py / MCSM: mcsm_pull_all.py）
+# 1. 拉取配置到目录（Exaroton: exa_backup_config.py；MCSM: mcsm_download 逐文件拉取）
 # 2. 全量语义对比（核心+插件，排除数据文件）
 python3 $CMP/cmp3_configs.py /tmp/exa_configs2 /tmp/mcsm_configs2 ~/minecraft-server
 # 3. 插件 jar sha256 对比
