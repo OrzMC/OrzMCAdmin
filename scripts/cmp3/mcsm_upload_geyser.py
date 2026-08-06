@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""MCSM：用上传覆盖 Geyser config.yml（PUT 404 替代方案）
-读 /tmp/geyser_mcsm.yml（已改 auth-type: floodgate）→ 上传覆盖
+"""MCSM：上传覆盖 Geyser config.yml
+⚠️ 历史方案（PUT 404 时期）；2026-08-06 已确认 PUT /api/files/ 可用——新代码优先用 PUT 改配置
+保留作参考：上传覆盖仍是有效方式（download 改 → upload 同名覆盖）
+读 /tmp/geyser_mcsm.yml（已改 auth-type）→ 上传覆盖
 """
 import sys, os, time, hashlib, urllib.request
 

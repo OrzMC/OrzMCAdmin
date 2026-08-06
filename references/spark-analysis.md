@@ -1,6 +1,6 @@
-# Spark 性能分析（Paper 内置）
+# Spark 性能分析
 
-> PaperMC 1.19+ **内置 Spark**（bundled jar `spark-paper-*.jar`），直接 `/spark` 命令即可，**不要另装插件**。
+> **三端 spark 部署现状（2026-08-06 核对）**：**本地测试服 + Exaroton 装有 spark 插件**（plugins/spark）；**MCSM 未装 spark**（plugins/ 无 spark.jar）——MCSM 上用 spark 需先装插件（上传到 plugins/update/ 或 plugins/）。老 Paper 曾内置 spark，但当前 26.2 三端基线**以插件形式存在**。
 
 ## 命令速查（控制台/玩家均可执行）
 

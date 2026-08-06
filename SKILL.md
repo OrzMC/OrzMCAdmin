@@ -1,7 +1,7 @@
 ---
 name: papermc-server-maintenance
 description: "PaperMC 服务器日常维护：创建/升级/插件管理/备份，一套动作适配 local / Exaroton / MCSManager 三种部署。"
-version: 1.1.0
+version: 1.2.0
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm]
 platforms: [macos, linux]
@@ -21,7 +21,7 @@ required_commands: [java, curl, tar]
 > | 快速实体统计（paper entity list / Spark / 计分板） | `references/entity-statistics.md` |
 > | 机器人玩家 Mineflayer（运维视角；开发细节见独立技能 `minecraft-bot-mineflayer`） | `references/mineflayer-bot.md` |
 > | DeathChest 回归测试（死亡瞬间下线→物品丢失；✅已修复 v3.0.1-fix1；脚本 scripts/regression/） | `references/deathchest-regression.md` |
-> | Geyser + floodgate 基岩支持（渠道/UDP 验证/握手测试脚本） | `references/geyser-floodgate.md` |
+> | Geyser 基岩支持（当前 offline 直连模式；floodgate 已回退 2026-08-05） | `references/geyser-floodgate.md` |
 
 ## 使用时机
 - 用户要创建新的 PaperMC 服务器（本机/Exaroton/MCSM）
