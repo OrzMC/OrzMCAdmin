@@ -71,4 +71,5 @@
 ## 插件更新（MCSM 端）
 
 - ✅ **plugins/update 实测可用**（2026-08-03）：`POST /api/files/upload?upload_dir=/plugins/update` multipart 上传 → restart → Paper 自动替换并清空 update/。**文件操作期间服务器运行中无碍**（jar 上传不触发锁定，仅读取被运行中 jar 锁定会 500）
+- ✅ **删除插件/文件用 `scripts/cmp3/mcsm_delete.py`**（2026-08-06 起标准方案）：`python3 mcsm_delete.py /plugins/xxx.jar` → DELETE /api/files/ + 自动删后验证（真实 GET 确认）。**旧方案「上传 0B 占位覆盖」已废弃**（Paper 会对无效 jar 报 `Directory 'plugins\xxx.jar' failed to update!` 启动 ERROR，不如直接删干净）
 - 上传插件脚本：`scripts/cmp3/mcsm_upload_update.py deathchest.jar GriefPrevention.jar` + `mcsm_verify_update.py`

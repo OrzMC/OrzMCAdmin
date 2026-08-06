@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """MCSM：floodgate.jar 置空（0 字节同名覆盖，Paper 忽略空 jar）
-MCSM 无 delete API（404），用上传覆盖为 0 字节文件禁用插件
+⚠️ 已废弃（2026-08-06）：MCSM 实际支持 DELETE /api/files/，用 mcsm_delete.py 直接删
+保留仅作历史参考
 """
 import sys, os, time, hashlib, urllib.request
 

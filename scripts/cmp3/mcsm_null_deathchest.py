@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""MCSM：覆盖 DeathChest.jar 为占位（等效删除，Paper 跳过无效 jar）"""
+"""MCSM：重复 DeathChest.jar 置空（上传占位覆盖）
+⚠️ 已废弃（2026-08-06）：MCSM 实际支持 DELETE /api/files/，用 mcsm_delete.py 直接删
+保留仅作历史参考
+"""
 import sys, os, time, urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
