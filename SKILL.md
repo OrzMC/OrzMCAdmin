@@ -23,6 +23,7 @@ required_commands: [java, curl, tar]
 > | DeathChest 回归测试（死亡瞬间下线→物品丢失；✅已修复 v3.0.1-fix1；脚本 scripts/regression/） | `references/deathchest-regression.md` |
 > | Geyser 基岩支持（当前 offline 直连模式；floodgate 已回退 2026-08-05） | `references/geyser-floodgate.md` |
 > | OrzMC 统一代码仓库（submodule 资产地图：插件源码/配置库/备份工具/世界瘦身） | `references/orzmc-repo.md` |
+> | OrzMC 真实环境验收报告（2026-08-06：全功能测试矩阵 + 双服 transfer + 发现的 bug） | `references/orzmc-acceptance-20260806.md` |
 
 ## 使用时机
 - 用户要创建新的 PaperMC 服务器（本机/Exaroton/MCSM）
@@ -135,7 +136,7 @@ mv /tmp/OrzMC-1.0.14-dev.237.jar plugins/update/
 CMP=~/.hermes/skills/gaming/papermc-server-maintenance/scripts/cmp3
 # 1. 拉取配置到目录（Exaroton: exa_backup_config.py；MCSM: mcsm_download 逐文件拉取）
 # 2. 全量语义对比（核心+插件，排除数据文件）
-python3 $CMP/cmp3_configs.py /tmp/exa_configs2 /tmp/mcsm_configs2 ~/minecraft-server
+python3 $CMP/cmp3_configs.py /tmp/exa_configs2 /tmp/mcsm_configs2 ~/papermc-test
 # 3. 插件 jar sha256 对比
 python3 $CMP/cmp3_plugins_sha.py
 # 4. Exaroton 批量改配置（PUT files/data 全量覆盖）
