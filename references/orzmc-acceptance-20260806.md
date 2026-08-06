@@ -59,11 +59,17 @@
 
 ## 跨服传送门 transfer（双服实测结论）
 
-- ✅ 双服互指传送门创建：主服 `127.0.0.1:25566` / 第二服 `127.0.0.1:25565`，NETHER_PORTAL 方块 + interiorTargets 记录确认
+- ✅ 双服互指传送门创建：主服 `192.168.0.35:25566` / 第二服 `192.168.0.35:25565`，NETHER_PORTAL 方块 + interiorTargets 记录确认
 - ✅ `transfer` 命令在 Paper 26.2 可用：RCON 执行 `transfer 127.0.0.1 25566 HermesBot` → `Transferring HermesBot to 127.0.0.1:25566`
 - ✅ PlayerPortalEvent → findTarget → transfer 源码链路确认（PortalEventService.handle）
-- ⚠️ **mineflayer 无法触发完整事件**：客户端不支持 transfer 协议包（不重连）；玩家 tp 到 portal 方块被原版"吸入"拉到门口，无法站上传送门方块停留 4 tick 触发 PlayerPortalEvent——需真实玩家客户端验证
+- ✅ **真实玩家实测通过（2026-08-06 局域网）**：站在传送门方块上停留 2-3 秒 → 自动切换到目标服（`192.168.0.35:25566`）→ 登录后走回——**完整闭环**
+- ⚠️ **mineflayer 无法触发/完成 transfer（工具限制，非插件缺陷）**：
+  1. **客户端不支持 transfer 协议包**（minecraft-protocol 未实现）——收到 `transfer` 命令不会自动重连目标服
+  2. **PlayerPortalEvent 触发需要"行走进入 portal 方块"**——mineflayer 的 tp 被原版"吸入"机制拉到门口（y=64 地面），跳跃碰撞箱进入 portal 区域（y=65+）也不触发；pathfinder 行走穿过 portal 也不停留触发
+  3. pathfinder 默认 `canDig: true` **会挖方块**——测试时挖了传送门前地面（已恢复 sand）——**必须设 `mc.canDig = false`**
 - 📌 传送门命令用法：`/portal 127.0.0.1 25566`（**不带 create 字面量**——带 create 会把 "create" 当 host 解析报「端口需为数字」）
+- 📌 **传送门目标 IP 必须是玩家可达地址**：`127.0.0.1` 只对同机玩家有效（transfer 由客户端主动连接目标，127.0.0.1 = 玩家自己的机器 → Connection refused error -61）；局域网玩家应填服务器局域网 IP（如 `192.168.0.35`）
+- 📌 **传送门内部禁止放置方块**：setblock 垫块在框架内部（y=64 处）会破坏结构判定 → portal 方块全部消失（传送门失效）——重建需 remove 后重新 /portal create
 
 ## 发现的 Bug（已修复）
 
