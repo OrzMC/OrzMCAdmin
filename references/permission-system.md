@@ -1,0 +1,48 @@
+# OrzMC 权限系统设计（LuckPerms 4 组方案，2026-08-06 本地验证）
+
+## 组结构（继承链）
+```
+admin (全权限) → builder (创造建造) → member (进阶) → default (新手)
+```
+
+| 组 | 定位 | 关键权限 | 验证结果 |
+|:--|:--|:--|:--|
+| default | 新手生存 | sethome/home/back/spawn/tpa/msg/kit + griefprevention 圈地 | fly=false ✅ gamemode 拒绝 ✅ |
+| member | 进阶 | +essentials.fly +sethome.multiple +nick | fly=true ✅ |
+| builder | 创造建造 | +minecraft.command.gamemode +worldedit.* +worldguard.* | gamemode=true ✅ worldedit=true ✅ |
+| admin | 管理 | +luckperms.* +* | — |
+
+## 关键命令
+```bash
+# 创建组 + 继承
+lp creategroup <name>
+lp group member parent add default
+lp group builder parent add member
+lp group admin parent add builder
+# 权限设置（组）
+lp group default permission set essentials.fly false   # 显式拒绝
+lp group member permission set essentials.fly true
+lp group builder permission set worldedit.* true
+# 玩家分配
+lp user <name> parent add builder
+lp user <name> parent set default
+```
+
+## ⚠️ 核心坑（实测 2026-08-06）
+1. **LuckPerms 继承优先级：子组设置 > 父组设置，但同一权限在父子组都设时，查的是最具体的**。default 设 `fly false` + member 设 `fly true` → 玩家**继承 false**（default 赢了，因为"具体权限优先于通配"，且 LP 的 DirectProcessor 取**第一个匹配**）。**修正：default 不显式设 false**（Essentials 的 fly 默认拒绝，PermissionMapProcessor 返回 false），让 member 的 true 生效
+2. **RCON 不回显 LuckPerms 命令输出**（LP 用 Adventure 组件发到 sender，Paper RCON 丢弃）——命令**实际执行**（H2 数据库 mtime 变化），但看不到输出。验证必须用 **bot 进服（玩家身份）** 或数据库
+3. **LP 命令执行验证法**：`stat -f %m plugins/LuckPerms/luckperms-h2-v2.mv.db` 前后对比（mtime 变化 = 命令执行写库）
+4. **H2 数据库读不了**（运行中被锁 + 文件密码），停服也读不了（未知密码）——别浪费时间，用 bot 验证
+5. Essentials 大部分权限**默认拒绝**（非默认授予）——不设权限 = 无权限，`fly`/`gamemode` 都是
+
+## 测试账号分配（本地测试服）
+- joker → builder（测试创造/WE）
+- TestPlayer → member（测试飞行）
+- Newbie → default（新手基线）
+- HermesBot → default（运维 bot，不用特权）
+
+## 验证方法（bot 玩家身份）
+```bash
+cd ~/minecraft-bot && node perm-check.js 25565
+# 输出: [LP] Permission check for essentials.fly: Result: true/false
+```
