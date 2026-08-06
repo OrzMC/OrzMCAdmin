@@ -32,7 +32,7 @@
 |:--|:--|
 | `app/` (OrzMCApp) | macOS/iOS Minecraft Java 启动器（Swift）|
 | `webmc/` (OrzWebMC) | Web 浏览器连 MC 探索（proxy 指向 {SERVER_HOST}）|
-| `site/` (OrzMCSite) | 私服主页（Hugo + ananke）|
+| `site/` (OrzMCSite) | **官方网站源码**（Hugo + ananke 主题）|
 | `profile/` (.github) | GitHub 组织首页 |
 | `skins/` | 玩家皮肤 |
 
