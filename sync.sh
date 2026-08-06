@@ -19,7 +19,7 @@ rm -rf "$DST/scripts"
 mkdir -p "$DST/scripts/adapters" "$DST/scripts/cmp3" "$DST/scripts/bot" "$DST/scripts/regression"
 cp "$SRC/scripts/adapters/"*.sh "$DST/scripts/adapters/"
 cp "$SRC/scripts/cmp3/"*.py "$DST/scripts/cmp3/"
-cp "$SRC/scripts/"*.sh "$SRC/scripts/"parse_*.py "$DST/scripts/" 2>/dev/null || true
+cp "$SRC/scripts/"*.sh "$SRC/scripts/"*.py "$DST/scripts/" 2>/dev/null || true
 cp "$SRC/scripts/bot/"*.js "$DST/scripts/bot/" 2>/dev/null || true
 cp "$SRC/scripts/regression/"* "$DST/scripts/regression/" 2>/dev/null || true
 
