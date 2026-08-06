@@ -139,6 +139,7 @@ whitelist list
 - `scripts/portal-probe.js` — 传送门方块探测器（blockAt 扫描 portal/obsidian/gold_block）：`node portal-probe.js <端口> <中心x> <中心y> <中心z>`
 - `scripts/portal-transfer-test.js` — transfer 触发测试（跳+前进穿过 portal 方块；⚠️ 已知 mineflayer 位置同步限制不触发，仅服务端链路观察用）
 - `scripts/perm-check.js` — 权限系统验证（bot 玩家身份跑 LP 查询捕获输出；RCON 不回显 LP 命令的替代方案）：`node perm-check.js <端口> [密码]`
+- `scripts/perm-tier-test.js` — 权限分级测试（三档 bot 自动测 default/member/builder 的 /fly /gamemode //wand；判定=拒绝消息存在与否）：`node perm-tier-test.js <端口>`
 - `references/entity-diagnostics.md` — 服务器侧实体统计与卡顿定位（/paper entity list 双计数、Spark entityCounts、选择器坑、FPS vs TPS、清理分级）
 - `references/orzmc-plugin-hangar.md` — OrzMC 插件版本渠道（Hangar API / dev-pr 版本体系）+ 本地 jar 替换升级流程
 - `references/plugin-sources.md` — 插件发布渠道清单（哪些插件不能从 Modrinth/Hangar 升级 + 手动渠道 + 精确 slug 验证方法）
