@@ -24,7 +24,7 @@
 | **copy 复制** | `POST /api/files/copy` body `{"targets":[["源","目标"],...]}` | ✅ 200 实测 | ⚠️ **targets 是二维数组** `[["源","目标"]]`（源码注释 `// [["a.txt","b.txt"],["cxz","zzz"]]`）——一维数组会 500 |
 | **move 移动** | **`PUT /api/files/move`** body `{"targets":[["源","目标"],...]}` | ✅ 200 实测 | ⚠️ **方法必须是 PUT**（POST → 500）+ **targets 二维数组**（同 copy）——2026-08-06 修正「move 不可用」误判 |
 | **compress 压缩** | `POST /api/files/compress` body `{"source":"/输出.zip","targets":[文件数组],"type":1,"code":"utf-8"}` | ✅ 200 实测 | **type=1 压缩**（promiseZip：source=zip输出路径, targets=文件数组）；**type=0 解压**（promiseUnzip：source=zip路径, targets=目标目录字符串）；异步任务（fileLock 计数） |
-| **URL 下载** | `POST /api/files/download_from_url` body `{"url":"...","file_name":"..."}` | 📚 源码确认未实测 | daemon 直传 URL 到实例；`download_from_url_stop` 可停止 |
+| **URL 下载** | `POST /api/files/download_from_url` body `{"url":"...","file_name":"/路径"}` | ✅ **200 实测** | 2026-08-06 实测：GitHub raw → 5s 下载 1493B 成功；异步任务返回 taskId；`download_from_url_stop` 可停止 |
 
 ⚠️ **操作端点全部是 GET + `/api/protected_instance/` 前缀**（不是 POST /api/instance/xxx！）——这是 MCSM 10 的坑，首次按 POST 调用全 404。
 
