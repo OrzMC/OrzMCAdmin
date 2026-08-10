@@ -18,13 +18,13 @@
 | 删除插件 | `DELETE /v1/servers/{id}/files/data/plugins/{name}.jar/` | ✅ |
 | 配置文件读 | `GET /v1/servers/{id}/files/config/{path}/` | ✅ server.properties 返回 35 项 key/value/type/options 结构化数据 |
 | 配置文件改(白名单) | `POST /v1/servers/{id}/files/config/{path}/`（body 键值对，改后即时生效） | ✅ 实测（view-distance 10→11→恢复）；⚠️ **只能改 API 白名单内 35 项**（max-tick-time/sync-chunk-writes 等不在列，POST 返回 success=True 但实际不生效！） |
-| **配置文件改(全量)** | **`PUT /v1/servers/{id}/files/data/{path}/`**（body `{"text": 完整文件内容}`，GET→文本替换→PUT 覆盖） | ✅ 实测（2026-08-03 批量改 10 处）；**唯一能改白名单外配置的方法**（含插件配置、spigot/paper yml），响应 `{"success":true}`；⚠️ `POST /files/data/{path}` 是假成功（返回旧内容，别用） |
+| **配置文件改(全量)** | **`PUT /v1/servers/{id}/files/data/{path}/`**（body = **裸文本文件内容**，Content-Type text/plain） | ✅ 实测（2026-08-09 修正）：**PUT body 原文即文件内容**；⚠️ **切勿用 `{"text": ...}` JSON 包装**——会被原样存为文件内容（config.yml 变 JSON 字符串，插件 YAML 解析静默回退默认值）；GET 若返回 JSON 包装需解包 text 字段 |
 | 改内存 | `POST /v1/servers/{id}/options/ram/`（body `{"ram": 5}`，2-16GB） | ✅ 实测（2→3→恢复） |
 | 改 MOTD | `POST /v1/servers/{id}/options/motd/`（body `{"motd": "..."}`） | ✅ 实测（改→验→恢复） |
 | 延长停止计时 | `POST /v1/servers/{id}/extend-time/`（body `{"time": 60}` 秒） | ✅ 实测（HTTP 200） |
 | 玩家名单列表 | `GET /v1/servers/{id}/playerlists/` | ✅ 4 名单：whitelist/ops/banned-players/banned-ips |
 | 名单内容 | `GET/PUT/DELETE /v1/servers/{id}/playerlists/{list}/`（body `{"entries": ["notch"]}`） | ✅ 全部实测（PUT 加→DELETE 删→恢复） |
-| 账号信息 | `GET /v1/account/` | ✅ {SERVER_NAME} / {EMAIL} |
+| 账号信息 | `GET /v1/account/` | ✅ {SERVER_NAME} /  |
 | 余额池 | `GET /v1/billing/pools/` | ✅ 1 池 309.14 积分 |
 
 ## 平台要点（2026-08 实测）

@@ -12,7 +12,7 @@
 - **Java 要求**：PaperMC 26.x 需要 Java 25
 
 ```bash
-curl -s https://papermc.io/downloads/paper | python3 ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/parse_papermc.py
+curl -s https://papermc.io/downloads/paper | python3 ~/.hermes/skills/gaming/orzmc/scripts/parse_papermc.py
 # 输出: paper-26.2-92 059d00bbce0fa1707739618b3276f5c80b9655dc0f964306fa799a9c7cb01cc2
 ```
 
@@ -20,7 +20,7 @@ curl -s https://papermc.io/downloads/paper | python3 ~/.hermes/skills/gaming/pap
 
 ```bash
 PAPER_BACKEND=local PAPER_DIR=~/minecraft-server \
-  ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/local.sh create
+  ~/.hermes/skills/gaming/orzmc/scripts/adapters/local.sh create
 ```
 创建动作：下载最新 jar → `eula.txt=true` → 生成 `server.properties`（参考配置）→ 生成启动脚本。
 
@@ -28,23 +28,23 @@ PAPER_BACKEND=local PAPER_DIR=~/minecraft-server \
 
 ```bash
 PAPER_BACKEND=local PAPER_DIR=~/minecraft-server \
-  ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/local.sh upgrade
+  ~/.hermes/skills/gaming/orzmc/scripts/adapters/local.sh upgrade
 ```
 升级动作：解析最新版 → 备份旧 jar（`backups/paper-{ver}-{build}.jar`）→ 下载新 jar（sha256 校验）→ 移除旧 jar → 同步 start.sh → 重启 → 验证日志出现 `Done`。已是最新时幂等处理（不删旧 jar）。
 
 ## 备份
 
 ```bash
-PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/backup.sh
+PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/orzmc/scripts/backup.sh
 ```
 打包 world/ + plugins/ + server.properties 到 `backups/`，保留最近 24 份。
 
 ## 状态/日志/命令
 
 ```bash
-PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/local.sh status
-PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/local.sh logs 50
-PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/local.sh command "say Hello"
+PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/orzmc/scripts/adapters/local.sh status
+PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/orzmc/scripts/adapters/local.sh logs 50
+PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/orzmc/scripts/adapters/local.sh command "say Hello"
 ```
 
 ## local 坑

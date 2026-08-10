@@ -6,7 +6,7 @@
 用法示例:
   python3 rcon.py "list" 25575
   python3 rcon.py "stop" 25576
-  python3 rcon.py "transfer 192.168.0.35 25566 HermesBot" 25575
+  python3 rcon.py "transfer {LAN_IP} 25566 HermesBot" 25575
 """
 import socket
 import struct

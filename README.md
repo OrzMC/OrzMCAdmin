@@ -1,95 +1,94 @@
 # OrzMCAdmin
 
-服主自动化管理 PaperMC 服务器的**可复用 AI 技能包**——丢给任何 AI Agent（Claude Code / Hermes / OpenClaw / Cursor 等）即可处理 Minecraft Paper 服务器运维。
+Minecraft 运维**统一 AI 技能包**（技能名 `orzmc`）——丢给任何 AI Agent（Claude Code / Hermes / OpenClaw / Cursor 等）即可处理 Minecraft Paper 服务器全部运维工作。
 
-一套动作，三种部署后端：**本地目录 / Exaroton 云服务器 / MCSManager 面板**。
+> **一个入口覆盖全部 MC 运维场景**：服务器运维 / 插件构建升级 / 性能诊断 / 权限体系 / 测试 / 基岩支持，45 个知识体系 + 29 个脚本。
 
-## 能力
+## 能力全景
 
+### 🖥 服务器运维（三后端统一动作）
 - ✅ 服务器创建 / 状态 / 启动 / 停止 / 重启 / 日志 / 命令
 - ✅ PaperMC 核心升级（fill-data 新机制 + sha256 校验）
 - ✅ 插件安装 / 更新（plugins/update 热更新）/ 卸载
 - ✅ 备份（world + plugins + 配置）
-- ✅ 多服务器**配置对齐**（语义级 diff）与**插件版本一致性**（sha256 对比）
-- ✅ 跨后端统一动作（`create/status/start/stop/restart/logs/upgrade/plugin/backup/command`）
-- ✅ **MCSManager 文件 API 全集**（2026-08-06 源码对照 + 12/12 端点实测）：读 / 写 / 删 / 列目录 / 建文件 / 建目录 / 复制 / 移动 / 压缩 / 解压 / 上传 / URL 直传
-- ✅ 基岩版玩家支持（Geyser，三端 offline 直连模式）
+- ✅ 多服务器配置对齐（语义级 diff）与插件版本一致性（sha256 对比）
+- ✅ MCSManager 文件 API 全集（12/12 端点实测）
+
+### 🔧 插件构建与升级
+- ✅ 源码构建（Gradle/Maven 工具选择、构建坑、shaded 产物）
+- ✅ 插件升级与配置迁移（三端范式：本地→Exaroton→MCSM）
+- ✅ 自维护插件修复（本地化/上游 bug 修复）+ PR 提交流程
+
+### 📊 诊断与排障
+- ✅ Spark 性能分析（五步法、实体审计、Aikar Flags、修复方案）
+- ✅ 插件 Bug 排查（本地复现、命令/权限分离、版本兼容矩阵）
+- ✅ 实体/传送门行为（事件继承、白名单策略）
+
+### 🔐 权限体系（LuckPerms）
+- ✅ LP API 集成（track 升降级、AMBIGUOUS_CALL 排障、saveUser 落库）
+- ✅ 权限审计验收（权限名核实、子权限陷阱、bot 实测验收）
+- ✅ 三端权限同步（perm_commands.txt 蓝本）
+- ✅ 装即用 Bootstrap（自动建 track/组，幂等校正）
+
+### 🧪 测试体系
+- ✅ E2E 自动化测试（测试分层原则、三大通道：RCON/orzdebug/Mineflayer）
+- ✅ 跨服 transfer 测试（双服搭建、传送门机制）
+- ✅ Paper 26 踩坑全集
+
+### 🎮 专项
+- ✅ 基岩版支持（Geyser，版本兼容排查）
+- ✅ 机器人玩家（Mineflayer bot，玩家身份操作）
+- ✅ DeathChest 回归测试
 
 ## 目录结构
 
 ```
 OrzMCAdmin/
-├── SKILL.md                  # 技能主文件（frontmatter + 决策路径 + 操作步骤）
-├── references/               # 背景知识（按主题拆分，全部实测沉淀）
-│   ├── local-backend.md      #   本地服务器（创建/升级/备份/坑）
-│   ├── exaroton-backend.md   #   Exaroton 云端（29 端点 API 表 + 平台要点）
-│   ├── mcsm-backend.md       #   MCSManager 面板（12 文件端点 + 实例 API + 踩坑）
-│   ├── geyser-floodgate.md   #   基岩支持（Geyser offline 直连；floodgate 回退记录）
-│   ├── spark-analysis.md     #   Spark 性能分析（命令/JSON/判断标准）
-│   ├── entity-statistics.md  #   快速实体统计（paper entity list / Spark / 计分板）
-│   ├── deathchest-regression.md  # DeathChest 回归测试记录（修复验证）
-│   └── mineflayer-bot.md     #   机器人玩家（运维视角）
-├── scripts/
+├── SKILL.md                  # 技能主文件（frontmatter + 决策路由 + 操作步骤）
+├── references/               # 45 个知识体系（按专注方向沉淀）
+│   ├── local/exaroton/mcsm-backend.md   # 三后端 API 表
+│   ├── plugin-build.md       # 插件源码构建/开发/发布
+│   ├── plugin-mgmt.md        # 插件升级/配置迁移
+│   ├── performance.md        # Spark 性能诊断
+│   ├── plugin-debugging.md   # 插件 Bug 排查
+│   ├── testing.md            # E2E + 跨服测试
+│   ├── permission.md         # LuckPerms 权限体系
+│   ├── entity-portal.md      # 实体/传送门
+│   ├── geyser-floodgate.md   # 基岩支持
+│   ├── mineflayer-bot.md     # 机器人玩家
+│   └── ...（共 45 个）
+├── scripts/                  # 29 个工具
 │   ├── adapters/             # 三后端适配器（local.sh / exaroton.sh / mcsm.sh）
-│   ├── cmp3/                 # 多服务器配置对比/同步/文件操作工具集
-│   ├── plugin_manager.sh     # 插件管理（Modrinth/URL）
-│   ├── backup.sh             # 备份
-│   ├── parse_*.py            # 版本/日志解析
-│   ├── bot/                  # 机器人玩家脚本
-│   └── regression/           # 回归测试（DeathChest / Geyser UDP）
-└── templates/
-    └── env.example           # 环境变量模板
+│   ├── cmp3/                 # 多服务器配置对比/同步/文件操作
+│   ├── rcon.py / rcon.js     # RCON 客户端
+│   ├── regression-loop.sh    # 多轮回归
+│   ├── mcsm_entity_audit.py  # 实体审计
+│   └── ...
+├── templates/                # 模板（migrate_keys.py / mineflayer bot 等）
+└── sync.sh                   # 一键同步（本地 orzmc skill → 本仓库，自动脱敏）
 ```
 
-## 快速开始
+## 使用方式（AI Agent）
 
 ```bash
-# 1. 配置凭据（复制模板填值）
-cp templates/env.example ~/.hermes/.env   # 或 export 环境变量
+# 加载技能
+skill_view(name='orzmc')
 
-# 2. 服务器状态
-PAPER_DIR=~/minecraft-server scripts/adapters/local.sh status
-scripts/adapters/exaroton.sh status       # Exaroton（读 .env）
-scripts/adapters/mcsm.sh status           # MCSM（读 .env）
-
-# 3. 升级 PaperMC 核心
-PAPER_DIR=~/minecraft-server scripts/adapters/local.sh upgrade
-
-# 4. 插件管理
-scripts/plugin_manager.sh install essentialsx
-scripts/plugin_manager.sh update
-
-# 5. 三端配置对比
-python3 scripts/cmp3/cmp3_configs.py /tmp/exa_configs /tmp/mcsm_configs ~/minecraft-server
-
-# 6. MCSM 文件操作（DELETE /api/files/ 标准方案）
-python3 scripts/cmp3/mcsm_delete.py /plugins/xxx.jar
-python3 scripts/cmp3/mcsm_list_filter.py   # 列目录（file_name 过滤）
+# 三端统一操作（环境变量选后端）
+PAPER_BACKEND=local  PAPER_DIR=~/minecraft-server  scripts/adapters/local.sh status
+PAPER_BACKEND=exaroton EXAROTON_API_KEY=$KEY EXAROTON_SERVER_ID=$ID scripts/adapters/exaroton.sh status
+PAPER_BACKEND=mcsm  MCSM_URL=$URL MCSM_API_KEY=$KEY MCSM_INSTANCE_ID=$ID scripts/adapters/mcsm.sh status
 ```
 
-## 给 AI Agent 的使用说明
+凭据约定：全部从 `~/.hermes/.env` 读取（`scripts/cmp3/mcsm_env.py` 共享模块），**禁止硬编码 API key**。脚本默认值已参数化（`{SERVER_HOST}` / `{BOT_PASSWORD}` 等占位符）。
 
-1. **加载 `SKILL.md`** 作为技能定义（标准 frontmatter：name/description/version）
-2. `references/` 是背景知识，需要 API 细节时按需读取
-3. `scripts/` 是可执行逻辑，**不要改脚本内部逻辑**，通过环境变量/参数注入自己的部署信息
-4. 凭据统一从 `.env` 读取，**禁止硬编码**
+## 同步与维护
+
+- `sync.sh` 一键把本地完整版技能同步到本仓库（自动脱敏私有信息）
+- 同步前必须检查：私有域名/密码/邮箱/局域网 IP 已全部占位符化
 
 ## 兼容性
 
-| Agent 生态 | 支持 | 说明 |
-|:--|:--|:--|
-| Hermes（本技能来源） | ✅ | skill 目录直接可用 |
-| Claude Code Skills | ✅ | frontmatter + markdown 格式兼容 |
-| OpenClaw | ✅ | 同类 skill 结构 |
-| Cursor / 通用 | ✅ | SKILL.md + scripts 可读 |
-
-## 环境要求
-
-- Python 3.8+ / bash / curl
-- Java 25（PaperMC 26.x 运行需要）
-- macOS / Linux（Windows 需适配 bash 环境）
-
-## 迭代
-
-本仓库由实战持续沉淀。新增实测经验会同步更新 `SKILL.md` 与 `references/`。
-发现坑点欢迎补充到 Pitfalls。
+- 平台：macOS / Linux
+- 技能格式：Claude Skills / OpenClaw / Hermes / Cursor 通用（frontmatter + markdown + scripts/）
+- License: MIT

@@ -4,15 +4,15 @@
 - db 默认 <服务器>/plugins/LoginSecurity/LoginSecurity.db（第 1 参可覆盖）
 - 第 2 参玩家名可选；不传则列出全部已注册玩家
 用法示例:
-  python3 check_lsdb.py ~/papermc-test/plugins/LoginSecurity/LoginSecurity.db joker
-  python3 check_lsdb.py ~/papermc-test2/plugins/LoginSecurity/LoginSecurity.db
+  python3 check_lsdb.py ~/minecraft-server/plugins/LoginSecurity/LoginSecurity.db joker
+  python3 check_lsdb.py ~/minecraft-server2/plugins/LoginSecurity/LoginSecurity.db
 """
 import sqlite3
 import sys
 import os
 
 DEFAULT_DB = os.path.expanduser(
-    "~/papermc-test/plugins/LoginSecurity/LoginSecurity.db"
+    "~/minecraft-server/plugins/LoginSecurity/LoginSecurity.db"
 )
 DB = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_DB
 PLAYER = sys.argv[2] if len(sys.argv) > 2 else None

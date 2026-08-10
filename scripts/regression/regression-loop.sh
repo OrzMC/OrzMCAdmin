@@ -15,7 +15,7 @@ for ((i=1; i<=ROUNDS; i++)); do
   echo "--- 轮次 $i/${ROUNDS} ($(date +%H:%M:%S)) ---"
 
   # 1. 死亡+立即下线
-  OUT1=$(BOT_PASSWORD=HermesBotPass123 node bugtest-precise.js 2>&1)
+  OUT1=$(BOT_PASSWORD={BOT_PASSWORD} node bugtest-precise.js 2>&1)
   if echo "$OUT1" | grep -q "超时"; then
     echo "  ❌ 第 $i 轮: 登录/死亡超时（可能冷却未过）"
     FAIL=$((FAIL+1)); FAIL_DETAILS="${FAIL_DETAILS} R${i}(timeout)"
@@ -31,7 +31,7 @@ for ((i=1; i<=ROUNDS; i++)); do
   sleep 3  # 等建箱完成
 
   # 2. 查箱子
-  OUT2=$(BOT_PASSWORD=HermesBotPass123 node bugtest-check3.js 2>&1)
+  OUT2=$(BOT_PASSWORD={BOT_PASSWORD} node bugtest-check3.js 2>&1)
   HITS=$(echo "$OUT2" | grep -oE "结果: [0-9]+ 个成功命中" | grep -oE "[0-9]+")
   if [ -z "$HITS" ]; then HITS=0; fi
 
@@ -61,5 +61,5 @@ fi
 # 3. 物品存档完整性统计
 echo ""
 echo "--- 物品存档统计 ---"
-grep -c "diamond" ~/papermc-test/world/dimensions/minecraft/overworld/death-chests.yml | xargs echo "death-chests.yml 中 diamond 记录数:"
-grep -c "count: 5" ~/papermc-test/world/dimensions/minecraft/overworld/death-chests.yml | xargs echo "count:5 记录数:"
+grep -c "diamond" ~/minecraft-server/world/dimensions/minecraft/overworld/death-chests.yml | xargs echo "death-chests.yml 中 diamond 记录数:"
+grep -c "count: 5" ~/minecraft-server/world/dimensions/minecraft/overworld/death-chests.yml | xargs echo "count:5 记录数:"

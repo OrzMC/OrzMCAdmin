@@ -5,7 +5,7 @@ const mineflayer = require('mineflayer');
 const path = require('path');
 
 const PORT = parseInt(process.argv[2] || '25565');
-const PASSWORD = process.argv[3] || 'HermesBotPass123';
+const PASSWORD = process.argv[3] || '{BOT_PASSWORD}';
 const HOST = '127.0.0.1';
 
 // 粒子 patch（26.2→1.21.11 兼容）

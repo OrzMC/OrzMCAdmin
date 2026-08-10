@@ -1,6 +1,6 @@
 # MCSM 后端（MCSManager 面板）
 
-> 已适配：{MCSM_URL}（2026-08-03 实测）
+> 已适配：{SERVER_HOST}:23333（2026-08-03 实测）
 > 实例：{SERVER_NAME}服务器（daemonId + instanceId 存 `~/.hermes/.env`：`MCSM_DAEMON_ID` / `MCSM_INSTANCE_ID`）
 > Windows 主机（daemon 跑在 `C:\Users\Administrator\...`），MC 26.2-92（2026-08-03 从 26.1.2-74 升级），端口 25565，自动启动+自动重启已开。
 
@@ -38,13 +38,13 @@
 
 ```bash
 # 只读
-~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/mcsm.sh status
-~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/mcsm.sh players
-~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/mcsm.sh logs 50
+~/.hermes/skills/gaming/orzmc/scripts/adapters/mcsm.sh status
+~/.hermes/skills/gaming/orzmc/scripts/adapters/mcsm.sh players
+~/.hermes/skills/gaming/orzmc/scripts/adapters/mcsm.sh logs 50
 # 破坏性（自动检查玩家数，有玩家时拒绝；restart 已验证 PID 变更生效）
-~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/mcsm.sh start|stop|restart
-~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/mcsm.sh kill   # 强制终止（崩溃循环恢复用）
-~/.hermes/skills/gaming/papermc-server-maintenance/scripts/adapters/mcsm.sh command "list"
+~/.hermes/skills/gaming/orzmc/scripts/adapters/mcsm.sh start|stop|restart
+~/.hermes/skills/gaming/orzmc/scripts/adapters/mcsm.sh kill   # 强制终止（崩溃循环恢复用）
+~/.hermes/skills/gaming/orzmc/scripts/adapters/mcsm.sh command "list"
 ```
 
 日志解析依赖 `scripts/parse_mcsm_players.py` / `scripts/parse_mcsm_logs.py`（剥离 ANSI 控制字符 + 提取「当前在线(n/max)」行，位于 scripts/ 根目录非 cmp3/）。
