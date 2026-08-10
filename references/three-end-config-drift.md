@@ -1,9 +1,13 @@
-# 三端配置差异审计（2026-08-10）
+# 三端配置差异审计（2026-08-11 三次审计）
 
 > 触发：全量拉取三端（本地 ~/minecraft-server / Exaroton / MCSM）核心+插件配置，语义对比。
-> 工具：`scripts/cmp3/fetch3_configs.py`（拉取）+ `cmp3_configs.py`（对比）+ `cmp3_diff_detail.py`（明细）+ `cmp3_report.py`（完整报告生成）。
+> 工具：`scripts/cmp3/fetch3_configs.py`（拉取）+ `cmp3_configs.py`（对比）+ `cmp3_diff_detail.py`（明细）+ `cmp3_report.py`（完整报告生成）+ `cmp3_trend.py`（新旧报告变化跟踪）。
 > 基线：77 个配置文件（核心 7 + 插件 70），**真实配置差异 10 个文件，8 个运行时数据文件，59 个完全一致**。
-> **完整报告**：`references/config-drift-report-20260810.md`（二次审计·工具链修复后，逐文件明细）
+> **完整报告（保留最近两次，最新为准）**：
+> - `references/config-drift-report-20260811.md`（三次审计·最新）
+> - `references/config-drift-report-20260810.md`（二次审计·用于变化跟踪）
+>
+> **变化跟踪（20260810 → 20260811）**：唯一变化 = OrzMC/config.yml `allow_country_code` MCSM `[CN,JP,TW]` → `[CN,JP,TW,DE]`（2026-08-11 为德国玩家加白名单，`/config reload` 热更新）。其余 76 个文件差异项全部无变化。
 
 ## 对比工具链（新增/修复）
 

@@ -28,7 +28,7 @@ required_commands: [java, curl, tar]
 > | Geyser 基岩支持（当前 offline 直连模式；floodgate 已回退 2026-08-05） | `references/geyser-floodgate.md` |
 > | **插件源码构建/开发（构建工具选择、Gradle/Maven 坑、PR 流程、发布规范）** | `references/plugin-build.md` |
 > | **插件升级与配置迁移（三端范式、Exaroton/MCSM API 坑、EzShops 存储、Geyser 排查）** | `references/plugin-mgmt.md` |
-> | **三端配置差异审计（2026-08-10 全量对比：核心 17 项+插件 13 项真实差异，cmp3 工具链用法）** | `references/three-end-config-drift.md` |
+> | **三端配置差异审计（2026-08-11 三次全量对比；保留最近两次报告：config-drift-report-20260811.md 最新 / 20260810.md 变化跟踪；cmp3 工具链用法）** | `references/three-end-config-drift.md` |
 > | **性能诊断（Spark 五步法、实体审计、Aikar Flags、修复方案）** | `references/performance.md` |
 > | **插件 Bug 排查（本地复现、命令/权限分离、实体事件、版本兼容）** | `references/plugin-debugging.md` |
 > | **测试体系（分层原则、三大通道、Paper 26 陷阱、跨服 transfer）** | `references/testing.md` |
