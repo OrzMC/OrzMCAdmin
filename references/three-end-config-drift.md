@@ -12,7 +12,7 @@
 > **对齐决策（2026-08-11，用户拍板）**：
 > - **第一类 7 项零风险已对齐**：velocity.online-mode 统一 false（三端都未跑 Velocity 代理）、paper-world-defaults enderpearl-exploit 统一 true（安全加固）、max-leash-distance 统一 default、DeathChest sound 统一枚举格式、SkinsRestorer perSkinPermissionsConsent 统一无引号、server.properties resource-pack-prompt 统一空。despawn hard/soft 保留 Exa 128/32（性能优化）。
 > - **第二类 11 项定位/平台差异保留**（motd/端口/距离/management-server=Exaroton 平台自动等）。
-> - **第三类**：sync-chunk-writes 统一 true（Exa 改，安全优先）；DeathChest debug 统一 false；SkinsRestorer ifNoServerBlockCommand 统一 false；GetMeHome limit 保持 10/10/30 现状；SkinsRestorer connectionOptions **已定性无需处理**——三端 storage.type 均 FILE（未用 MySQL），connectionOptions 是 MySQL 专用参数的默认值形态差异，无实际影响。
+> - **第三类**：sync-chunk-writes 统一 true（Exa 改，安全优先）；DeathChest debug 统一 false；SkinsRestorer ifNoServerBlockCommand 统一 false；GetMeHome limit 保持 10/10/30 现状；SkinsRestorer connectionOptions **已对齐（2026-08-11 补充执行）**——三端 storage.type 均 FILE（未用 MySQL），原本是 MySQL 专用参数的默认值形态差异，按用户决策以本地最新版默认为基准统一为 `sslMode=trust&serverTimezone=UTC`。
 > - 生效方式：本地/Exa 文件已改（Exa 重启后生效）；MCSM 文件已改、**等待无玩家窗口重启生效**（9 玩家在线时只写文件不重启）。
 
 ## 对比工具链（新增/修复）
