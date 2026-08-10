@@ -2,7 +2,7 @@
 
 > 已适配：{SERVER_HOST}:23333（2026-08-03 实测）
 > 实例：{SERVER_NAME}服务器（daemonId + instanceId 存 `~/.hermes/.env`：`MCSM_DAEMON_ID` / `MCSM_INSTANCE_ID`）
-> Windows 主机（daemon 跑在 `C:\Users\Administrator\...`），MC 26.2-92（2026-08-03 从 26.1.2-74 升级），端口 25565，自动启动+自动重启已开。
+> Windows 主机（daemon 跑在 `C:\Users\Administrator\...`），MC 26.2-111（2026-08-10 三端统一），端口 25565，自动启动+自动重启已开。
 
 ## 端点表（全部实测 2026-08-06 全面复核）
 

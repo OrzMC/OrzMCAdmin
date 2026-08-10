@@ -66,8 +66,8 @@ required_commands: [java, curl, tar]
 ## 关键事实（2026-08 实测）
 
 - **旧 API `api.papermc.io/v2` 已完全废弃（410 Gone）**——用 fill-data 新机制（`parse_papermc.py` 封装）
-- **最新稳定版**：paper-26.2-92（2026-08-02）；**Java 要求**：26.x 需要 Java 25
-- **插件基线**（三端对齐 17/17 sha256 一致，2026-08-03；**2026-08-06 全面升级**：OrzMC 1.0.14 正式版、LuckPerms 5.5.71（官方 download.luckperms.net，平台滞后官方 12 版）、Geyser 2.11.1-b1209（官方稳定构建）；ViaVersion 系列保持 5.11.0 稳定版不升 SNAPSHOT）：BackOnDeath 0.4 / DeathChest 3.0.1 / Essentials 2.22.0 / EzShops 2.5.9 / GetMeHome 3.0.0 / Geyser 2.11.1-b1209 / GriefPrevention 16.18.7 / LoginSecurity 3.3.2-SNAPSHOT / LuckPerms 5.5.71 / OrzMC 1.0.14 / SkinsRestorer 15.12.5 / Vault 1.7.3-b131 / ViaBackwards 5.11.0 / ViaRewind 4.1.3 / ViaVersion 5.11.0 / WorldEdit 7.4.4 / WorldGuard 7.0.18
+- **最新稳定版**：paper-26.2-111（2026-08-10 三端实测；**26.2-92 与 111 行为可能不同**，本地复现必须与线上同构建）；**Java 要求**：26.x 需要 Java 25
+- **插件基线**（三端对齐，2026-08-10 更新）：OrzMC **1.0.16** / EzShops 2.5.9（storage.type: **yaml**，无 MySQL）/ Geyser **2.11.1-b1214**（基岩 26.40 支持，b1208 不支持）/ LoginSecurity 3.3.2-SNAPSHOT（**本地修复版**：getPlayer null 防御，Gradle 构建）/ LuckPerms 5.5.71（官方渠道，平台滞后 12 版）/ EssentialsX 2.22.0（⚠️ 26.2 不兼容：/spawn 未注册 + op 全拒）/ ViaVersion 系列 5.11.0 稳定版不升 SNAPSHOT / BackOnDeath 0.4 / DeathChest 3.0.1 / GetMeHome 3.0.0 / GriefPrevention 16.18.7 / SkinsRestorer 15.12.5 / Vault 1.7.3-b131 / ViaBackwards 5.11.0 / ViaRewind 4.1.3 / WorldEdit 7.4.4 / WorldGuard 7.0.18
 - **GeoIP 内网误拦截（2026-08-06 修复，OrzMC 1.0.15）**：MCSM allow_country_code=[CN,JP,TW] 时内网玩家（192.168.x/10.x）被拦截——geojs.io 无法解析私有段返回未知国家码。1.0.15 加内网 IP 短路（RFC1918/环回/CGNAT 直接放行，公网仍检查）。OrzMC 配置读取为实时（改 config.yml 后 /orzconfig reload 即生效，无需重启）；临时缓解=allow_country_code 改 []
 - **权限系统（2026-08-06 实施，LuckPerms 4 组）**：default(新手生存)→member(进阶飞行)→builder(创造+WE)→admin(全权限)；坑：RCON 不回显 LP 命令输出（用 bot 玩家身份验证）、default 勿显式设 false 覆盖子组 true、Essentials 权限默认拒绝。详见 references/permission-system.md
 - **force-gamemode 三端已统一 false（2026-08-06）**：MCSM 原为 true（玩家每次登录被强制回 survival，切创造后退出重登丢失模式），已改 false 与本地/Exaroton 对齐；改 server.properties 用 `PUT /api/files/`（保留 CRLF），重启生效，不影响在线玩家
@@ -114,75 +114,35 @@ PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/orzmc/scripts/adapters/loca
 - ✅ MCSM 端 plugins/update 实测可用（`mcsm_upload_update.py` 上传 → restart → 自动替换）
 - ⚠️ **三端插件对齐必须对比 sha256**（文件名相同≠内容相同）；MCSM 运行中 jar 读取 500（锁定），对比用启动日志 `Enabling X vY` 行
 
-### 3b. OrzMC 自定义插件升级（Hangar 发布 + PaperMC update 机制）
-
-**OrzMC 是自有插件**（GitHub `OrzMC/OrzMCPlugin`），发布渠道特殊：**Hangar 活跃（CI 每天自动发布 dev 版）**、GitHub Release 滞后（手动 tag 才出）、Modrinth 发布报错（查不到）。
-
-**升级走 PaperMC 官方 `plugins/update` 机制**（不是手动替换 `plugins/` 下 jar）；**首次新装**则直接放 `plugins/`（无需 update/）：
+### 3b. OrzMC 自定义插件升级（Hangar + update 机制）
 
 ```bash
-# 0. 首次新装（非升级）：jar 直接放 plugins/，重启加载
-mv OrzMC-1.0.14-dev.237.jar plugins/
-# 升级流程（官方标准，2026-08-08 实测验证）：
-# 1. 查最新版本（Hangar API；dev=每日自动构建，pr=PR 构建）
-curl -s "https://hangar.papermc.io/api/v1/projects/OrzMC/versions?limit=5" | jq -r '.result[] | .name + " | " + .createdAt'
-# 2. 拿下载链接
-curl -s "https://hangar.papermc.io/api/v1/projects/OrzMC/versions/<版本>" | jq -r '.downloads[].downloadUrl'
-#    → https://hangarcdn.papermc.io/plugins/OrzMC/OrzMC/versions/<版本>/PAPER/OrzMC-<版本>.jar
-# 3. 下载 + 校验（unzip -p xxx.jar paper-plugin.yml | head 看 version 字段）
-# 4. ✅ 新 jar 直接放 plugins/update/（按插件名 name=OrzMC 匹配，文件名任意；
-#    绝不动 plugins/ 下旧 jar）→ 重启自动替换，update/ 自动清空
-mv /tmp/OrzMC-1.0.14-dev.237.jar plugins/update/
-# 5. 重启 → 日志 `[OrzMC] Loading server plugin OrzMC v1.0.14` 验证
-# 6. ⚠️ 同步配置文件：新版本新增模板键时（如 templates.yml 的 review_*/rank_*），
-#    jar 升级≠配置升级——本地开发时 templates.yml 已更新，但 MCSM/Exaroton 部署 jar 漏同步
-#    → 启动健康检查报「缺失: templates.<新键>」（功能有 fallback 兜底不中断，但告警吵人）。
-#    2026-08-08 实测：11 个 review/rank 模板键三端 diff 只差新键（无远端自定义）→ 直接上传本地版覆盖即可。
-#    修后重启健康检查告警消失（Exaroton 实测验证）。
-# 7. ⚠️ 权限同步必须含继承链（parent）：perm_commands.txt 只含 permission set，
-#    旧服遗留组（1.0.15）parent 可能仍是 default（LuckPermsBootstrap 幂等不校正已有组）
-#    → builder 缺 member 权限（家/传送/商店）。2026-08-08 三端实测修复：
-#    `lp group member parent set default` / `lp group builder parent set member` / `lp group admin parent set builder`
-#    （MCSM 日志不含 LP 命令输出，验证靠 bot 玩家 orzdebug 或用户控制台）
+# 1. 查最新版（Hangar API：dev=每日构建，pr=PR 构建）
+curl -s "https://hangar.papermc.io/api/v1/projects/OrzMC/versions?limit=5" | jq -r '.result[] | .name'
+# 2. 下载：curl -s ".../versions/<版本>" | jq -r '.downloads[].downloadUrl' → 校验
+# 3. 新 jar 放 plugins/update/（按插件名 name=OrzMC 匹配，绝不动 plugins/ 旧 jar）→ 重启自动替换
 ```
-
-**三端差异**：
-- ✅ 本地：删旧 jar + 放 update/ 可不停服（重启时应用），重启用 `start.sh`
-- ✅ MCSM：运行中可上传到 `plugins/update/`（jar 上传不触发锁定），玩家下线后 restart 自动替换（`mcsm_upload_update.py` 上传 → restart → 验证）
-- ⚠️ Exaroton：**运行中禁止写文件**，须先 stop → 传 update/ → start
-
-> 版本号体系：`主.次.补丁-[dev|pr].[构建号]`（如 `1.0.14-dev.237`）；插件基线已更新到 OrzMC 1.0.14。
+⚠️ 三件套：① 新版本新增模板键 → jar 升级≠配置升级，三端 diff 后上传本地版覆盖；② 权限继承链须手动校正（`lp group member parent set default` / builder→member / admin→builder）；③ 完整流程见 `references/plugin-mgmt.md`
 
 ### 4. 三端配置对比与同步（scripts/cmp3/）
 
 ```bash
 CMP=~/.hermes/skills/gaming/orzmc/scripts/cmp3
-# 1. 拉取配置到目录（Exaroton: exa_backup_config.py；MCSM: mcsm_download 逐文件拉取）
-# 2. 全量语义对比（核心+插件，排除数据文件）
-python3 $CMP/cmp3_configs.py /tmp/exa_configs2 /tmp/mcsm_configs2 ~/minecraft-server
-# 3. 插件 jar sha256 对比
-python3 $CMP/cmp3_plugins_sha.py
-# 4. Exaroton 批量改配置（PUT files/data 全量覆盖）
-python3 $CMP/exa_apply_config.py && python3 $CMP/exa_verify_config.py
-# 5. MCSM 插件更新（上传到 plugins/update/ + 验证）
-python3 $CMP/mcsm_upload_update.py deathchest.jar GriefPrevention.jar
-python3 $CMP/mcsm_verify_update.py
+python3 $CMP/cmp3_configs.py <exa配置目录> <mcsm配置目录> <本地目录>   # 语义对比
+python3 $CMP/cmp3_plugins_sha.py                                        # jar sha256 对齐
+python3 $CMP/exa_apply_config.py && python3 $CMP/exa_verify_config.py   # Exaroton 改配置
+python3 $CMP/mcsm_upload_update.py <jar名...>                           # MCSM 插件更新
 ```
-
 **凭据约定**：全部从 `~/.hermes/.env` 读取（`mcsm_env.py` 共享模块），**禁止硬编码 API key**。
 
 ### 5. MCSM / Exaroton 日常操作
+
 ```bash
-# MCSM（有玩家在线时 stop/restart/command 自动拒绝）
-~/.hermes/skills/gaming/orzmc/scripts/adapters/mcsm.sh status|players|logs 50
-~/.hermes/skills/gaming/orzmc/scripts/adapters/mcsm.sh start|stop|restart
-~/.hermes/skills/gaming/orzmc/scripts/adapters/mcsm.sh command "list"
-# MCSM 文件操作（2026-08-06 源码对照+全量实测，12/12 端点可用）
-python3 $CMP/mcsm_delete.py /plugins/xxx.jar        # 删除（DELETE /api/files/）
-python3 $CMP/mcsm_list_filter.py                     # 列目录（需 file_name 过滤）
+~/.hermes/skills/gaming/orzmc/scripts/adapters/mcsm.sh status|players|logs 50|start|stop|restart|command "list"
+python3 $CMP/mcsm_delete.py /plugins/xxx.jar      # 删除（{"targets":[...]}）
+python3 $CMP/mcsm_list_filter.py                  # 列目录（需 file_name 过滤）
 ```
-> 端点表/认证/踩坑 → `references/mcsm-backend.md` 和 `references/exaroton-backend.md`
-> **MCSM 文件 API 全面复核（2026-08-06）**：12 个端点全部实测可用（读/写/删/列目录/建文件/建目录/复制/移动/压缩/解压/上传/URL直传）。关键参数坑：list 需 `page=0+page_size+file_name`、move/copy 用二维数组、move 必须 PUT、compress type=1 压缩/type=0 解压。旧结论「无 delete API」「move 不可用」已推翻（详见 mcsm-backend.md）
+> 端点表/认证/踩坑 → `references/mcsm-backend.md`、`references/exaroton-backend.md`
 
 ## Pitfalls（跨后端通用）
 

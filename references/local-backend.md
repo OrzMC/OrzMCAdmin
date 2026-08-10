@@ -8,12 +8,12 @@
 - ⚠️ **旧 API `api.papermc.io/v2` 已完全废弃（410 Gone / sunset）**——**不要再用 v2**
 - **新下载机制（唯一正解）**：官网下载页 `https://papermc.io/downloads/paper` 内嵌每个构建的 sha256 → 直链 `https://fill-data.papermc.io/v1/objects/{sha256}/{jar名}` 下载
 - `scripts/parse_papermc.py` 已封装：解析最新 STABLE 构建的 sha256 + 文件名
-- **最新稳定版**（2026-08-02）：paper-26.2-92
+- **最新稳定版**（2026-08-10）：paper-26.2-111（92 与 111 行为可能不同）
 - **Java 要求**：PaperMC 26.x 需要 Java 25
 
 ```bash
 curl -s https://papermc.io/downloads/paper | python3 ~/.hermes/skills/gaming/orzmc/scripts/parse_papermc.py
-# 输出: paper-26.2-92 059d00bbce0fa1707739618b3276f5c80b9655dc0f964306fa799a9c7cb01cc2
+# 输出: paper-26.2-111 ...（以实际输出为准，26.2-92 已过时）
 ```
 
 ## 创建服务器

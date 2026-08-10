@@ -48,7 +48,7 @@
 ## Geyser 基岩登录排查（InitialConnection-13 实战）
 
 - 症状：基岩客户端 `Error Detail InitialConnection-13`（服务端日志无玩家连接记录——协议协商层失败）；或 Geyser 日志「下游数据包错误！(ClientboundLoginDisconnectPacket) Packet not found」+ 30s 后「Took too long to log in」
-- 根因：**基岩客户端版本 > Geyser 稳定版支持的协议**。实测 Bedrock 26.40 + Geyser 2.11.1 全系列（b1206-b1210）均失败；**b1212+ 修复**
+- 根因：**基岩客户端版本 > Geyser 稳定版支持的协议**。实测 Bedrock 26.40 + Geyser 2.11.1 全系列（b1206-b1210）均失败；**b1212 修复、b1214 为最新（2026-08-10 三端统一）**
 - ⚠️ **构建号查询陷阱**：download.geysermc.org builds 列表滞后（升序、最新在尾部；当天新构建可能查不到）——拿不准直接问用户最新构建号
 - 验证顺序：RakNet 握手（UDP 层通 ≠ 登录通）→ 真机登录（协议层）
 - **域名 TCP 通而 UDP 不通** = 路由器只转发了 TCP，**Geyser UDP 19132 需单独转发规则**（公网 IP 真实可达时非 CGNAT）
