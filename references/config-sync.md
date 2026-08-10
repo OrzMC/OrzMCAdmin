@@ -59,4 +59,3 @@ orzmc `scripts/cmp3/` 提供完整工具链（2026-08-10 新增/修复）：
 - `mcsm_refetch.py`：MCSM 失败文件串行补拉（并发已根治后基本用不到，保留兜底）
 - `exa_recover_residue.py`：JSON 残留恢复（`[--dry-run]` 预览差异）
 - 差异基线/决策记录 → orzmc `references/three-end-config-drift.md`；二次审计完整报告 → orzmc `references/config-drift-report-20260810.md`（77 文件：59 完全一致 / 10 配置差异 / 8 运行时数据）
-# 自动同步测试标记
