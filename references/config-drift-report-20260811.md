@@ -14,7 +14,7 @@
 ---
 ## 一、核心配置（服务端 7 个）
 
-### ❌ server.properties — 差异 20 处，另有单端独有 key 2 个
+### ❌ server.properties — 差异 18 处，另有单端独有 key 2 个
 
 | key | 本地 | Exa | MCSM |
 |:--|:--|:--|:--|
@@ -33,10 +33,8 @@
 | 0@pause-when-empty-seconds | -1 | 60 | -1 |
 | 0@query.port | 25565 | 9898 | 9898 |
 | 0@rcon.password | orztest2026 |  |  |
-| 0@resource-pack-prompt |  | "" | "" |
 | 0@server-port | 25565 | 39742 | 25565 |
 | 0@simulation-distance | 6 | 5 | 3 |
-| 0@sync-chunk-writes | true | false | true |
 | 0@view-distance | 8 | 10 | 6 |
 
 ### ❌ bukkit.yml — 差异 1 处
@@ -49,18 +47,19 @@
 
 ### ✅ commands.yml — 三端完全一致
 
-### ❌ config/paper-global.yml — 差异 1 处，另有单端独有 key 9 个
+### ❌ config/paper-global.yml — 差异 4 处，另有单端独有 key 11 个
 
 | key | 本地 | Exa | MCSM |
 |:--|:--|:--|:--|
-| 4@online-mode | true | false | true |
+| 10@-minecraft | damage | damage | lodestone_tracker |
+| 2@no-permission | <red>I'm sorry, but you do not have permission to perform this command. | <red>I'm sorry, but you do not have permission to perform this command. | <red>I'm sorry, but you do not have permission to perform this |
+| 4@max-packet-rate | 500.0 | 500.0 | 10000 |
+| 4@secret | '' | '' | "" |
 
-### ❌ config/paper-world-defaults.yml — 差异 4 处，另有单端独有 key 5 个
+### ❌ config/paper-world-defaults.yml — 差异 2 处，另有单端独有 key 5 个
 
 | key | 本地 | Exa | MCSM |
 |:--|:--|:--|:--|
-| 2@disable-unloaded-chunk-enderpearl-exploit | false | true | false |
-| 2@max-leash-distance | default | 10.0 | default |
 | 8@hard | default | 128 | default |
 | 8@soft | default | 32 | default |
 
@@ -73,12 +72,10 @@
 
 - ℹ️ `config.yml` 运行时数据（玩家/交易/记录，三端独立属正常）
 
-### ❌ DeathChest（2 个：1 一致 / 1 差异 / 0 数据）
+### ✅ DeathChest（2 个：2 一致 / 0 差异 / 0 数据）
 
 - ✅ `blacklist.yml` 三端完全一致
-- ❌ `config.yml` 差异 2 处：
-  - `0@debug`：本地=`true` Exa=`false` MCSM=`false`
-  - `4@sound`：本地=`minecraft:block.chest.locked;1.0;1.0` Exa=`BLOCK_CHEST_LOCKED;1.0;1.0` MCSM=`BLOCK_CHEST_LOCKED;1.0;1.0`
+- ✅ `config.yml` 三端完全一致
 
 ### ✅ Essentials（6 个：5 一致 / 0 差异 / 1 数据）
 
@@ -172,10 +169,8 @@
 
 ### ❌ SkinsRestorer（1 个：0 一致 / 1 差异 / 0 数据）
 
-- ❌ `config.yml` 差异 3 处：
+- ❌ `config.yml` 差异 1 处：
   - `4@connectionOptions`：本地=`sslMode=trust&serverTimezone=UTC` Exa=`verifyServerCertificate=false&useSSL=false&serverTimezone=UTC` MCSM=`verifyServerCertificate=false&useSSL=false&serverTimezone=UTC`
-  - `4@perSkinPermissionsConsent`：本地=`'I will follow the rules'` Exa=`I will follow the rules` MCSM=`I will follow the rules`
-  - `8@ifNoServerBlockCommand`：本地=`true` Exa=`false` MCSM=`false`
 
 ### ✅ Vault（1 个：1 一致 / 0 差异 / 0 数据）
 
@@ -211,8 +206,8 @@
 
 | 状态 | 核心 | 插件 | 合计 |
 |:--|:--|:--|:--|
-| ✅ 三端完全一致 | 3 | 56 | 59 |
-| ❌ 配置差异 | 4 | 6 | 10 |
+| ✅ 三端完全一致 | 3 | 57 | 60 |
+| ❌ 配置差异 | 4 | 5 | 9 |
 | ℹ️ 运行时数据差异（正常） | 0 | 8 | 8 |
 | **合计** | **7** | **70** | **77** |
 
