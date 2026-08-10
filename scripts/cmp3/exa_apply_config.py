@@ -1,40 +1,12 @@
 #!/usr/bin/env python3
 """Exaroton：用 PUT files/data 覆盖写全部配置（E3-E10 + E1/E2 已成功）
-策略：GET 当前文件 → 文本替换 → PUT 覆盖（body {"text": 内容}）"""
-import urllib.request, json, os, time
+策略：GET 当前文件 → 文本替换 → PUT 覆盖（**裸文本 body，禁 JSON 包装**，2026-08-10 修复）
+"""
+import sys, os, time
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from exa_file import get_file, put_file
 
-API_KEY = ""
-for line in open(os.path.expanduser("~/.hermes/.env")):
-    if line.startswith("EXAROTON_API_KEY="):
-        API_KEY = line.split("=", 1)[1].strip()
-        break
-SID = ""
-UA = {"User-Agent": "Mozilla/5.0", "Authorization": f"Bearer {API_KEY}"}
-BASE = "https://api.exaroton.com/v1"
-
-def api(path, method="GET", body=None):
-    req = urllib.request.Request(f"{BASE}{path}", headers=UA, method=method)
-    if body is not None:
-        req.add_header("Content-Type", "application/json")
-        req.data = json.dumps(body).encode()
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return r.read().decode("utf-8", errors="replace")
-
-def get_file(path):
-    raw = api(f"/servers/{SID}/files/data/{path}/")
-    # PUT 后响应是 {"text": "..."} 包装；GET 可能是裸文本或 JSON 包装，需兼容
-    try:
-        d = json.loads(raw)
-        if isinstance(d, dict) and "text" in d:
-            return d["text"]
-    except Exception:
-        pass
-    return raw
-
-def put_file(path, content):
-    resp = api(f"/servers/{SID}/files/data/{path}/", "PUT", {"text": content})
-    print(f"  📤 {path}: PUT 响应 {resp[:60]}")
-    time.sleep(3)
 
 def apply(path, old, new, desc):
     content = get_file(path)
@@ -42,9 +14,14 @@ def apply(path, old, new, desc):
         print(f"  ⚠️ {path}: 未找到 {old!r} (跳过)")
         return False
     new_content = content.replace(old, new, 1)
-    put_file(path, new_content)
-    print(f"  ✅ {desc}")
-    return True
+    code, resp = put_file(path, new_content)
+    print(f"  📤 {path}: PUT {code} {resp[:60]}")
+    # 复验
+    back = get_file(path)
+    ok = (back == new_content)
+    print(f"  {'✅' if ok else '❌'} {desc} (复验{'一致' if ok else '不一致'})")
+    time.sleep(3)
+    return ok
 
 # E3 timeout-time 180 → 60
 apply("spigot.yml", "timeout-time: 180", "timeout-time: 60", "E3 timeout-time")

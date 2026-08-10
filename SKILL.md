@@ -10,6 +10,8 @@ required_commands: [java, curl, tar]
 
 # OrzMC Minecraft 运维（统一技能）
 
+> **技能治理（2026-08-11 用户决策）**：与 MC 运维强相关的技能（IM 网关、配置同步、部署流程等）一律**合并进本技能**维护迭代（作为 references + scripts），不再单独立技能；新增强相关知识直接落这里。已合并：easybot-gateway-ops（→ references/easybot-gateway.md）、deployment-config-sync（→ references/config-sync.md）；模组托管（minecraft-modpack-server）已清理，与原生 PaperMC 场景无关。
+
 > **知识分类索引**：本 SKILL.md 只留决策路径；详细知识在 `references/`（后端 API 表 / Spark / 实体统计 / 机器人）：
 >
 > | 主题 | 文档 |
@@ -17,6 +19,8 @@ required_commands: [java, curl, tar]
 > | 本机服务器操作（创建/升级/备份/状态） | `references/local-backend.md` |
 > | Exaroton 云端（API 端点表 + 平台要点） | `references/exaroton-backend.md` |
 > | MCSM 面板（API 端点表 + 平台要点 + 适配器） | `references/mcsm-backend.md` |
+> | **EasyBot IM 网关运维（docker 容器/健康检查/QQ token/gateway.db 诊断；脚本 easybot_deliveries.py；原 easybot-gateway-ops 技能合并）** | `references/easybot-gateway.md` |
+> | **部署配置同步（config drift 判定/fallback 判断/补键同步；原 deployment-config-sync 技能合并）** | `references/config-sync.md` |
 > | Spark 性能分析（命令/JSON/判断/踩坑） | `references/spark-analysis.md` |
 > | 快速实体统计（paper entity list / Spark / 计分板） | `references/entity-statistics.md` |
 > | 机器人玩家 Mineflayer（运维视角；开发细节见独立技能 `minecraft-bot-mineflayer`） | `references/mineflayer-bot.md` |
@@ -24,6 +28,7 @@ required_commands: [java, curl, tar]
 > | Geyser 基岩支持（当前 offline 直连模式；floodgate 已回退 2026-08-05） | `references/geyser-floodgate.md` |
 > | **插件源码构建/开发（构建工具选择、Gradle/Maven 坑、PR 流程、发布规范）** | `references/plugin-build.md` |
 > | **插件升级与配置迁移（三端范式、Exaroton/MCSM API 坑、EzShops 存储、Geyser 排查）** | `references/plugin-mgmt.md` |
+> | **三端配置差异审计（2026-08-10 全量对比：核心 17 项+插件 13 项真实差异，cmp3 工具链用法）** | `references/three-end-config-drift.md` |
 > | **性能诊断（Spark 五步法、实体审计、Aikar Flags、修复方案）** | `references/performance.md` |
 > | **插件 Bug 排查（本地复现、命令/权限分离、实体事件、版本兼容）** | `references/plugin-debugging.md` |
 > | **测试体系（分层原则、三大通道、Paper 26 陷阱、跨服 transfer）** | `references/testing.md` |
@@ -68,7 +73,7 @@ required_commands: [java, curl, tar]
 - **旧 API `api.papermc.io/v2` 已完全废弃（410 Gone）**——用 fill-data 新机制（`parse_papermc.py` 封装）
 - **最新稳定版**：paper-26.2-111（2026-08-10 三端实测；**26.2-92 与 111 行为可能不同**，本地复现必须与线上同构建）；**Java 要求**：26.x 需要 Java 25
 - **插件基线**（三端对齐，2026-08-10 更新）：OrzMC **1.0.16** / EzShops 2.5.9（storage.type: **yaml**，无 MySQL）/ Geyser **2.11.1-b1214**（基岩 26.40 支持，b1208 不支持）/ LoginSecurity 3.3.2-SNAPSHOT（**本地修复版**：getPlayer null 防御，Gradle 构建）/ LuckPerms 5.5.71（官方渠道，平台滞后 12 版）/ EssentialsX 2.22.0（⚠️ 26.2 不兼容：/spawn 未注册 + op 全拒）/ ViaVersion 系列 5.11.0 稳定版不升 SNAPSHOT / BackOnDeath 0.4 / DeathChest 3.0.1 / GetMeHome 3.0.0 / GriefPrevention 16.18.7 / SkinsRestorer 15.12.5 / Vault 1.7.3-b131 / ViaBackwards 5.11.0 / ViaRewind 4.1.3 / WorldEdit 7.4.4 / WorldGuard 7.0.18
-- **GeoIP 内网误拦截（2026-08-06 修复，OrzMC 1.0.15）**：MCSM allow_country_code=[CN,JP,TW] 时内网玩家（192.168.x/10.x）被拦截——geojs.io 无法解析私有段返回未知国家码。1.0.15 加内网 IP 短路（RFC1918/环回/CGNAT 直接放行，公网仍检查）。OrzMC 配置读取为实时（改 config.yml 后 /orzconfig reload 即生效，无需重启）；临时缓解=allow_country_code 改 []
+- **GeoIP 内网误拦截（2026-08-06 修复，OrzMC 1.0.15）**：MCSM allow_country_code=[CN,JP,TW] 时内网玩家（192.168.x/10.x）被拦截——geojs.io 无法解析私有段返回未知国家码。1.0.15 加内网 IP 短路（RFC1918/环回/CGNAT 直接放行，公网仍检查）。OrzMC 配置读取为实时（改 config.yml 后 **`/config reload` 即生效**，无需重启；⚠️ 2026-08-11 修正：命令是 **`/config reload`（根命令 `config`，别名 `cfg`，源码 FeatureModule.java `commands.register(node, "配置管理", List.of("cfg"))`）**，技能旧写 `/orzconfig reload` 是错的——实际执行返回 Unknown）；临时缓解=allow_country_code 改 []
 - **权限系统（2026-08-06 实施，LuckPerms 4 组）**：default(新手生存)→member(进阶飞行)→builder(创造+WE)→admin(全权限)；坑：RCON 不回显 LP 命令输出（用 bot 玩家身份验证）、default 勿显式设 false 覆盖子组 true、Essentials 权限默认拒绝。详见 references/permission-system.md
 - **force-gamemode 三端已统一 false（2026-08-06）**：MCSM 原为 true（玩家每次登录被强制回 survival，切创造后退出重登丢失模式），已改 false 与本地/Exaroton 对齐；改 server.properties 用 `PUT /api/files/`（保留 CRLF），重启生效，不影响在线玩家
 - ⚠️ **死亡位置传送覆盖关系（2026-08-05 反编译实证）**：**Essentials `/back` 不能覆盖 BackOnDeath**——`/back` 传送目标是 `LastLocation`（只在 `PlayerTeleportEvent` PLUGIN/COMMAND 原因时更新），**死亡事件不更新 LastLocation** → `/back` 回的是「最后传送点」**不是死亡点**。BackOnDeath 监听死亡事件记录死亡位置。**线上依赖 BackOnDeath 回死亡点功能 → 保留**（仅 SpigotMC 渠道，无 Hangar/Modrinth）。同理 GetMeHome 保留（线上 60+ 玩家用，迁移 Essentials 需脚本转换+多 home 权限，方案未成熟前不动）

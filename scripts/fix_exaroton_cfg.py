@@ -10,7 +10,7 @@
 """
 import sys, os, json, re, yaml
 
-sys.path.insert(0, '/tmp')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from exa_file import get_file, put_file
 
 

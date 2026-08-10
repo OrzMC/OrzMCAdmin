@@ -35,7 +35,7 @@ def get_exaroton_config():
     }
 
 def mcsm_api_post(cfg, path, params, retries=3, timeout=20):
-    """MCSM API POST 请求（带重试）"""
+    """MCSM API POST 请求（带重试，含限流 status 感知）"""
     import urllib.request, urllib.parse, json, time
     url = cfg["url"] + path + "?" + urllib.parse.urlencode({**params, "apikey": cfg["apikey"]})
     for i in range(retries):
@@ -44,17 +44,31 @@ def mcsm_api_post(cfg, path, params, retries=3, timeout=20):
             req.add_header("Content-Type", "application/json; charset=utf-8")
             req.add_header("X-Requested-With", "XMLHttpRequest")
             with urllib.request.urlopen(req, timeout=timeout) as r:
-                return json.loads(r.read().decode())
+                d = json.loads(r.read().decode())
+                # 面板限流/错误也重试（500/429）
+                if isinstance(d, dict) and d.get("status") in (200, None):
+                    return d
         except Exception:
-            if i < retries - 1:
-                time.sleep(3)
+            pass
+        if i < retries - 1:
+            time.sleep(3)
     return None
 
-def mcsm_download(cfg, path, retries=3):
-    """MCSM 文件下载（两步法：凭证 + 真实 GET），返回 bytes 或 None"""
+def mcsm_download(cfg, path, retries=4):
+    """MCSM 文件下载（两步法：凭证 + 真实 GET），返回 bytes 或 None
+    两步均带重试：MCSM 并发会触发面板 500 限流（status!=200），需退避重试
+    """
     import urllib.request, urllib.parse, time
-    d = mcsm_api_post(cfg, "api/files/download",
-                      {"file_name": path, "daemonId": cfg["daemon_id"], "uuid": cfg["instance_id"]})
+    d = None
+    for i in range(retries):
+        d = mcsm_api_post(cfg, "api/files/download",
+                          {"file_name": path, "daemonId": cfg["daemon_id"], "uuid": cfg["instance_id"]})
+        if d and d.get("status") == 200 and d.get("data", {}).get("addr"):
+            break
+        # 限流/失败：指数退避（4s, 8s, 16s...）
+        wait = 4 * (2 ** i)
+        time.sleep(wait)
+        d = None
     if not d or d.get("status") != 200:
         return None
     addr = d["data"]["addr"].replace("localhost", cfg["url"].split("//")[1].split(":")[0])

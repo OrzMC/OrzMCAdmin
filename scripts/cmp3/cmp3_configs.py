@@ -20,18 +20,24 @@ def read(p):
     except Exception:
         return None
 
-def key_lines(lines):
+def key_lines(lines, eq_style=False):
     out = []
     for l in lines:
-        if l.strip() and not l.strip().startswith("#") and ":" in l:
-            key = l.split(":", 1)[0].rstrip()
-            val = l.split(":", 1)[1].strip()
-            indent = len(l) - len(l.lstrip())
-            out.append((indent, key.strip(), val))
+        if l.strip() and not l.strip().startswith("#"):
+            if eq_style:
+                if "=" in l:
+                    key = l.split("=", 1)[0].rstrip()
+                    val = l.split("=", 1)[1].strip()
+                    out.append((0, key.strip(), val))
+            elif ":" in l:
+                key = l.split(":", 1)[0].rstrip()
+                val = l.split(":", 1)[1].strip()
+                indent = len(l) - len(l.lstrip())
+                out.append((indent, key.strip(), val))
     return out
 
-def semantic_diff(a_lines, b_lines):
-    ka, kb = key_lines(a_lines), key_lines(b_lines)
+def semantic_diff(a_lines, b_lines, eq_style=False):
+    ka, kb = key_lines(a_lines, eq_style), key_lines(b_lines, eq_style)
     da = {f"{ind}|{k}": v for ind, k, v in ka}
     db = {f"{ind}|{k}": v for ind, k, v in kb}
     diffs = []
@@ -49,15 +55,15 @@ def semantic_diff(a_lines, b_lines):
         diffs.append((key, va, vb))
     return diffs
 
-def compare_local_file(name, local_path, exa_path, mcsm_path):
+def compare_local_file(name, local_path, exa_path, mcsm_path, eq_style=False):
     """返回 (名称, 状态, Exa差异数, MCSM差异数)"""
     ll = read(local_path)
     ee = read(exa_path) if exa_path else None
     mm = read(mcsm_path) if mcsm_path else None
     if ll is None:
         return (name, "本地缺失", 0, 0)
-    d_le = semantic_diff(ll, ee) if ee else None
-    d_lm = semantic_diff(ll, mm) if mm else None
+    d_le = semantic_diff(ll, ee, eq_style) if ee else None
+    d_lm = semantic_diff(ll, mm, eq_style) if mm else None
     n_le = len(d_le) if d_le else 0
     n_lm = len(d_lm) if d_lm else 0
     if n_le == 0 and n_lm == 0:
@@ -80,8 +86,9 @@ core_files = [
     ("wepif.yml", "wepif.yml", "wepif.yml"),
 ]
 for name, ef, mf in core_files:
+    eq = (name == "server.properties")
     name2, status, n_le, n_lm = compare_local_file(
-        name, f"{LOCAL}/{name}", f"{E}/{ef}", f"{M}/{mf}")
+        name, f"{LOCAL}/{name}", f"{E}/{ef}", f"{M}/{mf}", eq_style=eq)
     if status == "一致":
         print(f"  ✅ {name}")
     elif status == "本地缺失":

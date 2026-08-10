@@ -46,7 +46,7 @@
 - ✅ **官方状态码枚举**（OpenAPI spec 权威）：0=OFFLINE 1=ONLINE 2=STARTING 3=STOPPING 4=RESTARTING 5=SAVING 6=LOADING 7=CRASHED 8=PENDING 9=TRANSFERRING 10=PREPARING
 - ✅ **生命周期实测**（2026-08-03）：start = LOADING(6)→STARTING(2)→ONLINE(1) 约 40s；stop = SAVING(5)→OFFLINE(0) 约 10s；restart（在线）= STARTING→ONLINE 约 32s；**restart 在离线时返回 400「Server is not online」**（官方预期）
 - ✅ **写操作即时生效**：MOTD / RAM / files.config / playerlists 修改无需重启服务器
-- ⚠️ **写配置文件用 PUT files/data + `{"text": 全文}`**（2026-08-03 实测）：GET→改文本→PUT 覆盖，可改任意配置（server.properties/spigot/paper/插件 config.yml 均可用）；响应 `{"success":true}`。**POST files/data 是假成功**（返回旧内容不生效）；**POST files/config 仅支持 API 白名单 35 项**（max-tick-time/sync-chunk-writes 等不在其中，返回 success=True 但实际不改）。⚠️ 这些配置修改**需重启服务器才生效**（files/config 白名单项除外）
+- ⚠️ **写配置文件用 PUT files/data + 裸文本 body**（2026-08-09 修正，**2026-08-03 的 `{"text": 全文}` JSON 包装结论已作废**）：GET→改文本→PUT 覆盖，可改任意配置（server.properties/spigot/paper/插件 config.yml 均可用）；**切勿 JSON 包装**——会被原样存为文件内容（config.yml 变 JSON 字符串，插件 YAML 解析静默回退默认值；server.properties 尾残留 `{"text"="..."}` 垃圾块，Exaroton 已中招）。统一用 `scripts/exa_file.py`（GET 自动解包 JSON/裸文本，PUT 裸文本）。**POST files/data 是假成功**（返回旧内容不生效）；**POST files/config 仅支持 API 白名单 35 项**（max-tick-time/sync-chunk-writes 等不在其中，返回 success=True 但实际不改）。⚠️ 这些配置修改**需重启服务器才生效**（files/config 白名单项除外）
 - ⚠️ **start/stop/restart 是 GET**（官方 OpenAPI 确认；POST 会触发 Cloudflare 人机验证）
 - ⚠️ Exaroton 大文件（>10MB）上传易触发 Cloudflare 524，停服后重试即可
 - ⚠️ Exaroton 服务器**运行中禁止写文件**（API 返回 `File access is currently unavailable`），上传插件/升级必须**先停服**
