@@ -10,7 +10,7 @@ required_commands: [java, curl, tar]
 
 # OrzMC Minecraft 运维（统一技能）
 
-> **技能治理（2026-08-11 用户决策）**：与 MC 运维强相关的技能（IM 网关、配置同步、部署流程等）一律**合并进本技能**维护迭代（作为 references + scripts），不再单独立技能；新增强相关知识直接落这里。已合并：easybot-gateway-ops（→ references/easybot-gateway.md）、deployment-config-sync（→ references/config-sync.md）；模组托管（minecraft-modpack-server）已清理，与原生 PaperMC 场景无关。
+> **技能治理（2026-08-11 用户决策，已合并）**：与 MC 运维强相关的技能一律**合并进本技能**维护迭代（references + scripts），不再单独立技能；新增强相关知识直接落这里。已合并：easybot-gateway-ops（→ references/easybot-gateway.md）、deployment-config-sync（→ references/config-sync.md）、git-submodule-sync（→ references/git-submodule-sync.md，OrzMC monorepo 子模块同步）、java-test-pitfalls（→ references/java-test-pitfalls.md，插件单测编译坑）；模组托管（minecraft-modpack-server）已清理，与原生 PaperMC 场景无关。
 
 > **知识分类索引**：本 SKILL.md 只留决策路径；详细知识在 `references/`（后端 API 表 / Spark / 实体统计 / 机器人）：
 >
@@ -21,6 +21,8 @@ required_commands: [java, curl, tar]
 > | MCSM 面板（API 端点表 + 平台要点 + 适配器） | `references/mcsm-backend.md` |
 > | **EasyBot IM 网关运维（docker 容器/健康检查/QQ token/gateway.db 诊断；脚本 easybot_deliveries.py；原 easybot-gateway-ops 技能合并）** | `references/easybot-gateway.md` |
 > | **部署配置同步（config drift 判定/fallback 判断/补键同步；原 deployment-config-sync 技能合并）** | `references/config-sync.md` |
+> | **Git 子模块全量同步（OrzMC monorepo 14 子模块；默认分支探测/发布后指针/分支清理；原 git-submodule-sync 技能合并）** | `references/git-submodule-sync.md` |
+> | **Java 测试编译陷阱（Mockito 泛型捕获/SuppressWarnings 位置/CI warnings 清零；原 java-test-pitfalls 技能合并）** | `references/java-test-pitfalls.md` |
 > | Spark 性能分析（命令/JSON/判断/踩坑） | `references/spark-analysis.md` |
 > | 快速实体统计（paper entity list / Spark / 计分板） | `references/entity-statistics.md` |
 > | 机器人玩家 Mineflayer（运维视角；开发细节见独立技能 `minecraft-bot-mineflayer`） | `references/mineflayer-bot.md` |
