@@ -1,4 +1,4 @@
-# 三端配置差异审计报告（2026-08-11 三次·工具链修复后）
+# 三端配置差异审计报告（2026-08-11 四次·重启后全量审查）
 
 ## 审计范围：77 个配置文件
 
@@ -14,7 +14,7 @@
 ---
 ## 一、核心配置（服务端 7 个）
 
-### ❌ server.properties — 差异 18 处，另有单端独有 key 2 个
+### ❌ server.properties — 差异 20 处，另有单端独有 key 2 个
 
 | key | 本地 | Exa | MCSM |
 |:--|:--|:--|:--|
@@ -25,7 +25,7 @@
 | 0@management-server-enabled | false | true | false |
 | 0@management-server-host | localhost | 0.0.0.0 | localhost |
 | 0@management-server-port | 0 | 9900 | 0 |
-| 0@management-server-secret | yhWIDznPC2Co8ujuLwDMT5W6HrK8lw9izvcnFnMu | oyPS1MgZ9TyywXnMm1TyUzzvzXYm6NhkUpMnwGA7 | 89GCEpIcbJw16Q8WlJe8UbNP4Owfma4rdzOg6mB3 |
+| 0@management-server-secret | yhWIDznPC2Co8ujuLwDMT5W6HrK8lw9izvcnFnMu | rezbCnGBdOmzGYER0itbwfU0K57LCHiOxxRmURtw | 89GCEpIcbJw16Q8WlJe8UbNP4Owfma4rdzOg6mB3 |
 | 0@management-server-tls-enabled | true | false | true |
 | 0@max-players | 20 | 20 | 150 |
 | 0@max-tick-time | 60000 | 600000 | 60000 |
@@ -33,8 +33,10 @@
 | 0@pause-when-empty-seconds | -1 | 60 | -1 |
 | 0@query.port | 25565 | 9898 | 9898 |
 | 0@rcon.password | orztest2026 |  |  |
+| 0@resource-pack-prompt |  | "" |  |
 | 0@server-port | 25565 | 39742 | 25565 |
 | 0@simulation-distance | 6 | 5 | 3 |
+| 0@sync-chunk-writes | true | false | true |
 | 0@view-distance | 8 | 10 | 6 |
 
 ### ❌ bukkit.yml — 差异 1 处
@@ -47,14 +49,11 @@
 
 ### ✅ commands.yml — 三端完全一致
 
-### ❌ config/paper-global.yml — 差异 4 处，另有单端独有 key 11 个
+### ❌ config/paper-global.yml — 差异 1 处，另有单端独有 key 9 个
 
 | key | 本地 | Exa | MCSM |
 |:--|:--|:--|:--|
-| 10@-minecraft | damage | damage | lodestone_tracker |
-| 2@no-permission | <red>I'm sorry, but you do not have permission to perform this command. | <red>I'm sorry, but you do not have permission to perform this command. | <red>I'm sorry, but you do not have permission to perform this |
-| 4@max-packet-rate | 500.0 | 500.0 | 10000 |
-| 4@secret | '' | '' | "" |
+| 4@max-packet-rate | 500.0 | 500.0 | 10000.0 |
 
 ### ❌ config/paper-world-defaults.yml — 差异 2 处，另有单端独有 key 5 个
 
@@ -167,10 +166,9 @@
 - ✅ `portals.yml` 三端完全一致
 - ✅ `templates.yml` 三端完全一致
 
-### ❌ SkinsRestorer（1 个：0 一致 / 1 差异 / 0 数据）
+### ✅ SkinsRestorer（1 个：1 一致 / 0 差异 / 0 数据）
 
-- ❌ `config.yml` 差异 1 处：
-  - `4@connectionOptions`：本地=`sslMode=trust&serverTimezone=UTC` Exa=`verifyServerCertificate=false&useSSL=false&serverTimezone=UTC` MCSM=`verifyServerCertificate=false&useSSL=false&serverTimezone=UTC`
+- ✅ `config.yml` 三端完全一致
 
 ### ✅ Vault（1 个：1 一致 / 0 差异 / 0 数据）
 
@@ -206,8 +204,8 @@
 
 | 状态 | 核心 | 插件 | 合计 |
 |:--|:--|:--|:--|
-| ✅ 三端完全一致 | 3 | 57 | 60 |
-| ❌ 配置差异 | 4 | 5 | 9 |
+| ✅ 三端完全一致 | 3 | 58 | 61 |
+| ❌ 配置差异 | 4 | 4 | 8 |
 | ℹ️ 运行时数据差异（正常） | 0 | 8 | 8 |
 | **合计** | **7** | **70** | **77** |
 

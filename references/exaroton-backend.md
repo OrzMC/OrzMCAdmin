@@ -25,7 +25,7 @@
 | 玩家名单列表 | `GET /v1/servers/{id}/playerlists/` | ✅ 4 名单：whitelist/ops/banned-players/banned-ips |
 | 名单内容 | `GET/PUT/DELETE /v1/servers/{id}/playerlists/{list}/`（body `{"entries": ["notch"]}`） | ✅ 全部实测（PUT 加→DELETE 删→恢复） |
 | 账号信息 | `GET /v1/account/` | ✅ {SERVER_NAME} /  |
-| 余额池 | `GET /v1/billing/pools/` | ✅ 1 池 309.14 积分 |
+| 余额池 | `GET /v1/billing/pools/` | ✅ 1 池 309.14 积分（2026-08-11：实际 294.73，账户 credits=0 但池内充足——**服务器计费看池不看账户**，端点在 billing 命名空间，`account/creditpool` 等 400） |
 
 ## 平台要点（2026-08 实测）
 
@@ -50,3 +50,5 @@
 - ⚠️ **start/stop/restart 是 GET**（官方 OpenAPI 确认；POST 会触发 Cloudflare 人机验证）
 - ⚠️ Exaroton 大文件（>10MB）上传易触发 Cloudflare 524，停服后重试即可
 - ⚠️ Exaroton 服务器**运行中禁止写文件**（API 返回 `File access is currently unavailable`），上传插件/升级必须**先停服**
+- ⚠️ **server.properties 平台重写（2026-08-11 实测）**：Exaroton 平台**每次启动时重写 server.properties**（平台模板 + files/config 白名单 35 项）；**非白名单项（sync-chunk-writes/max-tick-time 等）即使 PUT files/data 修改，重启后也被平台重置**（sync-chunk-writes PUT=true 重启后变回 false）——放弃对齐，记录为**平台保留差异**（默认值是性能优化，无害）；白名单项（resource-pack-prompt/view-distance 等）须用 `POST /files/config/{path}/` 修改（重启不丢失）。普通文件（paper-*.yml/插件 config.yml）不受平台管理，PUT 裸文本修改可长期保留
+- ⚠️ **启动反复失败现象（2026-08-11 实测，待平台侧排查）**：积分充足时仍 `2(LOADING)→1(STARTING)→5(STOPPING)→0(STOPPED)` 循环，`GET /v1/servers/{id}/logs` 始终空（Java 无输出）。已排除余额不足（池内 294.73）、jar 缺失（paper.jar 存在但读取 403 平台保护，正常）、配置损坏。疑似平台软件状态异常，API 无法修复，需面板手动或等待

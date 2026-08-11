@@ -2,18 +2,22 @@
 
 > 触发：全量拉取三端（本地 ~/minecraft-server / Exaroton / MCSM）核心+插件配置，语义对比。
 > 工具：`scripts/cmp3/fetch3_configs.py`（拉取）+ `cmp3_configs.py`（对比）+ `cmp3_diff_detail.py`（明细）+ `cmp3_report.py`（完整报告生成）+ `cmp3_trend.py`（新旧报告变化跟踪）。
-> 基线：77 个配置文件（核心 7 + 插件 70），**真实配置差异 10 个文件，8 个运行时数据文件，59 个完全一致**。
+> 基线：77 个配置文件（核心 7 + 插件 70），**重启后全量审查（2026-08-11 四次）：8 个差异文件、8 个运行时数据文件、61 个完全一致**。
 > **完整报告（保留最近两次，最新为准）**：
-> - `references/config-drift-report-20260811.md`（三次审计·最新）
+> - `references/config-drift-report-20260811.md`（四次审计·重启后·最新）
 > - `references/config-drift-report-20260810.md`（二次审计·用于变化跟踪）
 >
-> **变化跟踪（20260810 → 20260811）**：唯一变化 = OrzMC/config.yml `allow_country_code` MCSM `[CN,JP,TW]` → `[CN,JP,TW,DE]`（2026-08-11 为德国玩家加白名单，`/config reload` 热更新）。其余 76 个文件差异项全部无变化。
+> **变化跟踪（20260811 上午对齐审查 → 下午重启后审查）**：
+> - **✅ 对齐项生效（重启后三端一致）**：SkinsRestorer connectionOptions（三端 `sslMode=trust&serverTimezone=UTC`）、ifNoServerBlockCommand（三端 false）、perSkinPermissionsConsent（三端无引号）；paper-global.yml `-minecraft`/`no-permission`/`secret`（MCSM 重启后与本地/Exa 一致）；DeathChest debug（三端 false）+ sound（三端 `BLOCK_CHEST_LOCKED;1.0;1.0`）；paper-global velocity.online-mode（三端 false）；paper-world-defaults enderpearl-exploit（三端 true）/max-leash-distance（三端 default）。**汇总：61 一致 / 8 差异 / 8 数据（vs 上次 60/9/8，净 -1 差异）**
+> - **❌ Exa 两项回退（2026-08-11 重大发现）**：Exa 重启后 `server.properties` **sync-chunk-writes 回退 false、resource-pack-prompt 回退 `""`**。**根因：Exaroton 平台每次启动用「平台模板 + files/config 白名单 35 项」重新生成 server.properties（文件头时间戳=启动时刻）**——非白名单键（sync-chunk-writes/max-tick-time 等）PUT files/data 修改**重启即被覆盖、无法持久化**（POST files/config 也假成功，文档已记载）；白名单键（resource-pack-prompt 等）须用 `POST /files/config/{path}/` 修改（即时生效，无需重启）。**结论：Exa sync-chunk-writes 无法通过 API 对齐为 true，属平台限制**（`""` 无实质影响：require-resource-pack=false 不显示提示）
+> - **保留差异不变**：GetMeHome limit 10/10/30、OrzMC allow_country_code []/[]/[CN,JP,TW,DE]（2026-08-11 为德国玩家加）、easybot 各端群/api_key、bStats UUID、paper-global max-packet-rate MCSM=10000（防攻击调高）、server.properties 18 项定位/平台差异
 >
 > **对齐决策（2026-08-11，用户拍板）**：
 > - **第一类 7 项零风险已对齐**：velocity.online-mode 统一 false（三端都未跑 Velocity 代理）、paper-world-defaults enderpearl-exploit 统一 true（安全加固）、max-leash-distance 统一 default、DeathChest sound 统一枚举格式、SkinsRestorer perSkinPermissionsConsent 统一无引号、server.properties resource-pack-prompt 统一空。despawn hard/soft 保留 Exa 128/32（性能优化）。
 > - **第二类 11 项定位/平台差异保留**（motd/端口/距离/management-server=Exaroton 平台自动等）。
-> - **第三类**：sync-chunk-writes 统一 true（Exa 改，安全优先）；DeathChest debug 统一 false；SkinsRestorer ifNoServerBlockCommand 统一 false；GetMeHome limit 保持 10/10/30 现状；SkinsRestorer connectionOptions **已对齐（2026-08-11 补充执行）**——三端 storage.type 均 FILE（未用 MySQL），原本是 MySQL 专用参数的默认值形态差异，按用户决策以本地最新版默认为基准统一为 `sslMode=trust&serverTimezone=UTC`。
+> - **第三类**：sync-chunk-writes **已标记平台保留（2026-08-11 实测：Exaroton 每次启动重写 server.properties，非白名单项 PUT 修改重启后重置，放弃对齐——Exa 的 false 是性能优化，无害）**；DeathChest debug 统一 false；SkinsRestorer ifNoServerBlockCommand 统一 false；GetMeHome limit 保持 10/10/30 现状；SkinsRestorer connectionOptions **已对齐（2026-08-11 补充执行）**——三端 storage.type 均 FILE（未用 MySQL），原本是 MySQL 专用参数的默认值形态差异，按用户决策以本地最新版默认为基准统一为 `sslMode=trust&serverTimezone=UTC`。
 > - 生效方式：本地/Exa 文件已改（Exa 重启后生效）；MCSM 文件已改、**等待无玩家窗口重启生效**（9 玩家在线时只写文件不重启）。
+> - **重启验证（2026-08-11 上午 9 点 MCSM 自动重启 + 手动重启 Exa/本地后实测）**：MCSM ✅ 全部生效（9 点自动重启，已运行 <60min 确认新进程）；本地 ✅ 全部生效；Exa ⚠️ **server.properties 非白名单键修改被平台重启覆盖**（sync-chunk-writes/resource-pack-prompt 回退），**其余配置（paper-global/paper-world-defaults/插件 yml）修改全部持久化生效**。
 
 ## 对比工具链（新增/修复）
 
