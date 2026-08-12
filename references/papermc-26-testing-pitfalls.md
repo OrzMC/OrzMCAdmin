@@ -213,6 +213,24 @@ DemotionResult r = track.demote(user, ctx);
 
 **测试**：`RankServiceTest.demote_builder_removesBuilderAndMarksDemoted` / `demote_default_noOpReturnsNull` / `currentGroup_demotedBuilder_returnsMember`。
 
-## 12. 审核命令 vs 管理命令职责边界（用户设计评审）
+## 13. Paper 26 jar 三层结构 + 反编译法（2026-08-13 实测）
+
+- `paper-26.2-111.jar` = **paperclip 启动器壳**（thin，只有 libraries），**不是服务端**
+- 真实服务端嵌套：`cache/mojang_26.2.jar` → `META-INF/versions/26.2/server-26.2.jar`（内层 jar）
+- **反编译服务端类路径**：
+```bash
+cd /tmp && mkdir paperx && cd paperx
+unzip -o -q ~/minecraft-server/cache/mojang_26.2.jar 'META-INF/versions/26.2/server-26.2.jar'
+unzip -o -q META-INF/versions/26.2/server-26.2.jar 'net/minecraft/server/players/PlayerList.class'
+javap -c -p net/minecraft/server/players/PlayerList.class   # 字节码
+```
+- ⚠️ **macOS `strings` 不兼容 class 文件**（报 `fat file: ... truncated or malformed`）→ 用 python 提取：
+```python
+import re; data = open('X.class','rb').read()
+[str(s.decode()) for s in re.findall(rb'[\x20-\x7e]{5,}', data) if b'keyword' in s.lower()]
+```
+- **per-IP 5 在线限制**：`PlayerList.class` 字符串表**没有** `ip_limit`/`too many` key（被 Paper 重构，语言 key 移到别处），但**行为实测存在**（同 IP 第 6+ 被踢 `Sorry, there are too many players logged in with your IP address`）——验证行为用实测，别依赖反编译字符串
+
+## 14. 审核命令 vs 管理命令职责边界（用户设计评审）
 
 `$v` 本是 review 审核命令（l/y/n 裁决玩家申请），若混入 `$v d`（管理员主动降级，无申请流程）职责模糊。用户明确指出：**审核（对申请的裁决）与管理（管理员主动操作）语义不同**。设计取舍：① `$v` 扩展为完整权限管理（l/y/n + d + u 对称钳位）；② 审核与管理分命令；③ 管理操作只留游戏内命令。**先和用户确认方案再实现**，不要默认混在一起。

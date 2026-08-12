@@ -26,6 +26,21 @@ BOT_HOST=127.0.0.1 BOT_PORT=25565 node minecraft-bot.js
 - ✅ **本地测试服（papermc-test）验证价值**：本地出生点有苦力怕等实体，能暴露线上不常触发的崩溃路径（粒子/实体交互），改 bot 后先本地验证再上生产
 - ⚠️ bot 项目持久化在 `~/minecraft-bot/`（勿放 /tmp）
 
+## 压测脚本（stress-stay.js，2026-08-12/13 实测沉淀）
+
+```bash
+cd ~/minecraft-bot && BOT_COUNT=10 node stress-stay.js 2   # N bot 驻留 2 分钟 + RCON 每 5s 采样 TPS
+# 输出 /tmp/stress_stay_result.json（采样数组 + joined/peakOnline/avgTps/minTps）
+# 环境变量：BOT_HOST/BOT_PORT/BOT_PASSWORD/RCON_PORT/RCON_PASSWORD（默认本地服）
+```
+
+- **mineflayer 选项原样透传 minecraft-protocol**（`bot._client = mc.createClient(options)`）→ 可用自定义 `connect: (client) => { client.setSocket(net.connect({host, port, localAddress: srcIp})); client.emit('connect'); }` 绑定源 IP
+- ⚠️ **macOS 禁 bind 127.0.0.2+**（`OSError: [Errno 49] Can't assign requested address`；lo0 虽是 /8 掩码但内核只认 127.0.0.1，与 Linux 不同）→ 多回环 IP 模拟多玩家 **macOS 死路**（无 sudo 也加不了 lo0 alias）
+- ⚠️ **vanilla per-IP 5 在线限制**：同 IP 已登录 ≥5 时第 6+ 被踢（`Sorry, there are too many players logged in with your IP address`）→ **单出口 IP 压测天花板 = 5 bot 真实在线**（40 bot 尝试全成功但峰值在线 3-6）；真实玩家各 IP 不同不受影响
+- ⚠️ **spawn 事件计数只增不减会虚高**（被踢 bot 也算"进入"）——维护 `Set` 真实在线（spawn 增 / end 减），采样打 `在线=N/总数`
+- ⚠️ 压测脚本总时长 = 登录风暴（40 bot ≈ 60-90s）+ 采样 → 前台 200s 上限会超时被杀丢结果 → **用 background=true + notify_on_complete**
+- 登录风暴：冷启动首登崩（TPS 4.2）、热世界不崩（40 bot 最低 16.1）→ 详见 testing.md
+
 ## 常用操作（bot 侧聊天命令，minecraft-bot.js 内置）
 
 ```bash

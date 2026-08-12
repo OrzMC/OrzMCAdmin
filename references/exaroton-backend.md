@@ -13,7 +13,7 @@
 | logs | `GET /v1/servers/{id}/logs` | ✅ |
 | 日志分享 mclo.gs | `GET /v1/servers/{id}/logs/share` | ✅ 返回 {id, url, raw} |
 | command | `POST /v1/servers/{id}/command` | ✅ 实测（/list 日志确认执行） |
-| 插件列表 | `GET /v1/servers/{id}/files/info/plugins/` | ✅ |
+| 插件列表 | `GET /v1/servers/{id}/files/info/plugins/` | ✅ **响应键是 `data.children` 不是 `data.files`**（2026-08-13 实测：解析 `files` 恒返回空列表误判"未找到"；`children[].name/.size/.isDirectory` 核验 jar 用） |
 | 上传插件 | **PUT** `/v1/servers/{id}/files/data/plugins/{name}.jar/` | ✅ |
 | 删除插件 | `DELETE /v1/servers/{id}/files/data/plugins/{name}.jar/` | ✅ |
 | 配置文件读 | `GET /v1/servers/{id}/files/config/{path}/` | ✅ server.properties 返回 35 项 key/value/type/options 结构化数据 |

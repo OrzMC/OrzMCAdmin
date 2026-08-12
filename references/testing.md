@@ -35,6 +35,9 @@
 - **测试账号密码重置（LoginSecurity）**：`lc/lac unregister` 不可靠——直接 `sqlite3 plugins/LoginSecurity/LoginSecurity.db "DELETE FROM ls_players WHERE last_name='X';"`（表 ls_players）→ 重进服 `/register <pw> <pw>`
 - **mockStatic 泄漏**：@BeforeEach 开不关 → 后续测试污染——每个测试 try-with-resources 包住
 - **登录冷却**：bukkit.yml `settings.connection-throttle` 改 0 + 重启可关；LoginSecurity「此用户已经在线」是会话残留时序（等 2-3s 再重连）
+- **⚠️ vanilla per-IP 在线限制（压测天花板，2026-08-13 实测）**：同 IP 已登录玩家 ≥5 时第 6+ 被踢（`Sorry, there are too many players logged in with your IP address`）→ **单出口 IP 压测上限 = 5 bot 真实在线**（40 bot 尝试全成功但峰值在线仅 3-6）。**macOS 禁 bind 127.0.0.x**（Errno 49，lo0 虽 /8 掩码但内核只认 127.0.0.1；Linux 可行）→ 多回环 IP 方案 macOS 死路（无 sudo 加不了 lo0 alias）。真实玩家各 IP 不同，此限制不影响线上容量
+- **⚠️ 压测在线数统计**：mineflayer `spawn` 事件计数只增不减会虚高（被踢也算"进入"）——用 Set 维护真实在线（spawn 增 / end 减），采样打 `在线=N/总数`
+- **⚠️ 登录风暴：冷区块首登崩、热世界不崩**（2026-08-13 实测）：冷启动后首轮登录加载全冷 chunk → 10 bot 就 TPS 4.2；预热后（同轮测试后半程）40 bot 登录风暴 TPS 最低 16.1 稳定 18+，0 次 Can't keep up → **活动当天必须预热 spawn 区域**（提前登录/加载），登录风暴本身不是杀手，冷 chunk 生成才是
 - **LP check true ≠ 命令可用（子权限陷阱）**：`/mail send` 需 `essentials.mail.send`、`/warp` 需 `essentials.warp.list`、`/time set` 需 `essentials.time.set`——最终验收必须 bot 实测命令
 
 ## 跨服/双服测试（transfer）

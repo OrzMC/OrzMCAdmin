@@ -1,5 +1,7 @@
 # DeathChest 回归测试（死亡瞬间下线 → 物品丢失）✅ 已修复
 
+> **fix3（2026-08-12 MCSM 卡服事件）**：DeathChest 方块破坏动画 `sendBlockDamage` progress 越界 → 每秒刷屏抛异常 → 拖垮服务器 → 玩家集体超时掉线（"卡出服"）。**已本地复现（旧版 266 异常）并验证修复（0 异常）**，详见文末「fix3 动画 bug」。
+
 > **背景**：DeathChest 3.0.1 存在「玩家死亡瞬间下线 → 掉落物清空但箱子未创建 → 物品永久丢失」的 bug。
 > 2026-08-05 在测试服实测复现、定位根因并**已修复**（自编译版 v3.0.1-fix1）。
 > 脚本：`scripts/regression/`（bugtest-death3.js / bugtest-check3.js / bugtest-fall.js / bugtest-precise.js / bugtest-data.js）
@@ -131,6 +133,36 @@ grep -A 5 "diamond" <服务器>/world/dimensions/minecraft/overworld/death-chest
 2. **mineflayer 开箱失败**：DeathChest 用自定义 inventory holder（非方块原生 NBT），mineflayer openContainer 等不到 windowOpen——**真人客户端正常**，验证物品用存档（death-chests.yml）而非开箱
 
 **测试辅助**：`regress-tps.js`（TPS/插件查询）、`regress-expire.js`（精确坐标查箱）、`bugtest-world.js`（跨世界死亡）、`regression-loop.sh`（自动化多轮）
+
+## 坑（实测踩过）
+
+## fix3 动画 bug（2026-08-12 MCSM 卡服事件）✅ 已修复
+
+**现象**：MCSM 服 20:45 起 `[DeathChest] java.lang.reflect.InvocationTargetException` + `Caused by: IllegalArgumentException: progress must be between 0.0 and 1.0` **每秒刷屏** → 异步线程池/日志 IO 洪水 → TPS 崩（7-8）→ 玩家超时掉线 → 重连被 LoginSecurity「此用户已经在线」拒绝 → **集体卡出服**。
+
+**根因（源码 + 复现实证）**：
+- `BreakAnimationRunnable.run()`：`process = (now - createdAt)/(expireAt - createdAt)` → `state = (int)(9 * process)` → `PaperBreakAnimation` → `sendBlockDamage(progress = state/9f)`（**progress 要求 0.0-1.0，Guava 硬校验**）
+- **process 非法时必抛**：① `expireAt < createdAt`（数据异常/-1 永不过期 + 远古 createdAt）→ process 大幅负 → state 负 → progress 负；② **过期后销毁滞后** → process > 1.111 → state ≥ 10 → progress > 1
+- **MCSM 触发链**：`ExpirationChestListener` 用 `runTaskLater((untilDeletion/1000)*20)` **按 tick 调度销毁**——TPS 7-8 时 600s 的销毁任务实际 ~1600s 才执行；**动画任务（`runTaskTimerAsynchronously` 异步、真实时间每秒跑）在箱子过期后继续跑** → process 增长超 1.111 → 每秒抛；活动期玩家频繁死亡箱子多 → 异常洪水
+- **动画只发给附近 20 格玩家**（`getNearbyEntities(..., 20,20,20, PLAYER)`）——没人旁观不抛（本地早期复现失败原因之一）
+
+**修复（v3.0.1-fix3，源码 `~/OrzMC/tools/DeathChest/`）**：
+1. `PaperBreakAnimation.spawnBlockBreakAnimation`：`state = Math.max(0, Math.min(9, state))` + `progress = Math.max(0f, Math.min(1f, finalState / 9f))`（防御任何非法输入）
+2. `BreakAnimationRunnable.run()`：`process = Math.min(1.0, Math.max(0.0, ...))`（源头钳制）
+- 构建：`./gradlew shadowJar --no-daemon`（JDK 25）→ `build/libs/deathchest.jar`（269100 字节，旧版 268951）
+
+**本地复现方法（确定性）**：
+1. `write_file` 手写 `death-chests.yml`（**必须用 write_file/文本原样，PyYAML safe_dump 会破坏 `==: org.bukkit.Location` 类型标记导致反序列化失败！**）造 `createdAt: 1000`（1970）+ `expireAt: -1` 的箱子 @ 出生点附近
+2. `/deathchest reload` 热加载（onLoad→onCreate 启动动画任务，expireAt=-1 不调度销毁→永续）
+3. **bot 必须 tp 站箱子 20 格内**（否则 getNearbyEntities 空不抛）——HermesBot 登录后 `/minecraft:tp HermesBot 21 64 -470`
+4. 数日志 `progress must`：**旧版 266 条/秒刷，修复版 0 条**
+
+**本地测试服坑（2026-08-12 实测）**：
+- ⚠️ **本地玩家对所有伤害类型免疫**（`/damage` 全类型报 `Target is invulnerable`；原版 kill 只回显 Killed 无 died；Essentials /kill 偶发 died 玄学）→ **死亡建箱复现基本不可用**，用手写箱子
+- ⚠️ `/damage` 对玩家无效可能是原版限制（对非玩家实体也需选择器）
+- ⚠️ 加载箱子 `getWorld()` 可能 null（world_key 反序列化）→ 动画任务 cancel——手写格式必须与真实存档一致
+- ✅ `/deathchest reload` 热重载有效（不必重启）；debug 日志在 config `debug: true`
+- ✅ 恢复现场：config expiration 600 / debug false / death-chests.yml 清空
 
 ## 坑（实测踩过）
 - **粒子崩溃**：26.2→1.21.11 边界，坠亡掉落粒子触发 `PartialReadError: f32` —— 脚本需内置粒子 patch（115/116 映射）或 `hideErrors: true` 绕过
