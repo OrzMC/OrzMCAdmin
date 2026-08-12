@@ -8,8 +8,8 @@ admin (全权限) → builder (创造建造) → member (进阶) → default (�
 | 组 | 定位 | 关键权限 | 验证结果 |
 |:--|:--|:--|:--|
 | default | 新手生存 | sethome/home/back/spawn/tpa/msg/kit + griefprevention 圈地 | fly=false ✅ gamemode 拒绝 ✅ |
-| member | 进阶 | +essentials.fly +sethome.multiple +nick | fly=true ✅ |
-| builder | 创造建造 | +minecraft.command.gamemode +worldedit.* +worldguard.* | gamemode=true ✅ worldedit=true ✅ |
+| member | 进阶 | +tpa/warp/kit/mail/getmehome 家 + playershop + GP 圈地 | 进阶功能 ✅ |
+| builder | 创造建造 | +gamemode.creative/survival +worldedit 系列通配 +worldguard 区域 +**Litematica 粘贴（setblock/fill/data）** | gamemode=true ✅ worldedit=true ✅ |
 | admin | 管理 | +luckperms.* +* | — |
 
 ## 关键命令
@@ -19,10 +19,10 @@ lp creategroup <name>
 lp group member parent add default
 lp group builder parent add member
 lp group admin parent add builder
-# 权限设置（组）
-lp group default permission set essentials.fly false   # 显式拒绝
-lp group member permission set essentials.fly true
-lp group builder permission set worldedit.* true
+# 权限设置（组）——以 perm_commands.txt / docs/permission-groups.md 为唯一参考
+lp group builder permission set worldedit.selection.* true   # 系列通配（不用大通配 worldedit.*）
+lp group builder permission set minecraft.command.setblock true   # Litematica 粘贴（2026-08-12）
+# 全量对齐：lp group <G> permission clear + 逐条 set（permission set 是加法，不会移除旧节点）
 # 玩家分配
 lp user <name> parent add builder
 lp user <name> parent set default
@@ -39,8 +39,9 @@ lp user <name> parent set default
 8. **/gamemode 是 Essentials 命令**（需 `essentials.gamemode`），不是原版 `minecraft.command.gamemode`（Paper 上原版命令被接管，`/minecraft:gamemode` 会 Unknown）；**//wand 是双斜杠**（单斜杠 /wand 不存在）
 
 ## 测试账号分配（本地测试服）
-- joker → builder（测试创造/WE）
-- TestPlayer → member（测试飞行）
+- joker → builder（测试创造/WE/Litematica 粘贴）
+- TestNewbie → builder（权限验收）
+- TestPlayer → member（测试进阶功能）
 - Newbie → default（新手基线）
 - HermesBot → default（运维 bot，不用特权）
 

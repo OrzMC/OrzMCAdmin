@@ -74,9 +74,10 @@ required_commands: [java, curl, tar]
 ## 关键事实（2026-08 实测）
 
 - **旧 API `api.papermc.io/v2` 已完全废弃（410 Gone）**——用 fill-data 新机制（`parse_papermc.py` 封装）
-- **最新稳定版**：paper-26.2-111（2026-08-10 三端实测；**26.2-92 与 111 行为可能不同**，本地复现必须与线上同构建）；**Java 要求**：26.x 需要 Java 25
+- **最新稳定版**：paper-26.2-111（2026-08-10 三端实测；**26.2-92 与 111 行为可能不同**，本地复现必须与线上同构建）；**Java 要求**：26.x 需要 Java 25；⚠️ **2026-08-12 巡检显示官方最新 26.2-112**（用户指示暂不升级）；**Exaroton 平台会自动升级核心**（version_history.json 111→112 平台自动完成，2026-08-12 实证）→ 三端核心版本天然可漂移
 - **插件基线**（三端对齐，2026-08-11 更新）：OrzMC **1.0.16** / EzShops 2.5.9（storage.type: **yaml**，无 MySQL）/ Geyser **2.11.1-b1217**（基岩 26.40 支持，b1208 不支持；2026-08-12 由 b1216 升级）/ LoginSecurity 3.3.2-SNAPSHOT（**本地修复版**：getPlayer null 防御，Gradle 构建）/ LuckPerms 5.5.71（官方渠道，平台滞后 12 版）/ EssentialsX 2.22.0（⚠️ 26.2 不兼容：/spawn 未注册 + op 全拒）/ ViaVersion 系列 5.11.0 稳定版不升 SNAPSHOT / BackOnDeath 0.4 / DeathChest 3.0.1 / GetMeHome 3.0.0 / GriefPrevention 16.18.7 / SkinsRestorer 15.12.5（**三端 `login.offlineModeWarning.enabled: false` 2026-08-11 关闭**——离线混合服对全玩家发「盗版Minecraft/TLauncher」警告纯噪音，与具体启动器无关，SkinsRestorer 无法检测实际启动器；恢复 = 改 true + `/skin reload`）/ Vault 1.7.3-b131 / ViaBackwards 5.11.0 / ViaRewind 4.1.3 / WorldEdit **7.4.5**（2026-08-11 由 7.4.4 升级）/ WorldGuard 7.0.18
 - **GeoIP 内网误拦截（2026-08-06 修复，OrzMC 1.0.15）**：MCSM allow_country_code=[CN,JP,TW] 时内网玩家（192.168.x/10.x）被拦截——geojs.io 无法解析私有段返回未知国家码。1.0.15 加内网 IP 短路（RFC1918/环回/CGNAT 直接放行，公网仍检查）。OrzMC 配置读取为实时（改 config.yml 后 **`/config reload` 即生效**，无需重启；⚠️ 2026-08-11 修正：命令是 **`/config reload`（根命令 `config`，别名 `cfg`，源码 FeatureModule.java `commands.register(node, "配置管理", List.of("cfg"))`）**，技能旧写 `/orzconfig reload` 是错的——实际执行返回 Unknown）；临时缓解=allow_country_code 改 []
+- **MC 26.2 原生命令/聊天防刷（2026-08-12 反编译实证）**：server.properties `command-spam-threshold-seconds` / `chat-spam-threshold-seconds`（26.2-pre1 起，默认 10）。**真实机制（勿被名字误导）**：不是「每秒 N 条」，而是**爆发计数器**——`TickThrottler(20, 20×N)`：每条命令计数 +20，每 tick 衰减 -1（排水≈1 命令/秒），计数 ≥20×N 时踢出 `Kicked for spamming`。→ 任何持续 >1 条/秒的命令流迟早踢；45 条/秒时阈值 100 也只撑 ~2.3s。**OP/单人房主豁免**（bytecode：isOp 检查跳过踢出）→ 管理员永远遇不到。⚠️ **设 0 反而每条命令都被踢**（TickThrottler.isIncrementAndUnderThreshold 缺 0 保护，GitHub issue #14114）→ 要放宽用大数值，别设 0。触发实例：Litematica 粘贴原理图默认走 `pasteUseFillCommand`（/fill 流 45-104 条/秒）→ 反复被踢，**调阈值治标不治本**；正解：改用 WorldEdit `//paste`（一条命令）、关 pasteUseFillCommand 改逐方块放置、或给该玩家 OP（豁免）。
 - **权限系统（2026-08-06 实施，LuckPerms 4 组）**：default(新手生存)→member(进阶飞行)→builder(创造+WE)→admin(全权限)；坑：RCON 不回显 LP 命令输出（用 bot 玩家身份验证）、default 勿显式设 false 覆盖子组 true、Essentials 权限默认拒绝。详见 references/permission-system.md
 - **force-gamemode 三端已统一 false（2026-08-06）**：MCSM 原为 true（玩家每次登录被强制回 survival，切创造后退出重登丢失模式），已改 false 与本地/Exaroton 对齐；改 server.properties 用 `PUT /api/files/`（保留 CRLF），重启生效，不影响在线玩家
 - ⚠️ **死亡位置传送覆盖关系（2026-08-05 反编译实证）**：**Essentials `/back` 不能覆盖 BackOnDeath**——`/back` 传送目标是 `LastLocation`（只在 `PlayerTeleportEvent` PLUGIN/COMMAND 原因时更新），**死亡事件不更新 LastLocation** → `/back` 回的是「最后传送点」**不是死亡点**。BackOnDeath 监听死亡事件记录死亡位置。**线上依赖 BackOnDeath 回死亡点功能 → 保留**（仅 SpigotMC 渠道，无 Hangar/Modrinth）。同理 GetMeHome 保留（线上 60+ 玩家用，迁移 Essentials 需脚本转换+多 home 权限，方案未成熟前不动）
@@ -163,7 +164,17 @@ python3 ~/.hermes/scripts/mc_version_check.py
 - **脚本逻辑**：`~/.hermes/scripts/mc_version_check.py` 查 PaperMC 核心（parse_papermc.py）+ 17 插件各官方渠道最新版（Modrinth/Hangar/GitHub/metadata.luckperms.net/geysermc）vs 本地 `~/minecraft-server/plugins/` 部署版本（读 jar 内 plugin.yml/paper-plugin.yml）
 - **输出**：对比表 + 状态（✅一致 / ⚠️有更新 / ➖本地构建 / ➖稳定 / ❓查询失败）+ 差异汇总
 - **渠道映射**（CHANNEL dict）：OrzMC=hangar；EzShops/LoginSecurity/DeathChest/GetMeHome=**local**（本地打包，不提示升级）；BackOnDeath/Vault=**stable**（无渠道）；Essentials=github；Geyser-Spigot=geyser；其余=modrinth
-- **已知坑**：① Geyser jar 内 plugin.yml 固定显示 `2.11.1-SNAPSHOT`，版本以文件名构建号为准（正则 `-(\d+)\.jar$`）；② OrzMC 用 `paper-plugin.yml`（非 plugin.yml）；③ Modrinth SkinsRestorer 需 loaders 过滤（否则返回 neoforge 假阳性）；④ WorldEdit/WorldGuard 版本带构建后缀（`7.4.4+7546-...`）需 strip；⑤ 有差异时 cron agent 发飞书询问用户是否升级，升级走三端顺序：本地测试服 → Exaroton → MCSM（无玩家窗口）
+- **已知坑**：① Geyser jar 内 plugin.yml 固定显示 `2.11.1-SNAPSHOT`，版本以文件名构建号为准（正则 `-(\d+)\.jar$`）；**2026-08-12 已修复：脚本按 build 号比较部署 vs 最新（同 build 即 ✅，不再假阳性）**；② OrzMC 用 `paper-plugin.yml`（非 plugin.yml）；③ Modrinth SkinsRestorer 需 loaders 过滤（否则返回 neoforge 假阳性）；④ WorldEdit/WorldGuard 版本带构建后缀（`7.4.4+7546-...`）需 strip；⑤ 有差异时 cron agent 发飞书询问用户是否升级，升级走三端顺序：本地测试服 → Exaroton → MCSM（无玩家窗口）
+
+### 6b. MC 定时任务清单（统一管理入口，2026-08-12 起）
+
+| 任务 | job_id | 计划 | 脚本 | 模式 | 行为 |
+|:--|:--|:--|:--|:--|:--|
+| MC 三端版本巡检 | `0b4298821a86` | 每日 10:00 | `~/.hermes/scripts/mc_version_check.py` | 脚本输出 + agent 解读（skills=orzmc, toolsets=terminal/file/web）| 查核心+17 插件最新版 vs 本地部署 → 有差异发飞书询问用户 |
+| 三端配置审查 | `ab06b886c39f` | 每周一 9:15 | `~/.hermes/scripts/orzmc_config_audit.sh` | 同上（toolsets=terminal/file）| 只审查不重启：Exa+MCSM 并发拉取 77 配置 → cmp3 对比 → 报告落盘 references/ |
+
+- 两者脚本均读 `~/.hermes/.env` 凭据；cron 精简 PATH 实测通过（2026-08-12 全量体检）
+- 脚本维护记录：audit 脚本 `Bearer ***` bug 已修（2026-08-12）；version_check Geyser build 号比较已修（2026-08-12）
 
 ## Pitfalls（跨后端通用）
 

@@ -65,6 +65,14 @@
 - LP 5.5 无 track delete 命令（子指令仅 info/editor/append/insert/remove/clear/rename/clone）
 - `lp user X parent remove <组>` 只删无上下文节点；带上下文快照的节点删不掉——`parent clear+set` 一步到位
 
+## 实战坑（2026-08-12 三端对齐）
+
+- **LP export 文件名按分钟粒度**（`luckperms-YYYY-MM-DD-HH-mm.json.gz`）：同分钟多次 export **覆盖同名文件**——本地验证导出时先 `date` 确认分钟，或等下一分钟再导出，避免误读旧文件
+- **MCSM/Exaroton 插件目录可能有历史导出**（`verify-*`、`post-*`、`pre-*` 等手工导出）：列目录找最新**必须过滤 `luckperms-` 前缀**再按文件名倒序（字母序 v/p 会排在 luckperms 前面）
+- **EssentialsX `/gamemode` 命令认父权限 `essentials.gamemode`**（08-12 实测：只给子权限 .creative/.survival 命令仍报「没有权限」）——父权限含 .others，**必须同组显式 `essentials.gamemode.others false`**（具体权限优先于父权限，可精确防改他人）；08-08 验收「子权限够用」是父权限残留假象
+- **MCSM 目录 `page_size` 上限 100**：LuckPerms 目录导出文件多时用 `page_size=100` + 过滤词缩小范围
+- **三端对齐流程模板**（2026-08-12 全流程验证）：`perm_commands.txt` 蓝本 → 每组 `permission clear` + 逐条 set → 每端先 `lp export` 备份 → 完成后 export 对比验证（组节点数 + 继承链）→ LP 实时生效无需重启（MCSM 有玩家也可执行）
+
 ## 单测陷阱（Mockito）
 
 - `ImmutableContextSet.empty()` 是静态工厂依赖 ContextManager——**用惰性方法不要静态初始化字段**；`InheritanceNode.builder()` 同样依赖 LuckPermsProvider.get()——产品代码用 `api.getNodeBuilderRegistry().forInheritance().group(name).build()`

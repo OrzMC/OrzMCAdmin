@@ -17,7 +17,7 @@
    essentials.gamemode.others 等）
 4. **权限组内其它细节由线上自管**：配置表只保证「定位功能可用」
 
-## L0 default（访客）— 生存基础体验（14 项）
+## L0 default（访客）— 生存基础体验（13 项）
 
 `ls.bypass`（登录豁免）、`essentials.afk/back/msg`（社交——reply 无此权限随 msg）、
 `essentials.balance/balancetop/pay/spawn`（经济+回城）、`bod.back`（死亡回档）、
@@ -25,14 +25,14 @@
 **不给**：`getmehome.user`（家功能属 member）、`deathchest.command.report`
 （管理命令——在 DeathChest admin 包，default 不该有）
 
-## L1 member（成员）— 完整玩家功能（14 项）
+## L1 member（成员）— 完整玩家功能（13 项）
 
 `getmehome.user`（**父权限一个替代 5 个 command.* 分列**）、
 `essentials.tpa/tpahere/warp/warp.list/kit/mail/mail.send`（**warp.list 与 mail.send
 是独立子权限**——/warp 列表、/mail send 各自需要）、`griefprevention.createclaims/trapped`、
 `ezshops.playershop.create/buy/sell`
 
-## L2 builder（建造者）— WE/WG 裁剪子集 + 建造便利（26 项）
+## L2 builder（建造者）— WE/WG 裁剪子集 + 建造便利 + Litematica 投影（31 项）
 
 WorldEdit：`worldedit.wand`、`worldedit.selection.*`、`worldedit.region.*`、
 `worldedit.clipboard.*`、`worldedit.history.*`、`worldedit.brush.*`、
@@ -41,8 +41,17 @@ WorldEdit：`worldedit.wand`、`worldedit.selection.*`、`worldedit.region.*`、
 WorldGuard：`worldguard.region.claim.*`（**通配含 claim.own**）、
 `worldguard.region.define/remove/addmember/removemember/setparent`、
 `worldguard.region.flag.*`、`worldguard.region.list/info/teleport`
-Essentials 建造便利：`essentials.gamemode.creative/survival`（**无 .others**）、
-`essentials.fly/heal/workbench/top`（craft 无此权限——/craft 是 /workbench 别名）
+Essentials 建造便利：`essentials.gamemode`（**父权限=命令基础权限，08-12 实测：
+子权限 .creative/.survival 不足于使用 /gamemode 命令**；父权限含全模式切换
+spectator/adventure，无破坏性风险）+ `essentials.gamemode.creative/survival`（子权限，
+随父权限生效）+ **`essentials.gamemode.others` 显式 false**（父权限含 .others，
+必须显式拒绝防改他人模式）+ `essentials.fly/heal/workbench/top`（craft 无此权限——
+/craft 是 /workbench 别名）
+**Litematica 投影粘贴（2026-08-12 新增，方案 A）**：`minecraft.command.setblock`（/setblock 粘贴核心）、
+`minecraft.command.fill`（/fill 连续区域）、`minecraft.command.data`（/data NBT 恢复）——
+原版命令模式三件套；**不授予 `minecraft.command.summon`**（可召危险实体/刷物品，客户端
+`pasteIgnoreEntities` 跳过）；WE 模式（客户端 commandUseWorldEdit=true）无需新增权限
+（worldedit.selection.pos/region.set 已覆盖）；安全前置：三端 enable-command-block=false
 **不给**：`worldedit.reload`、`worldguard.region.bypass` 等管理侧节点
 
 ## L3 admin（管理员）— 精确管理节点（32 项，无通配无 op）

@@ -14,6 +14,7 @@
 > - **对齐项验证未完成**：Exa/MCSM server.properties 未拉取，仅本地 `sync-chunk-writes=true`；上轮对齐结论（Exa sync-chunk-writes 平台保留 false、SkinsRestorer/DeathChest/paper-global 已生效）维持不变
 > - **2026-08-11 已知问题「Exa 启动反复失败（LOADING→STARTING→STOPPED 循环+日志空）」本次未复现**（status 2→1 后稳定，无循环）
 > - **修复建议**：① `orzmc_reboot_audit.sh` 的 `timeout` 改 `gtimeout`（coreutils）/`perl -e 'alarm shift; exec @ARGV'`，或去掉（fetch3 内部已有请求超时）；② Exa STARTED 判定 4→1；③ 审查失败应输出失败标记，勿静默产出空报告
+> - **2026-08-12 复测确认（Geyser 升级期间）**：`sync-chunk-writes` Exa=false **平台强制再次实证**——PUT true → 重启 → 平台重写回 false（server.properties 文件头时间戳=启动时刻 10:54:55），与 8/11 结论一致：**Exa 非白名单键无法持久化，永久标记为平台保留差异，三端不期望一致**。另发现：**Exaroton 平台启动器自动升级核心**（`version_history.json`：26.2-111→26.2-112，2026-08-12 10:12 启动时自动完成）→ 三端核心版本天然可漂移（Exa 自动最新，本地/MCSM 手动），属预期，版本巡检已覆盖
 
 > **变化跟踪（20260811 上午对齐审查 → 下午重启后审查）**：
 > - **✅ 对齐项生效（重启后三端一致）**：SkinsRestorer connectionOptions（三端 `sslMode=trust&serverTimezone=UTC`）、ifNoServerBlockCommand（三端 false）、perSkinPermissionsConsent（三端无引号）；paper-global.yml `-minecraft`/`no-permission`/`secret`（MCSM 重启后与本地/Exa 一致）；DeathChest debug（三端 false）+ sound（三端 `BLOCK_CHEST_LOCKED;1.0;1.0`）；paper-global velocity.online-mode（三端 false）；paper-world-defaults enderpearl-exploit（三端 true）/max-leash-distance（三端 default）。**汇总：61 一致 / 8 差异 / 8 数据（vs 上次 60/9/8，净 -1 差异）**
