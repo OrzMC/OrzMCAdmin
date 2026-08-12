@@ -38,9 +38,9 @@
 
 1. **权限名核对**（上节）→ 2. **子权限模式**（/time set 需 time.set、/mail send 需 mail.send、/warp 列表需 warp.list、/gamemode 他人需 .others）→ 3. **通配符/父权限最小化**（父权限 1 替代多；通配避开管理分支：不给 `worldedit.*`（含 reload）、`worldguard.region.*`（含 bypass）、`essentials.*`、`minecraft.command.*`（含 op）；增量原则子组只配增量）→ 4. **LP 命令通道**（bot $e 通道 orzdebug 执行 + 查 latest.log；RCON 只适合批量 set 不适合查询）→ 5. **bot 实测验收**（每权限组一账号；区分 Unknown=未注册/「没有 X 权限」=缺配置/静默=放行；管理命令用不存在玩家目标测放行安全无副作用）→ 6. **越权检查**（admin check `minecraft.command.op` → false）+ 继承检查
 
-## 三端 LP 权限同步（perm_commands.txt 蓝本）
+## 三端 LP 权限同步（生成器蓝本）
 
-- 同步清单（`lp group <g> permission set <节点> true` + parent 链 member→default/builder→member/admin→builder）
+- 同步清单：`scripts/gen_perm_commands.py` 从**仓库 `docs/permission-groups.md`（唯一权威）**解析 L0-L3 表格生成（`lp group <g> permission set <节点> true|false` + parent 链 + 高危注释）；改权限 = 改文档 → 重新生成，勿手改产物
 - ⚠️ 执行前**必须过滤注释行**（`grep -v '^#'`——文档语法示例行会被误匹配执行 → LP 报用法错误）
 - 命令 API 发送成功 ≠ LP 执行成功——查日志三个确认模式：`Set <节点> to true for <组>` / `already has <节点> set` / `parent groups cleared, and now only inherits <父组>`；缺任一 = 未执行需补发
 - MCSM 命令端点必须 **GET** + `?command=` URL 编码 + 冷却重试（500 sleep 3-4s）；Exaroton 无玩家自动停——先 `POST /extend-time/`（`{"time":600}`）延长窗口
@@ -56,8 +56,8 @@
 ## 权限组配置（去 op 化）
 
 - 四组增量配置（admin→builder→member→default，只配增量）；**高危节点任何组都不授**：`*`、`luckperms.*`、`minecraft.command.op`、`bukkit.command.op`、`essentials.stop/reload`
-- 双实现注意：用 GetMeHome 当家插件时 Essentials home 权限不给（只配 getmehome.command.sethome 系）
-- 完整节点清单：`references/perm-group-config.md` + `references/plugin-default-perms.md`
+- 双实现注意：用 GetMeHome 当家插件时 Essentials home 权限不给——家功能用 **`getmehome.user` 父权限**（2026-08-08 起合并，替代 5 个 `command.*` 分列）
+- 完整节点清单（唯一权威）：仓库 `docs/permission-groups.md`（执行清单由 `scripts/gen_perm_commands.py` 生成）；插件默认权限 → `references/plugin-default-perms.md`
 
 ## LP 命令语法速记
 
@@ -71,7 +71,7 @@
 - **MCSM/Exaroton 插件目录可能有历史导出**（`verify-*`、`post-*`、`pre-*` 等手工导出）：列目录找最新**必须过滤 `luckperms-` 前缀**再按文件名倒序（字母序 v/p 会排在 luckperms 前面）
 - **EssentialsX `/gamemode` 命令认父权限 `essentials.gamemode`**（08-12 实测：只给子权限 .creative/.survival 命令仍报「没有权限」）——父权限含 .others，**必须同组显式 `essentials.gamemode.others false`**（具体权限优先于父权限，可精确防改他人）；08-08 验收「子权限够用」是父权限残留假象
 - **MCSM 目录 `page_size` 上限 100**：LuckPerms 目录导出文件多时用 `page_size=100` + 过滤词缩小范围
-- **三端对齐流程模板**（2026-08-12 全流程验证）：`perm_commands.txt` 蓝本 → 每组 `permission clear` + 逐条 set → 每端先 `lp export` 备份 → 完成后 export 对比验证（组节点数 + 继承链）→ LP 实时生效无需重启（MCSM 有玩家也可执行）
+- **三端对齐流程模板**（2026-08-12 全流程验证）：`gen_perm_commands.py` 生成蓝本 → 每组 `permission clear` + 逐条 set → 每端先 `lp export` 备份 → 完成后 export 对比验证（组节点数 + 继承链）→ LP 实时生效无需重启（MCSM 有玩家也可执行）
 
 ## 单测陷阱（Mockito）
 
@@ -87,7 +87,8 @@
 
 ## 支持文件
 
-- `references/perm-group-config.md`：四级权限组配置表（14/14/26/32 项 + bot 全量验收方法）
+- `references/perm-group-config.md`：权限组配置指针版（权威源=仓库 docs/permission-groups.md，含生成/同步流程）
+- `scripts/gen_perm_commands.py`：从权限权威文档生成 LP 命令清单（方案①：文档唯一权威）
 - `references/plugin-default-perms.md`：插件默认开启权限盘点清单
 - `references/lp-api-bootstrap-correction.md`：Bootstrap 校正模式（LP 5.5 API 细节）
 - `references/context-trap-case-study.md`：上下文陷阱完整根因链

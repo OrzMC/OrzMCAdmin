@@ -58,7 +58,7 @@ screen -S mc -p 0 -X stuff 'orzdebug $h\n' # 注入命令（\n 用实际换行�
 ## 相关链路（EasyBot WS）
 - `ws_server` 连不上时 `/bot` 显示 `wsNotOk`；连上后 `wsOk`。`/bot http` `/bot ws` 看详情
 - `httpUnknown` = HTTP 健康检查异步未完成（设计状态，非 bug）
-- 群通知发送失败看 `gateway.db` 的 `outbound_deliveries` 表（容器内 `/var/lib/easybot/data/gateway.db`，拷出来 sqlite3 查）——`11244 token not exist or expire` = QQ token 2h 过期，重启 adapter 恢复（`POST /api/v1/adapters/qq/start`）
+- 群通知发送失败看投递诊断（`scripts/easybot_deliveries.py`，0.0.33 起走 API 查 `messages` 表；勿再用 docker cp 查 `outbound_deliveries`——已停止写入）——`11244 token not exist or expire` = QQ token 2h 过期（0.0.33 CachedTokenStore 发送时自动刷新，通常自愈；仍失败可重启 adapter `POST /api/v1/adapters/qq/start`）
 
 ## 其他命令补测（同批 2026-08-06，均通过）
 - **`/config`**（控制台可测，screen 注入）：`list`（24 项可运行时配置）/ `get <路径>`（值+类型+默认+说明）/ `set <路径> <值>`（持久化，输出 `已设置: ...`）/ `reset <路径>`（恢复默认，输出 `已恢复默认: ...`）/ `dump`（完整配置树含默认值）/ `reload`（`所有配置文件已重新加载`）/ 无参数（用法帮助）。⚠️ 改 `tnt.enable` 等运行时配置**即时生效无需重启**（`currentPolicy()` 每次实时读 configs）——测完必须 set 回原值
@@ -79,7 +79,7 @@ screen -S mc -p 0 -X stuff 'orzdebug $h\n' # 注入命令（\n 用实际换行�
 
 **维护模式机制**（`WorldMaintenanceService.runExclusive`）：`running` AtomicBoolean 置位 → **踢出所有在线玩家**（`p.kick("服务器地图备份中...")`）→ `save-off` + `save-all flush` → 异步执行备份/优化 → `save-on` + 复位。登录拒绝走 `OrzPlayerEvent.onPlayerPreLogin` 的 `isRunning() → disallow`（与黑名单同路径）。无手动开关、无 config 开关——只能靠 `$b`/`$o` 触发窗口（备份 ~1-2s，抓窗口需 bot 提前在线等踢，登录窗口几乎抓不到，用踢出分支验证即可）。
 
-**gateway.db 查通知送达（schema 细节）**：`outbound_deliveries` 表**没有 text 列**——消息正文在 `request_json`（JSON 字符串）的 `text` 字段；状态看 `state`（succeeded/pending）。查询：`SELECT platform, chat_id, state, request_json, created_at FROM outbound_deliveries ORDER BY created_at DESC`。拷库：`docker cp easybot:/var/lib/easybot/data/gateway.db /tmp/`（容器内无 sqlite3）。内嵌 python 查库会被守卫拦，写脚本文件执行。
+**通知送达验证（0.0.33+）**：投递记录在 `messages` 表（`outbound_deliveries` 已停止写入）；且 SQLite WAL 下 `docker cp` 单文件漏最近提交 → **用 API**：`POST /admin/login {password}` → `GET /api/v1/messages?limit=30`（`raw_data.result.success` 判定成败；`role=Assistant` 出站）。现成脚本 `scripts/easybot_deliveries.py`。内嵌 python heredoc 会被守卫拦，写脚本文件执行。
 
 **mineflayer 射箭坑（传送弓）**：`activateItem()` 单独调用**不触发完整射箭**（EntityShootBowEvent/ProjectileHitEvent 不触发，位置不变、日志无痕迹）——需要完整拉弓充能时序。传送弓完整链路（`/tpbow` → `你获得了传送弓` → 射箭 → `[传送弓] 传送完成!`）此前验收已过，重测射箭失败是工具时序问题非插件问题。
 

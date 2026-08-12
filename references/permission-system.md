@@ -35,7 +35,7 @@ lp user <name> parent set default
 4. **H2 数据库读不了**（运行中被锁 + 文件密码），停服也读不了（未知密码）——别浪费时间，用 bot 验证
 5. Essentials 大部分权限**默认拒绝**（非默认授予）——不设权限 = 无权限，`fly`/`gamemode` 都是
 6. **⚠️ `parent set` 语法坑（实测）**：`lp user X parent set admin` 会把玩家**只保留 default 组**（set=替换为指定组，但 admin 没被正确加？实测结果是 X 只剩 default）。**正确用 `parent add` 追加 + `parent remove` 移除**：`lp user X parent add admin` + `lp user X parent remove default`
-7. **⚠️ Bukkit `*` 通配符只对 OP 生效**：`lp group admin permission set * true` 不赋予非 OP 玩家全权限——OP 级命令（/kick /ban /stop）需要 `minecraft.command.*` 显式权限或玩家在 ops.json。admin 组实测：LP 管理命令（luckperms.*）✅，但 /gamemode 靠继承 builder 的 essentials.gamemode，/kick 需额外 `minecraft.command.kick`（当前测试显示命令执行但找不到玩家=权限有，待确认具体节点）
+7. **⚠️ Bukkit `*` 通配符只对 OP 生效**：`lp group admin permission set * true` 不赋予非 OP 玩家全权限——OP 级命令（/kick /ban /stop）需要 `minecraft.command.*` 显式权限或玩家在 ops.json。admin 组实测：LP 管理命令（luckperms.*）✅，但 /gamemode 靠继承 builder 的 essentials.gamemode，/kick 需额外 `minecraft.command.kick`（**8-08 验收已确认**：admin 组显式配置 minecraft/bukkit.command.kick/ban 等，节点明细见仓库 `docs/permission-groups.md`）
 8. **/gamemode 是 Essentials 命令**（需 `essentials.gamemode`），不是原版 `minecraft.command.gamemode`（Paper 上原版命令被接管，`/minecraft:gamemode` 会 Unknown）；**//wand 是双斜杠**（单斜杠 /wand 不存在）
 
 ## 测试账号分配（本地测试服）

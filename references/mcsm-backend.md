@@ -66,6 +66,7 @@
 - ⚠️ **MCSM download API 不校验文件存在性**：`POST /api/files/download` 对任何文件名都返回 200（不存在的文件也发凭证）！判断文件是否存在必须**真实 GET 下载**：500=不存在，`PK` 魔数开头=真实 jar
 - ⚠️ **Paper 26.x 首次启动需下载 mojang_26.x.jar**：MCSM 服务器若下载失败会 `Hash check failed for downloaded file mojang_26.x.jar` 崩溃循环（每次自动重启重下）；**kill 恢复法**：`mcsm.sh kill` 终止 → `start` 重新启动，通常第二次下载即成功
 - ⚠️ **daemon 文件操作**（2026-08-06 全面复核）：**list 需 fileName 过滤（不填空）、move 必须 PUT+二维数组、mkdir 只建单层（父目录不存在 500）、compress type=1 压缩/type=0 解压**；delete/mkdir/touch/copy 稳定可用；删后建议**真实 GET 验证**
+- ✅ **server.properties 启动时重写（2026-08-12 实证）**：每次重启文件头时间戳更新、值原样保留（服务端读入内存后写回）→ 「PUT 改文件（保留 CRLF）→ 等无人窗口重启」流程安全，改动不会丢
 - ✅ **command 编码**：中文命令用 `urllib.parse.quote`（空格变 %20）完全可行（2026-08-12 实测：含中文+括号的 say 广播正常执行）；空格原样（safe=' '）也可用。旧结论「空格不能 %20」过时——两种都通
 - ⚠️ **命令长度限制**：过长命令被截断，日志出现 `<--[HERE]` 标记——长命令拆短
 
