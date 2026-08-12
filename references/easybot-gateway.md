@@ -3,7 +3,7 @@
 > 场景：排查/运维 EasyBot IM 网关（本机 docker，OrzMC 机器人接入）。所有 IM 网关相关问题先查本节。
 
 ## 概述
-EasyBot（`ghcr.io/easyindie/easybot`）是统一 IM 网关：OrzMC 插件通过它接入 QQ/飞书/Telegram/Discord/微信。**本机以 docker 方式运行**（容器名 `easybot`，端口 `9090→8080`，数据卷 easybot-data → `/var/lib/easybot`）。**2026-08-12 升级至 0.0.33（schema v3）**，部署 kit 在 `~/Services/easybot-deploy-kit-0.0.33/easybot-deploy-kit/`（0.0.31 旧 kit 保留在 `~/Services/easybot-deploy-kit/` 作参照）。升级法：备份 DB（`easybot-backup.sh backup sqlite` 或 docker cp+sqlite3 .backup）→ 下载新 kit 校验 checksum → 拉镜像 → `EASYBOT_PORT=9090 EASYBOT_BIND_ADDRESS=0.0.0.0 ./deploy.sh`（保留卷）→ 验证 health/adapters（`schema_version: 3`、adapters 5/5）。
+EasyBot（`ghcr.io/easyindie/easybot`）是统一 IM 网关：OrzMC 插件通过它接入 QQ/飞书/Telegram/Discord/微信。**本机以 docker 方式运行**（容器名 `easybot`，端口 `9090→8080`，数据卷 easybot-data → `/var/lib/easybot`）。**2026-08-12 升级至 0.0.33（schema v3）**，部署 kit 在 `~/Services/easybot-deploy-kit-0.0.33/easybot-deploy-kit/`。升级法：备份 DB（`easybot-backup.sh backup sqlite` 或 docker cp+sqlite3 .backup）→ 下载新 kit 校验 checksum → 拉镜像 → `EASYBOT_PORT=9090 EASYBOT_BIND_ADDRESS=0.0.0.0 ./deploy.sh`（保留卷）→ 验证 health/adapters（`schema_version: 3`、adapters 5/5）。0.0.31 旧 kit/旧镜像/升级前 DB 备份已在验证 0.0.33 正常后清理（2026-08-12）。
 
 **架构链路**：
 ```
