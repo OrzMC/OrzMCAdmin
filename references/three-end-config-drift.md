@@ -1,12 +1,20 @@
-# 三端配置差异审计（2026-08-11 三次审计）
+# 三端配置差异审计（2026-08-11 三次审计；2026-08-12 重启审查 → v2 只审查不重启）
 
-> 触发：全量拉取三端（本地 ~/minecraft-server / Exaroton / MCSM）核心+插件配置，语义对比。
+> 触发：全量拉取三端（本地 ~/minecraft-server / Exaroton / MCSM）核心+插件配置，语义对比。**v2（2026-08-12 起，每周一 9:15 cron `ab06b886c39f`，脚本 `orzmc_config_audit.sh`）：不重启任何服务（Exaroton 重启耗积分、本地测试服无需每日重启），Exaroton+MCSM 并发拉取（`fetch3_configs.fetch_all`），去掉 GNU timeout（macOS 无此命令），输出 STATUS 成败行**。
 > 工具：`scripts/cmp3/fetch3_configs.py`（拉取）+ `cmp3_configs.py`（对比）+ `cmp3_diff_detail.py`（明细）+ `cmp3_report.py`（完整报告生成）+ `cmp3_trend.py`（新旧报告变化跟踪）。
 > 基线：77 个配置文件（核心 7 + 插件 70），**重启后全量审查（2026-08-11 四次）：8 个差异文件、8 个运行时数据文件、61 个完全一致**。
 > **完整报告（保留最近两次，最新为准）**：
-> - `references/config-drift-report-20260811.md`（四次审计·重启后·最新）
-> - `references/config-drift-report-20260810.md`（二次审计·用于变化跟踪）
->
+> - `references/config-drift-report-20260812.md`（2026-08-12 重启审查·⚠️ 审查失败无数据·最新）
+> - `references/config-drift-report-20260811.md`（四次审计·重启后·当前基线 61/8/8）
+> - `references/config-drift-report-20260810.md`（已轮换·cron 仅 file 工具未物理删除，留档备查）
+
+> **变化跟踪（20260812 三端重启+审查）**：
+> - **三端重启**：MCSM ✅ 已重启（运行 15min<60min，玩家 1/150）；本地 ✅ 启动完成（`Done` 日志确认，pid 40655）；Exa 从 STOPPED(0) 启动 → LOADING(2)×3 → **STARTED(1) 稳定×10 → 实际已启动成功**，但脚本报「⚠️ 未确认」——**脚本 bug：等待常量写成 4（=RESTARTING），1（=STARTED）才是运行态**，正常 start 路径等不到 4（建议修复）
+> - **审查 ❌ 失败（无新差异数据）**：脚本 125/136/137 行用 `timeout`，**macOS 无此命令**（已知坑「macOS 无 timeout」未应用于脚本）→ fetch3 未执行、拉取 **Exa=0 / MCSM=0 文件**，cmp3 对比/报告未运行，`/tmp/cmp3_report_latest.md` 仅 87B 报错行。差异数不可比，**基线沿用 20260811（61 一致 / 8 差异 / 8 数据）**
+> - **对齐项验证未完成**：Exa/MCSM server.properties 未拉取，仅本地 `sync-chunk-writes=true`；上轮对齐结论（Exa sync-chunk-writes 平台保留 false、SkinsRestorer/DeathChest/paper-global 已生效）维持不变
+> - **2026-08-11 已知问题「Exa 启动反复失败（LOADING→STARTING→STOPPED 循环+日志空）」本次未复现**（status 2→1 后稳定，无循环）
+> - **修复建议**：① `orzmc_reboot_audit.sh` 的 `timeout` 改 `gtimeout`（coreutils）/`perl -e 'alarm shift; exec @ARGV'`，或去掉（fetch3 内部已有请求超时）；② Exa STARTED 判定 4→1；③ 审查失败应输出失败标记，勿静默产出空报告
+
 > **变化跟踪（20260811 上午对齐审查 → 下午重启后审查）**：
 > - **✅ 对齐项生效（重启后三端一致）**：SkinsRestorer connectionOptions（三端 `sslMode=trust&serverTimezone=UTC`）、ifNoServerBlockCommand（三端 false）、perSkinPermissionsConsent（三端无引号）；paper-global.yml `-minecraft`/`no-permission`/`secret`（MCSM 重启后与本地/Exa 一致）；DeathChest debug（三端 false）+ sound（三端 `BLOCK_CHEST_LOCKED;1.0;1.0`）；paper-global velocity.online-mode（三端 false）；paper-world-defaults enderpearl-exploit（三端 true）/max-leash-distance（三端 default）。**汇总：61 一致 / 8 差异 / 8 数据（vs 上次 60/9/8，净 -1 差异）**
 > - **❌ Exa 两项回退（2026-08-11 重大发现）**：Exa 重启后 `server.properties` **sync-chunk-writes 回退 false、resource-pack-prompt 回退 `""`**。**根因：Exaroton 平台每次启动用「平台模板 + files/config 白名单 35 项」重新生成 server.properties（文件头时间戳=启动时刻）**——非白名单键（sync-chunk-writes/max-tick-time 等）PUT files/data 修改**重启即被覆盖、无法持久化**（POST files/config 也假成功，文档已记载）；白名单键（resource-pack-prompt 等）须用 `POST /files/config/{path}/` 修改（即时生效，无需重启）。**结论：Exa sync-chunk-writes 无法通过 API 对齐为 true，属平台限制**（`""` 无实质影响：require-resource-pack=false 不显示提示）

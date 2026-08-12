@@ -30,14 +30,14 @@ curl -s https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/
 curl -sL -o Geyser-Spigot.jar "https://download.geysermc.org/v2/projects/geyser/versions/<版本>/builds/<构建>/downloads/spigot"
 ```
 
-## 当前版本（2026-08-06 三端升级完成）
+## 当前版本（2026-08-12 三端升级完成）
 
 | 组件 | 版本 | 部署方式 |
 |:--|:--|:--|
-| Geyser-Spigot | **2.11.1-SNAPSHOT** (b1208) | 升级走 plugins/update/（MCSM 借 9:00 自动重启生效）|
+| Geyser-Spigot | **2.11.1-SNAPSHOT** (b1217) | 升级走 plugins/update/（三端均已生效）|
 
 - 版本号带 `-SNAPSHOT` 是 GeyserMC 下载站的正常命名（build 号才是关键）
-- sha256 校验：Geyser-Spigot 2.11.1 = `632cffee2edd5f93356364e87d3ef8f9a1db93ed0fa2070fa4d1cbcdb89f1fb9`
+- sha256 校验：Geyser-Spigot 2.11.1-b1217 = `a068ebc0da6e00a0204f060e57f07ab1426bec7cd8a760c2b57c65987b1aaa88`
 - 升级路径（PaperMC update 机制）：新 jar 放 `plugins/update/` → 重启原子替换，update/ 自动清空
 
 ## 验证流程

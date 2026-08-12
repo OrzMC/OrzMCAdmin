@@ -126,8 +126,17 @@ def fetch_mcsm(files):
     if failed:
         print(f"失败清单({len(failed)}): {', '.join(failed)}")
 
+def fetch_all(files):
+    """并发拉取 Exaroton + MCSM（两平台互不干扰；MCSM 内部保持串行+退避规避面板全局限流）"""
+    print(f"并发拉取: Exaroton + MCSM 并行（基准 {len(files)} 个插件配置）\n")
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        f1 = ex.submit(fetch_exa, files)
+        f2 = ex.submit(fetch_mcsm, files)
+        f1.result()
+        f2.result()
+    print("=== 并发拉取全部完成 ===\n")
+
 if __name__ == "__main__":
     files = local_plugin_configs()
     print(f"本地基准配置清单: {len(files)} 个插件配置文件\n")
-    fetch_exa(files)
-    fetch_mcsm(files)
+    fetch_all(files)
