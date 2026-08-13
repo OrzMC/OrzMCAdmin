@@ -5,7 +5,7 @@
 
 ## 核心事实
 
-- **Spark 部署现状**：本地测试服 + Exaroton 装有 spark；**MCSM 未装**（需先上传 plugins/ 或 update/）
+- **Spark 部署现状**：**Paper 26 内置 spark**（`/spark` 命令无需插件，2026-08-13 日志实证 `me.lucko.spark.paper`）；本地测试服 + Exaroton 可用；**MCSM 未装**（需先上传 plugins/ 或 update/）；⚠️ 服务器停止时 spark 采样线程报 `Uncaught exception thrown in thread spark-java-sampler` 属**正常关闭噪音**（世界保存照常完成），别误判崩溃
 - ⚠️ Spark 1.10.152 `/spark activity` 有 bug（NoClassDefFoundError Examinable）——其余模块正常
 - Windows Server 不支持 async-profiler 引擎（自动回退 built-in Java 引擎，功能正常）
 - **判断标准**：TPS < 20 或 MSPT > 50ms 需定位；TPS < 16 严重

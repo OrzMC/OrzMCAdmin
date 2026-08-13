@@ -74,6 +74,28 @@
 
 `-1`=忙碌 / `0`=停止 / `1`=停止中 / `2`=启动中 / `3`=运行中
 
+## 地图备份下载部署到本地（2026-08-13 实测流程）
+
+- **备份位置**：`plugins/OrzMC/backup/`（OrzMC 插件自动备份，按日期命名 `YYYYMMDDHHMMSS.zip`，~1.4GB/份）；列目录 `GET /api/files/list?target=/plugins/OrzMC/backup&page=0&page_size=100&file_name=`（file_name 空串可列出全部）
+- **下载三步**：① `POST /api/files/download?file_name=/plugins/OrzMC/backup/<名>.zip`（带 daemonId+uuid+apikey）→ 返回 `{password, addr}`；② addr 是 `localhost:24444` → **换面板主机名**（如 `{SERVER_HOST}:24444`）；③ `GET http://{addr}/download/{password}/{文件名}`（带 UA，curl 后台跑，~1.4GB 几分钟）
+- ⚠️ **zip 内是 Windows 反斜杠路径**（`world\dimensions\...`）——macOS unzip 会创建**字面反斜杠文件名**！必须 python zipfile 处理：`name.replace("\\", "/")` 后解压（脚本法见下）
+- **备份内容**：`world/` 完整（level.dat + `dimensions/minecraft/{overworld,the_nether,the_end}` 三维度 + players/ 玩家数据 + death-chests.yml 等插件数据文件）——**插件数据在世界内，换地图=换插件数据**
+- **部署流程**：停服 → `mv world world.bak-test`（可回滚）→ python 解压 → 启动验证（`level-name=world` 匹配）
+- **真实地图特征**：启动 261s（vs 测试世界 106s，2.1GB）；**首次玩家登录冷加载 TPS 崩 4.7**（一次性，预热后 19.7 稳定）——比测试世界更猛，强化「活动须预热」；空载 TPS 20
+
+```bash
+python3 - <<'EOF'   # 反斜杠路径安全解压（示例，落地为脚本更稳）
+import zipfile, os
+zf = zipfile.ZipFile('backup.zip')
+for info in zf.infolist():
+    name = info.filename.replace("\\", "/")
+    if info.is_dir(): continue
+    t = os.path.join(dst, name)
+    os.makedirs(os.path.dirname(t), exist_ok=True)
+    with zf.open(info) as fi, open(t, "wb") as fo: fo.write(fi.read())
+EOF
+```
+
 ## 插件更新（MCSM 端）
 
 - ✅ **plugins/update 实测可用**（2026-08-03）：`POST /api/files/upload?upload_dir=/plugins/update` multipart 上传 → restart → Paper 自动替换并清空 update/。**文件操作期间服务器运行中无碍**（jar 上传不触发锁定，仅读取被运行中 jar 锁定会 500）

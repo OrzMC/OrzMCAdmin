@@ -54,6 +54,14 @@ PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/orzmc/scripts/adapters/loca
 - ⚠️ macOS 无 `timeout` 命令（脚本/测试中不可用）
 - ⚠️ macOS bash 3.2：`$var` 后接全角字符（如 `（`）会报 unbound variable，必须写 `${var}`
 
+## 本机网络环境（Shadowrocket TUN，2026-08-13 实测）
+
+- ⚠️ **本机装有 Shadowrocket（TUN 模式，虚拟网卡 utun3）接管全部流量**：`route get <ip>` 显示 interface=utun3
+- ⚠️ **DNS 被 fake-ip 接管**：域名解析出 `198.18.0.x`（保留段）→ **真实 IP 必须公共 DNS 绕过**：`dig +short <host> @223.5.5.5` / `@8.8.8.8`
+- ⚠️ **TUN 下 TCP/ICMP 延迟全是假象**：TCP 立即 ACK（0.4ms）、ICMP 本地响应（0.8ms）——测真实延迟需服务器在线后走 **MC 协议握手 RTT**（`scripts/mc_ping_probe.py`）
+- ✅ **真实连通性验证法**：走实际数据流（MCSM API 列目录/下载文件成功 = 链路真实可用）；MC 握手 `JSONDecodeError` ≈ 服务器离线（TCP"通"是 TUN 假象）
+- 系统 HTTP 代理端口 1082（scutil --proxy 可查）
+
 ## 性能参考（本机 i5-5257U）
 
 - 1-3 人原版流畅；3-5 人可能掉 TPS
