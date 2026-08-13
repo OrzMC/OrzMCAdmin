@@ -29,7 +29,7 @@
 3. **先复现再修**：改代码前记录修复前基线，修复后同一条件验证消失
 4. 编译 → 部署 → 回归验证（≥8 轮自动化，轮间 sleep 30 防登录冷却）
 5. **提 PR 上游**：fork → fix 分支 → PR（描述含回归数据）→ 稳定后切 fork main 重提 → 关旧 PR 注明被取代
-6. **发布流程（自家插件）**：feature/bugfix 走分支→PR→合入 main→**询问用户确认**→打 SemVer tag（不加 v）触发 Publish；误发版撤销 = `gh run cancel` + `git tag -d` + `git push origin :refs/tags/<ver>`
+6. **发布流程（自家插件）**：feature/bugfix 走分支→PR→合入 main→**询问用户确认**→打 SemVer tag（不加 v）触发 Publish；误发版撤销 = `gh run cancel` + `git tag -d` + `git push origin :refs/tags/<ver>`。发布验证（1.0.17 实测）：① GitHub Release `gh release view <ver>`；② Hangar API `api/v1/projects/OrzMC/versions` 看 channel=Release；③ **Modrinth 用 `api/modrinth.com/v2/project/{id}/version` 查询可能 404/空（slug 解析不可靠）——以 publish.yml CI 日志 `Successfully uploaded version X to <id> as version ID <vid>` 为权威证据**；④ CI 会自动 bump paper-plugin.yml version（如 1.0.17→1.0.18）并直推 main，勿手动重复 bump
 
 ## 高频坑速查（详见各 references）
 
@@ -40,7 +40,8 @@
 - **mockStatic 泄漏**：每个测试 try-with-resources 包住
 - **markAlwaysSave 配置停服后改**：运行中改会被关服保存的内存态覆盖
 - **read_file 误判中文注释 .java 为 binary**：用 sed/grep 看
-- 新增模板键 = 4 处注册清单 / 删除 = 8 处联动（见 paper-plugin-development 原 SKILL 或 references/orzmc-review-framework.md）
+- **新增模板键 = 4 处注册清单 / 删除 = 8 处联动（见 references/orzmc-review-framework.md）**
+- **新增模板变量（非键）也要注册白名单**：`TemplatePlaceholderValidator.allowedVarsByTemplateKey()` 必须加新变量，否则 `ConfigHealthCheck`/`ConfigBackwardCompatTest` 挂（报「模板变量未知: templates.<key> {<var>}」）。实例：PR #171 加 `duration_human` 漏注册 → 2 个测试失败
 
 ## 支持文件（references/）
 
