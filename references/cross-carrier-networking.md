@@ -4,8 +4,8 @@
 >
 > **部署资产（完整工具链在 `OrzMC/OrzMCProxy` 仓库，2026-08-13 建仓、本地实验 100% 闭环）**：
 > - 一键安装：`scripts/install-frp.sh`（Linux/macOS + systemd/launchd）、`scripts/install-frp.ps1`（Windows + 计划任务自愈）
-> - 验证：`scripts/verify-tunnel.sh`（TCP+MC 握手）、`scripts/health-check.sh`、`scripts/bedrock_ping.py`（基岩入口，无需真客户端）
-> - 配置模板：`configs/frps.toml.example`、`configs/frpc.toml.example`（含 `[proxies.transport] proxyProtocolVersion = "v2"`）
+> - 验证：`scripts/verify-tunnel.sh`（TCP+MC 握手）、`scripts/health-check.sh`、`scripts/bedrock_ping.py`（基岩入口，无需真客户端）、`scripts/mc_login.py`（完整协议登录验证：Handshake→Login Start→压缩协议→Login Success/白名单拒绝，可选手动 PROXY v2 头，实测 Paper 26.2）
+> - 配置模板：`configs/frps.toml.example`、`configs/frpc.toml.example`（含 `[proxies.transport] proxyProtocolVersion = "v2"`）、**`configs/frpc.production.toml.example`（生产双代理模板：Java TCP 25565 v2 透传 + 基岩 UDP 19132 中转，2026-08-14 真实联调验证后沉淀）**
 > - 文档：`docs/architecture.md`（延迟链路/成本）、`docs/setup-guide.md`（部署+灰度+回滚）、`docs/manual-apply-windows.md`（MCSM 面板不可用时 2 文件手动改法+重启）、`docs/troubleshooting.md`
 > - 档位选择：临时（一天活动，不开 proxy-protocol，`connection-throttle: 0`）/ 正式（proxy-protocol 真实 IP 透传，三处联动）
 
@@ -60,9 +60,53 @@
 
 **实验坑备注**：Paper 26.2 = MC 1.21.11 = 协议 **776**；1.21.11 的 Login Start（serverbound/minecraft:hello）含 **playerUUID** 字段。**⚠️ 1.21.1 (767) 的 Login Start 也有 playerUUID**（2026-08-14 查 minecraft-data 确认）——写离线登录测试脚本统一发 `name + UUID(16B)`；只发 name 必报 `Failed to decode packet 'serverbound/minecraft:hello'`（曾误判为 ViaVersion/proxy 问题，实为脚本格式 bug）。
 
+**⚠️ 登录脚本两大坑（2026-08-14 真实联调踩坑，写协议脚本必看）**：
+1. **必须先发 Handshake**（packet 0x00：protocolVersion + serverHost + serverPort + nextState=2），然后才 Login Start——直接发 Login Start 会被服务器按握手状态解析（0x00=Handshake）导致字段错乱静默断连（EOF，无日志）。mineflayer 源码 `setProtocol.js` 确认流程。
+2. **压缩协议格式**：服务器发 Set Compression (0x03) 后，**所有包改为「帧格式」**：`VarInt(帧总长) + VarInt(解压后数据长度) + 数据`（数据 = zlib 压缩包 或 dataLength=0 时原始包）。⚠️ 帧长度 varint 与 dataLength varint 是**两个不同字段**，缺帧长度会被服务器报 `Badly compressed packet` / 解压失败。zlib 数据长度 = 帧长 - dataLength varint 字节数，用 zlib.decompress 全量解压。minecraft-protocol pipeline = Splitter(帧) → Decompressor(dataLength+zlib) → Serializer。参考 `OrzMCProxy/scripts/mc_login.py`。
+
+**真实公网联调（2026-08-14 ✅ 全链路验证通过，腾讯云轻量试用机 1.117.58.192 上海）**：
+- ⚠️ **云厂商安全组/防火墙默认只放 22/80/443/3389**——frp 控制端口 7000 + 游戏端口 25565 必须手动放行，否则 frpc 报 `session shutdown`（TUN 干扰是假象！）或 `i/o timeout`；放行后秒连
+- 验证矩阵全绿：frpc login success → verify-tunnel TCP 通（MC ping 失败=proxy-protocol 无头被拒，预期）→ mc_login 经中转 Login Success ✅ → 白名单外用户被 OrzMC 拒绝（`/114.240.148.184:52021` = **frpc 自动透传玩家真实公网 IP**，铁证）→ 直连无头挂起（proxy-protocol 拦截）✅
+- 手写 PROXY 头 + 伪造 IP 直连 → 服务器日志显示伪造 IP:端口（Paper 侧解析验证）；**经 frpc 隧道时客户端必须 plain（frpc 自动加头，手动头会被当垃圾数据转发导致协议错乱）**
+- 完整客户端验证：mineflayer（真实协议栈）经中转登录成功，服务器日志 `test[/114.240.148.184:51669] logged in`
+
 **ViaVersion 兼容性（2026-08-14 补测 ✅）**：proxy-protocol 模式下 767/768/770/775/776 全协议版本经隧道登录流程完整（ViaVersion 5.11.0 翻译正常）——老版本玩家无影响。
 
 **Geyser 基岩入口验证法（2026-08-14 补测 ✅）**：无需基岩客户端——RakNet Unconnected Ping（UDP 19132，packet 0x01 + magic）→ 收 Pong(0x1c)+MOTD = Geyser 存活且 Geyser→Java 连接（haproxy 头）被 Paper 接受。工具：`OrzMCProxy/scripts/bedrock_ping.py`。正式档配置生效标志：Geyser 启动日志 WARN「Geyser is configured to use proxy protocol when connecting to the Java server」。
+
+**基岩 UDP 中转（2026-08-14 真机实测 ✅ 完整可行）**：
+- frpc 加 `type = "udp"` proxy（localPort/remotePort 19132）；frps `allowPorts` 须加 19132（多行格式 `{ start = 19132, end = 19132 }`）；腾讯云防火墙放行 **UDP** 19132
+- Geyser 配置 ⚠️ **只改 java 段（约 191 行）`use-haproxy-protocol: true`；bedrock 段（约 218 行）必须保持 false**——frp UDP 代理不支持 PROXY protocol，bedrock 段若开 true 基岩客户端连接会被拒（两个同名配置项极易改错，patch 时勿 replace_all）
+- UDP 隧道稳定性：10/10 RakNet ping 成功（北京→上海中转 ~91ms）；45s 静默后自动恢复（frp UDP 会话超时无碍，RakNet 保活维持）
+- 真机验证：基岩客户端连 `中转IP:19132` 正常进服游玩（LoginSecurity 对 Geyser 玩家自动跳过——微软 XUID 认证优于离线密码，属预期；Java 离线玩家仍受保护）
+- ⚠️ 代价确认：UDP 中转**无真实 IP 透传**（Geyser 看到 127.0.0.1），基岩玩家 IP 级管控失效（XUID 管控不受影响）
+- **卡顿排查教训（2026-08-14）**：玩家报「阶段性卡顿」先排除客户端/环境因素（手机低电量模式降频会周期性卡顿！充电后恢复），再归因隧道（UDP over TCP 队头阻塞等）——勿凭特征直接下结论，须对照实验验证
+
+## 正式档连接拓扑与带宽容量（2026-08-14 定案）
+
+**连接拓扑（正式档 = 全玩家走中转）**：
+- **Java 玩家只有中转机一条路**——proxy-protocol 开启后直连家里 IP（无 PROXY 头）被服务器静默拒绝（官方行为），普通客户端不带头 → 直连失效。**代价≈0**：中转机同城（上海），电信玩家多一跳仅 +5-10ms（10-30ms→15-40ms 体感无差），联通/移动玩家 60-300ms→10-50ms 大赚
+- **基岩玩家双通道**：直连家里 IP:19132（UDP）或走中转 19132 均可——proxy-protocol 只管 Geyser→Java 本地 TCP（Geyser 自带 haproxy 头），与玩家怎么连 Geyser 无关
+- 若想保留电信玩家直连只有临时档（无真实 IP 透传），正式档不做
+
+**中转机带宽容量**（MC 流量以服务器→玩家下行为主，恰好打在中转机出网方向）：
+| 人数 | 体验 | 人均下行 |
+|:--|:--|:--|
+| ≤15 | ✅ 舒适 | ~200 Kbps |
+| 20-30 | ⚠️ 日常流畅，高峰偶卡 | ~100-150 Kbps |
+| 50 | ❌ 必卡（人均仅 60 Kbps） | — |
+
+- 3M 舒适线 ≈ 15 人、硬顶 ≈ 30 人；50 人×8h ≈ 18GB ≈ 平均 5Mbps > 3M
+- **50 人活动正日 → 按量 CVM（100Mbps 峰值，~18 元/天 + 流量 0.8 元/GB ≈ 14.4 元）**；试用机 3M 仅联调/压测/≤15 人小规模；切换 = frpc 配置只改 serverAddr 一行（5 分钟）
+- 多中转机分摊（2×3M ≈ 30 人）性价比不如单台 100M 按量机
+
+**生产部署流程（2026-08-14 已交付，顺序铁律：先隧道通再改服）**：
+1. 中转机 frps 部署 + 云防火墙放行 TCP 7000/25565 + UDP 19132（allowPorts 含 25565+19132）
+2. Windows 宿主机 `install-frp.ps1 -Role frpc` → 用 `frpc.production.toml.example` 全量替换配置（改 token）→ `Restart-ScheduledTask`
+3. verify-tunnel 25565 + bedrock_ping 19132 确认隧道通
+4. 老板按 `docs/manual-apply-windows.md` 改 2 文件（paper-global.yml proxy-protocol true + Geyser java 段 haproxy true，bedrock 段不动）→ 等玩家全下线重启（停机 3-5 分钟）
+5. 验证矩阵：经中转登录 + 真实 IP + 基岩 ping + 直连对照
+6. 群内公告玩家改连中转机 IP
 
 ## 诊断
 
