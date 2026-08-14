@@ -39,6 +39,7 @@ required_commands: [java, curl, tar]
 > | **实体/传送门行为（事件继承、原版规则、白名单策略）** | `references/entity-portal.md` |
 > | OrzMC 统一代码仓库（submodule 资产地图：插件源码/配置库/备份工具/世界瘦身；**Bot 命令调试 orzdebug + $e 输出捕获机制 + Log4J 坑**） | `references/orzmc-repo.md` |
 > | OrzMC 真实环境验收报告（2026-08-06：全功能测试矩阵 + 双服 transfer + 发现的 bug） | `references/orzmc-acceptance-20260806.md` |
+> **玩家手册（官方站 orzmc.{SERVER_NAME}.cn/user/ = OrzMCSite `content/user.md`）**：2026-08-15 合并新手指南（进服 3 步/基本操作/协作生态/四级权限成长/避坑FAQ/自定义皮肤），服务器地址用 server-status 组件动态卡片（不写死 IP）；site 是独立仓库 OrzMCSite，改手册 = 改 user.md → 单独 push main → CI 自动发布（Pages），主仓只 bump submodule 指针；本地 Hugo 预编译装 `~/usr/local/bin/hugo`（brew 被 go pin 卡住，GitHub release 新版只有 .pkg 用 installer -target CurrentUserHomeDirectory）；⚠️ **server-status shortcode 用 `tags=` 分组过滤（单点维护）**：params.toml 每台服配 `tags = ["players"]`/`["dev"]`，文档只写 `{{< server-status tags="players" >}}`——名称/地址变化只改 params.toml，文档零改动（2026-08-15 方案 B 落地 b80d8a7）；❌ 勿用旧 `servers=` 参数（按 name/host 精确匹配，中文名带 emoji 匹配不上 → `servers:[]` 空数组卡片空白；且名称/域名变化需改文档，多页面成本高）
 > | OrzMC 功能测试用例（28 项，玩家命令/Bot 命令/事件拦截，含前置条件/步骤/预期） | 插件仓库 `plugin/docs/test-cases.md`（OrzMCPlugin） |
 > | OrzMC 端到端测试报告（2026-08-06：机器人+真实玩家，28/28 通过，transfer 闭环） | 插件仓库 `plugin/docs/e2e-test-report-20260806.md`（OrzMCPlugin） |
 > | RCON 客户端（`scripts/rcon.py <命令> [端口]`，密码从环境变量 RCON_PASSWORD 读） | `scripts/rcon.py` |
