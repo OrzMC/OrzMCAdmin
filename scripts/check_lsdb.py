@@ -5,7 +5,7 @@
 - 第 2 参玩家名可选；不传则列出全部已注册玩家
 用法示例:
   python3 check_lsdb.py ~/minecraft-server/plugins/LoginSecurity/LoginSecurity.db joker
-  python3 check_lsdb.py ~/minecraft-server2/plugins/LoginSecurity/LoginSecurity.db
+  python3 check_lsdb.py ~/minecraft-server/plugins/LoginSecurity/LoginSecurity.db
 """
 import sqlite3
 import sys

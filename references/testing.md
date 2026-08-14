@@ -48,6 +48,7 @@ cd ~/minecraft-server && tar --exclude='logs' --exclude='cache' --exclude='world
 # ⚠️ 必改：start.sh 双路径（cd + jar）+ server.properties（server-port=25566、rcon.port=25576、motd）
 rm -f world/session.lock && screen -dmS mc2 ./start.sh
 ```
+- **✅ 测完即删（2026-08-15 老板决策）**：双服测试是临时动作，**完成后必须清理第二服**防占磁盘（~486M）——`rm -rf ~/minecraft-server2`（先确认无进程、无 cron 引用）；需要时随时按本节步骤重建
 - 坑：start.sh 没改路径 → `DirectoryLock$LockException`（锁的是主服 world）；screen stuff 不可靠 → **stop 用 RCON**；第二服复制 Geyser 配置会端口冲突（无害）；easybot 连同一网关 409（无害）
 
 ### transfer 机制（核心认知）
