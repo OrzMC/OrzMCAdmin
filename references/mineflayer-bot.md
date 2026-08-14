@@ -24,6 +24,8 @@ BOT_HOST=127.0.0.1 BOT_PORT=25565 node minecraft-bot.js
 - ⚠️ **MCSM command API 转发丢玩家上下文**：`execute as HermesBot run tp ...` 会被 MCSM 当 CONSOLE 命令简化执行（日志 `CONSOLE issued server command: /tp`，玩家位置不变）——**需要玩家身份的操作必须由 bot 自己通过 mineflayer 执行**（`bot.chat('/home')`），不走 MCSM command API
 - ⚠️ **有 Essentials 时原版命令加 `minecraft:` 域**：`/minecraft:tp`（绕 teleport-safety）、`/minecraft:whitelist add`、`/minecraft:tell`（私信）——详细见独立技能
 - ✅ **本地测试服（papermc-test）验证价值**：本地出生点有苦力怕等实体，能暴露线上不常触发的崩溃路径（粒子/实体交互），改 bot 后先本地验证再上生产
+- ⚠️ **临时验证脚本必须放 `~/minecraft-bot/` 内运行**（Node 模块解析从脚本所在目录向上找 node_modules；放 /tmp 报 `Cannot find module 'mineflayer'`）——一次性验证脚本（如经中转登录）直接 `cp` 进项目目录再 `node` 跑
+- ⚠️ **登录验证脚本要素**（2026-08-14 OrzMCProxy 正式档验收实测）：`auth: 'offline'`（离线服）+ `version: '1.21.11'`（26.2 服）；监听 `spawn`（进入游戏=登录成功铁证）、`kicked`（含拒绝原因，如白名单）、`error`；30s 超时兜底；登录成功后 `bot.end()` + `process.exit(0)` 防挂死——服务器日志对应行 `test[/真实IP:port] logged in with entity id N at (...)` 就是**真实 IP 透传验证的终极铁证**（frpc PROXY v2 头场景下显示玩家真实公网 IP）
 - ⚠️ bot 项目持久化在 `~/minecraft-bot/`（勿放 /tmp）
 
 ## 压测脚本（stress-stay.js，2026-08-12/13 实测沉淀）
