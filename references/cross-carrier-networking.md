@@ -108,14 +108,19 @@
 - **规格推荐**：日常 ≤30 人 → 轻量 2C2G 6M（长期月付）；50 人活动正日 → 按量 CVM 100M 峰值（≈32 元/天，关机不收费）；100 人双服 → 必须按量 100M。**2C2G 所有场景都够**（frps 纯转发走内核，CPU/内存非瓶颈，瓶颈只有带宽）
 
 **生产部署流程（2026-08-14 已交付，顺序铁律：先隧道通再改服）**：
-0. **中转机运维入口（腾讯云轻量 1.117.58.192 上海 ubuntu）**：SSH 密码登录（禁密钥）；frps 配置 `/etc/orzmcproxy/frps-default.toml`（auth.token 从文件读，勿写死；allowPorts=[25565,19132] 已配）；日志 `/var/log/orzmcproxy/frps-default.log`；systemd 服务 `frps@default`；云防火墙须放行 TCP 7000/25565 + UDP 19132（默认只放 22/80/443）
+0. **中转机运维入口**：
+   - **正式机（已上线 2026-08-14）**：腾讯 CVM **121.5.164.224**（2C2G/20G，上海），SSH ubuntu 密码登录；frps v0.70.1 systemd `frps@default` 已部署运行；配置 `/etc/orzmcproxy/frps-default.toml`（auth.token 从文件读，勿写死；allowPorts=[25565-25566, 19132]）；日志 `/var/log/orzmcproxy/frps-default.log`；云防火墙已放行 TCP 7000/25565/25566 + UDP 19132
+   - **试用机**：1.117.58.192（上海轻量 3M，仅联调/压测/≤15 人小规模）
+   - ⚠️ **CVM 部署坑（2026-08-14 实测）**：腾讯云访问 GitHub 限速 ~200B/s（13MB 要 7 小时）→ **本地下载 frp linux_amd64 后 scp 上传**（本地 6 秒）；scp 路径参数勿带引号（会生成带引号字面量的文件名 `"file"`）；SSH 密码含反引号等特殊字符时**勿内联进远程命令**（远程 shell 会命令替换），用 expect 交互处理 sudo 密码提示
 1. 中转机 frps 部署 + 云防火墙放行 TCP 7000/25565 + UDP 19132（allowPorts 含 25565+19132）
-2. Windows 宿主机 `install-frp.ps1 -Role frpc` → 用 `frpc.production.toml.example` 全量替换配置（改 token）→ `Restart-ScheduledTask`
+2. Windows 宿主机 `install-frp.ps1 -Role frpc` → 用 `frpc.production.toml.example` 全量替换配置（改 token + serverAddr=121.5.164.224）→ `Restart-ScheduledTask`
 3. verify-tunnel 25565 + bedrock_ping 19132 确认隧道通
 4. 老板按 `docs/manual-apply-windows.md` 改 2 文件（paper-global.yml proxy-protocol true + Geyser java 段 haproxy true，bedrock 段不动）→ 等玩家全下线重启（停机 3-5 分钟）
 5. 验证矩阵：经中转登录 + 真实 IP + 基岩 ping + 直连对照
-6. 群内公告玩家改连中转机 IP
+6. 群内公告玩家改连中转机 IP（121.5.164.224）
 7. relay-monitor.sh 接 cron（每 5 分钟，no_agent 看门狗）——frpc 上线后才有意义，之前接会持续误报 FAIL
+
+**正式机验收记录（2026-08-14 ✅ 本地测试服实测全绿）**：relay-monitor formal 3/3 OK（frps 7000 / Java 后端存活 / 基岩 PONG）；verify-tunnel 经中转完整响应 Paper 26.2；mineflayer 完整登录 `test[/114.240.148.184:64232] logged in`（真实 IP 透传铁证）；直连无头 timed out（拦截正常）——与试用机结论一致，正式机可直接生产
 
 **隧道外部监控（2026-08-14 新增 `scripts/relay-monitor.sh`，生产上线后必须接 cron）**：
 - **两档模式**：`--mode formal`（正式档：proxy-protocol 开，Java 25565 只能做 TCP 连通+后端存活 EOF 检测——MC ping 被服务器拒属预期不可用）+ `--mode temp --direct-host 家宽IP`（临时档：中转+直连双通道都做完整 MC ping + RakNet 探测，玩家两条路都通才算健康）
