@@ -2,7 +2,7 @@
 
 > **触发场景**：玩家报延迟高、连不上、"Connection throttled"、"Timed out"、掉线；服务器部署在单一运营商网络（如电信家宽），联通/移动玩家受害。2026-08-13 沉淀。
 >
-> **部署资产（完整工具链在 `OrzMC/OrzMCProxy` 仓库，2026-08-13 建仓、本地实验 100% 闭环）**：
+> **部署资产（完整工具链在 `OrzMC/proxy` 子模块 = OrzMCProxy 仓库，2026-08-15 纳入 monorepo；本地实验 100% 闭环）**：
 > - 一键安装：`scripts/install-frp.sh`（Linux/macOS + systemd/launchd）、`scripts/install-frp.ps1`（Windows + 计划任务自愈）
 > - 验证：`scripts/verify-tunnel.sh`（TCP+MC 握手）、`scripts/health-check.sh`、`scripts/bedrock_ping.py`（基岩入口，无需真客户端）、`scripts/mc_login.py`（完整协议登录验证：Handshake→Login Start→压缩协议→Login Success/白名单拒绝，可选手动 PROXY v2 头，实测 Paper 26.2）、**`scripts/relay-monitor.sh`（🆕 外部隧道监控：formal/temp 双档——正式档 Java 查 TCP+后端存活，临时档中转+直连双通道完整 MC ping/RakNet；状态转换才输出告警/恢复、稳定静默，适配 cron no_agent 看门狗；首次运行出基线；退出码恒 0）**
 > - 配置模板：`configs/frps.toml.example`、`configs/frpc.toml.example`（含 `[proxies.transport] proxyProtocolVersion = "v2"`）、**`configs/frpc.production.toml.example`（生产双代理模板：Java TCP 25565 v2 透传 + 基岩 UDP 19132 中转，2026-08-14 真实联调验证后沉淀）**
@@ -62,7 +62,7 @@
 
 **⚠️ 登录脚本两大坑（2026-08-14 真实联调踩坑，写协议脚本必看）**：
 1. **必须先发 Handshake**（packet 0x00：protocolVersion + serverHost + serverPort + nextState=2），然后才 Login Start——直接发 Login Start 会被服务器按握手状态解析（0x00=Handshake）导致字段错乱静默断连（EOF，无日志）。mineflayer 源码 `setProtocol.js` 确认流程。
-2. **压缩协议格式**：服务器发 Set Compression (0x03) 后，**所有包改为「帧格式」**：`VarInt(帧总长) + VarInt(解压后数据长度) + 数据`（数据 = zlib 压缩包 或 dataLength=0 时原始包）。⚠️ 帧长度 varint 与 dataLength varint 是**两个不同字段**，缺帧长度会被服务器报 `Badly compressed packet` / 解压失败。zlib 数据长度 = 帧长 - dataLength varint 字节数，用 zlib.decompress 全量解压。minecraft-protocol pipeline = Splitter(帧) → Decompressor(dataLength+zlib) → Serializer。参考 `OrzMCProxy/scripts/mc_login.py`。
+2. **压缩协议格式**：服务器发 Set Compression (0x03) 后，**所有包改为「帧格式」**：`VarInt(帧总长) + VarInt(解压后数据长度) + 数据`（数据 = zlib 压缩包 或 dataLength=0 时原始包）。⚠️ 帧长度 varint 与 dataLength varint 是**两个不同字段**，缺帧长度会被服务器报 `Badly compressed packet` / 解压失败。zlib 数据长度 = 帧长 - dataLength varint 字节数，用 zlib.decompress 全量解压。minecraft-protocol pipeline = Splitter(帧) → Decompressor(dataLength+zlib) → Serializer。参考 `~/OrzMC/proxy/scripts/mc_login.py`。
 
 **真实公网联调（2026-08-14 ✅ 全链路验证通过，腾讯云轻量试用机 1.117.58.192 上海）**：
 - ⚠️ **云厂商安全组/防火墙默认只放 22/80/443/3389**——frp 控制端口 7000 + 游戏端口 25565 必须手动放行，否则 frpc 报 `session shutdown`（TUN 干扰是假象！）或 `i/o timeout`；放行后秒连
@@ -73,7 +73,7 @@
 
 **ViaVersion 兼容性（2026-08-14 补测 ✅）**：proxy-protocol 模式下 767/768/770/775/776 全协议版本经隧道登录流程完整（ViaVersion 5.11.0 翻译正常）——老版本玩家无影响。
 
-**Geyser 基岩入口验证法（2026-08-14 补测 ✅）**：无需基岩客户端——RakNet Unconnected Ping（UDP 19132，packet 0x01 + magic）→ 收 Pong(0x1c)+MOTD = Geyser 存活且 Geyser→Java 连接（haproxy 头）被 Paper 接受。工具：`OrzMCProxy/scripts/bedrock_ping.py`。正式档配置生效标志：Geyser 启动日志 WARN「Geyser is configured to use proxy protocol when connecting to the Java server」。
+**Geyser 基岩入口验证法（2026-08-14 补测 ✅）**：无需基岩客户端——RakNet Unconnected Ping（UDP 19132，packet 0x01 + magic）→ 收 Pong(0x1c)+MOTD = Geyser 存活且 Geyser→Java 连接（haproxy 头）被 Paper 接受。工具：`~/OrzMC/proxy/scripts/bedrock_ping.py`。正式档配置生效标志：Geyser 启动日志 WARN「Geyser is configured to use proxy protocol when connecting to the Java server」。
 
 **基岩 UDP 中转（2026-08-14 真机实测 ✅ 完整可行）**：
 - frpc 加 `type = "udp"` proxy（localPort/remotePort 19132）；frps `allowPorts` 须加 19132（多行格式 `{ start = 19132, end = 19132 }`）；腾讯云防火墙放行 **UDP** 19132

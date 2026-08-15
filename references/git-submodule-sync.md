@@ -1,6 +1,6 @@
 # Git 子模块全量同步（Monorepo Submodule Sync，2026-08-11 从 git-submodule-sync 技能合并）
 
-> 场景：同步 OrzMC monorepo（~/OrzMC，**15 个子模块**，2026-08-13 deploy 目录拆分新增 OrzMCDeploy）父仓库及全部子模块到最新并切换 main/master 分支。
+> 场景：同步 OrzMC monorepo（~/OrzMC，**15 个子模块**，2026-08-15 移除 paper_plugins_config——过期配置快照，三端对齐已由 cmp3 工具链承担）父仓库及全部子模块到最新并切换 main/master 分支。
 
 ## 触发场景
 - 用户要求同步父仓库 + 所有子模块到各自默认分支（main/master）并拉最新

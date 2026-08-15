@@ -56,9 +56,10 @@ grep -iE "Geyser" logs/latest.log | grep -i "UDP"
 ```
 
 ### 3. RakNet 握手测试（无需真机，脚本化）
-`scripts/regression/geyser_udp_test.py` —— 发 RakNet Unconnected Ping (0x01) 验证响应：
+推荐用 `~/OrzMC/proxy/scripts/bedrock_host_check.sh`（双模式：本机/远程，含端口监听+进程+防火墙检查，见 SKILL.md 索引「基岩版连通性诊断」）；简易版用 `scripts/regression/geyser_udp_test.py` —— 发 RakNet Unconnected Ping (0x01) 验证响应：
 ```bash
-python3 scripts/regression/geyser_udp_test.py
+bash ~/OrzMC/proxy/scripts/bedrock_host_check.sh            # 本机五项检查
+bash ~/OrzMC/proxy/scripts/bedrock_host_check.sh <host> [port]  # 远程探测
 # ✅ 期望: 收到 Unconnected Pong (0x1c) + 服务器名
 ```
 - 服务器名格式（RakNet MOTD）：`名称;协议;版本;在线数;上限;GUID;副标题;模式;1;端口`

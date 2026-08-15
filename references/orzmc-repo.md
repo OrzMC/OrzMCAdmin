@@ -1,7 +1,7 @@
 # OrzMC 统一代码仓库（运维资产地图）
 
 > **仓库**：`https://github.com/OrzMC/OrzMC`（monorepo 总仓，Apache 2.0）
-> **克隆**：`git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/OrzMC/OrzMC.git`（11 个 git submodule）
+> **克隆**：`git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/OrzMC/OrzMC.git`（15 个 git submodule）
 > **用途**：Minecraft Geek 工程总仓——本技能涉及的插件源码、插件配置库、运维工具、自维护 fork 全部以 submodule 挂在此仓下。运维场景先在 `~/OrzMC/` 找对应子模块。
 
 ## 运维相关子模块
@@ -19,11 +19,11 @@
 
 | 子模块路径 | 子仓库 | 运维用途 |
 |:--|:--|:--|
-| `paper_plugins_config/` | paper_plugins_config | **三端插件配置"官方版"**（15 个插件：BackOnDeath/DeadChest/Essentials/GetMeHome/Geyser-Spigot/GriefPreventionData/LoginSecurity/LuckPerms/OrzMC/SkinsRestorer/Vault/ViaBackwards/ViaVersion/WorldEdit 等）。配置对齐/基线核对时以此为参考 |
 | `tools/OrzMCBackup/` | OrzMC/OrzMCBackup | **Kotlin 世界优化/备份 CLI**：按 InhabitedTime 阈值/强制加载列表/矩形范围保留区块并重写 MCA，支持 `--zip-output` 压缩、`--report-file` JSON/CSV 报告。构建 `./gradlew :app:shadowJar --no-daemon` → `app/build/libs/backup-<ver>.jar` |
 | `tools/thanos/` | aternosorg/thanos | **世界瘦身 PHP 库**：按 inhabited time 删除未使用 chunk，体积可减 50%+（非 blocklist 法，兼容 mod/插件）|
 | `tools/rust-thanos/` | OrzMC/rust-thanos | thanos 的 Rust 实现（性能更好）|
 | `python/` | OrzPythonMC | **OrzMC CLI**（PyPI 可装 `pip install orzmc`）：一键部署 MC 私服（Vanilla/Paper/Spigot/Forge）+ 启动客户端，支持 1.13+ 正式版，Ubuntu/macOS |
+| `proxy/` | OrzMCProxy | **FRP 跨网中转/基岩诊断资产**（2026-08-15 纳入）：`install-frp.sh/ps1` 一键安装、`verify-tunnel.sh`、`health-check.sh`、`relay-monitor.sh` 外部隧道监控（formal/temp 双档看门狗）、`bedrock_ping.py`、`mc_login.py`（完整协议登录验证）、**`bedrock_host_check.sh/ps1` 基岩版连通性诊断（双模式：本机五项检查/远程探测）**、configs 模板、systemd/launchd/Windows 计划任务、`manual-apply-windows.md`、使用说明/修复记录文档。详见 cross-carrier-networking.md + SKILL.md 索引「基岩版连通性诊断」 |
 | `scripts/` | （本地目录非子模块）| 运维脚本：`crontab/mc_cron.sh`（定时任务）、`ubuntu/`（nginx + SSL、面板 setup、mcs_service、qqbot 服务）、`raspberrypi/`（树莓派 qqbot）、`rsync`（同步）|
 
 ## 非运维模块（了解即可）
@@ -39,7 +39,7 @@
 ## 关联操作
 
 - **插件 PR 测试**：产物从 GitHub Actions `gh run download` 拿 → 部署见 SKILL.md「OrzMC 自定义插件升级」（文件名带版本号 → 删旧 jar 直放 plugins/，勿用 update/）
-- **配置对齐**：三端 config 与 `paper_plugins_config/` 对照（cmp3 脚本工作流）
+- **配置对齐**：三端 config 实况对比（cmp3 工具链：fetch3_configs.py 拉取 + cmp3_configs.py/cmp3_report.py 语义对比；**paper_plugins_config 子模块已于 2026-08-15 移除**——旧配置快照已过期，基线以三端实况 + 本地测试服为准）
 - **世界瘦身**：`thanos`/`rust-thanos`/`OrzMCBackup` 均可离线处理 world 目录，处理前必须备份
 - **备份**：OrzMCBackup CLI 可替代/补充 `backup.sh`（按 inhabited time 而非全量）
 
