@@ -43,10 +43,12 @@ required_commands: [java, curl, tar]
 > | OrzMC 功能测试用例（28 项，玩家命令/Bot 命令/事件拦截，含前置条件/步骤/预期） | 插件仓库 `plugin/docs/test-cases.md`（OrzMCPlugin） |
 > | OrzMC 端到端测试报告（2026-08-06：机器人+真实玩家，28/28 通过，transfer 闭环） | 插件仓库 `plugin/docs/e2e-test-report-20260806.md`（OrzMCPlugin） |
 > | RCON 客户端（`scripts/rcon.py <命令> [端口]`，密码从环境变量 RCON_PASSWORD 读） | `scripts/rcon.py` |
+> | 基岩版宿主机诊断（`OrzMCProxy/scripts/bedrock_host_check.ps1` Win / `.sh` Linux+macOS：RakNet 握手+端口监听+进程+防火墙五项；**macOS 防火墙用 socketfilterfw --getglobalstate 无需 root**，pfctl 需 root；macOS netstat 输出 `udp46 *.19132` 格式与 Linux 不同；BSD pgrep 正则用 `|` 非 `\|`） | OrzMCProxy 仓库 |
 | LP 权限命令清单生成（`scripts/gen_perm_commands.py`：从仓库 `plugin/docs/permission-groups.md` 唯一权威文档解析生成 lp set 命令；方案① 2026-08-12） | `scripts/gen_perm_commands.py` |
 > | LoginSecurity 注册状态查询（`scripts/check_lsdb.py [db路径] [玩家名]`） | `scripts/check_lsdb.py` |
 > | PaperMC 插件 E2E 测试方案调研（MockBukkit/WatchWolf/GameTest/真实环境/容器化 + 推荐组合） | `references/plugin-e2e-testing.md` |
 > | **跨网互联/中转方案（电信服×联通移动玩家；FRP 中转 + PROXY protocol 真实 IP 透传；部署资产在 `OrzMC/OrzMCProxy` 仓库：install-frp.sh/ps1 一键安装、verify-tunnel.sh、health-check.sh、bedrock_ping.py、mc_login.py、**relay-monitor.sh 外部隧道监控（formal/temp 双档看门狗，2026-08-14 本地双模式验收 100% 通过）**、configs 模板、systemd/launchd/Windows 计划任务、manual-apply-windows.md 手动改法）** | `references/cross-carrier-networking.md` |
+> | **世界高度调整（1.18+ 高度是 worldgen 属性非服务器配置；CustomWorldHeight 插件方案 2026-08-15 本地实测通过 height=1088；硬限制 min_y≥-2032/height≤4064/min_y+height≤2032；RCON setblock 边界验证法）** | `references/world-height.md` |
 
 ## 使用时机
 - 用户要创建新的 PaperMC 服务器（本机/Exaroton/MCSM）
