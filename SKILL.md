@@ -25,7 +25,7 @@ required_commands: [java, curl, tar]
 > | **Java 测试编译陷阱（Mockito 泛型捕获/SuppressWarnings 位置/CI warnings 清零；原 java-test-pitfalls 技能合并）** | `references/java-test-pitfalls.md` |
 > | Spark 性能分析（命令/JSON/判断/踩坑） | `references/spark-analysis.md` |
 > | 快速实体统计（paper entity list / Spark / 计分板） | `references/entity-statistics.md` |
-> | 机器人玩家 Mineflayer（运维视角；开发细节见独立技能 `minecraft-bot-mineflayer`） | `references/mineflayer-bot.md` |
+> | 机器人玩家 Mineflayer（运维视角；开发细节见独立技能 `minecraft-bot-mineflayer`；**挂机脚本 stay-with-joker.js：5 bot 跟随真人玩家 + IPv4/IPv6 分流绕 per-IP 限制**） | `references/mineflayer-bot.md` |
 > | DeathChest 回归测试（死亡瞬间下线→物品丢失 ✅fix1；**动画 progress 越界卡服 ✅fix3 已合入 main 71d2571**；复现法见 ref） | `references/deathchest-regression.md` |
 > | Geyser 基岩支持（当前 offline 直连模式；floodgate 已回退 2026-08-05） | `references/geyser-floodgate.md` |
 > | **插件源码构建/开发（构建工具选择、Gradle/Maven 坑、PR 流程、发布规范）** | `references/plugin-build.md` |

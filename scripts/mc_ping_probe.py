@@ -71,7 +71,11 @@ def mc_status(host, port, timeout=6):
         send_packet(s, b"\x00")
         data = recv_packet(s)
         rtt = (time.time() - t0) * 1000
-        info = json.loads(data[1:].decode("utf-8", errors="replace"))
+        # 26.2+ status 响应可能带帧头（如 \xe9\x01\x00\xe6\x01），定位 { 起点解析
+        i = data.find(b"{")
+        if i < 0:
+            raise ValueError(f"响应中无 JSON: {data[:40]!r}")
+        info = json.loads(data[i:].decode("utf-8", errors="replace"))
         s.close()
         return True, rtt, info
     except Exception as e:

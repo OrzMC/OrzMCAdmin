@@ -59,6 +59,7 @@ PAPER_DIR=~/minecraft-server ~/.hermes/skills/gaming/orzmc/scripts/adapters/loca
 - ⚠️ **本机装有 Shadowrocket（TUN 模式，虚拟网卡 utun3）接管全部流量**：`route get <ip>` 显示 interface=utun3
 - ⚠️ **DNS 被 fake-ip 接管**：域名解析出 `198.18.0.x`（保留段）→ **真实 IP 必须公共 DNS 绕过**：`dig +short <host> @223.5.5.5` / `@8.8.8.8`
 - ⚠️ **TUN 下 TCP/ICMP 延迟全是假象**：TCP 立即 ACK（0.4ms）、ICMP 本地响应（0.8ms）——测真实延迟需服务器在线后走 **MC 协议握手 RTT**（`scripts/mc_ping_probe.py`）
+- ⚠️ **mc_ping_probe.py 已修 26.2 帧头兼容**（`data.find(b"{")` 定位 JSON 起点，勿再改回 `data[1:]`）；手写 status 脚本发 ping 包必须带长度前缀 `\x01\x00`（长度1+packet id 0），漏前缀服务器直接断连返回 0 字节（易误判服务器离线）
 - ✅ **真实连通性验证法**：走实际数据流（MCSM API 列目录/下载文件成功 = 链路真实可用）；MC 握手 `JSONDecodeError` ≈ 服务器离线（TCP"通"是 TUN 假象）
 - 系统 HTTP 代理端口 1082（scutil --proxy 可查）
 

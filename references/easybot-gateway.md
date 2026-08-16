@@ -49,7 +49,9 @@ python3 scripts/easybot_deliveries.py   # 最近投递状态（API 版，0.0.33+
 ## QQ token 生命周期
 - QQ access token 有效期 **7200s (2h)**，过期后发送报 **11244 "token not exist or expire"**
 - **刷新**：`POST /api/v1/adapters/qq/start`（需 API key）→ 日志依次出现 `QQ access token refreshed` → `QQ adapter connected` → `QQ Gateway ready`；面板操作等效
-- **拿全权限 key**：`POST /admin/login {"password":"<EASYBOT_ADMIN_PASSWORD>"}` → 返回 `eb_...`（面板密码登录，短时管理 Session，权限全——插件 key 只有 messagessend+websocketconnect，查 sessions/adapters 会 403）
+- **拿全权限 key**：`POST /admin/login {"password":"<EASYBOT_ADMIN_PASSWORD>"}` → **响应体是 `{"key":"eb_..."}`（字段名 `key`，不是 `data.token`）**（2026-08-16 实测：按 data.token 取恒空 → AUTH_FAILED；`key` 才是全权限 API Key，面板密码登录短时管理 Session，权限全——插件 key 只有 messagessend+websocketconnect，查 sessions/adapters 会 403）
+- **查各平台 adapter 状态**：`GET /api/v1/adapters`（Bearer 全权限 key）→ `{adapters:[{platform, display_name, status: Connected|Connecting|Failed, health, connected, last_error, retry_attempt}]}`（2026-08-16 实测）；QQ/飞书/微信 Connected+Healthy，Telegram 连不上 `api.telegram.org`（网络/代理）、Discord 连不上 `discord.com/api` 都自动重试（20 次，10s 间隔）；**health 端点 adapters.connected 只有总数**（如 3/5），要定位哪个平台挂必须查 `/api/v1/adapters`
+- **Docker daemon 未启动症状**（2026-08-16 实测）：`docker ps` 报 `Cannot connect to the Docker daemon` + health 端点无响应 + 测试服 OrzMC 日志 `WebSocket连接关闭: code: 1002, reason: Invalid status code received: 502` 反复重连——**Mac 重启后 Docker Desktop 不会自启容器**（daemon 起来后 easybot 容器停在 Exited(255)），必须 `docker start easybot`；恢复后 QQ/微信 adapter 数秒内重连成功
 - **API 文档**：`GET /openapi.json`（89KB 完整 OpenAPI，所有端点+权限清单）——探索 EasyBot 能力先拉这个，别盲探端点
 - **11255 "invalid request"**：token 刷新瞬间的暂时性错误，或 target 类型错（把 Dm openid 当群 id 发 `/v2/groups/`）
 - 恢复确认：deliveries 最近记录全部 `succeeded`
