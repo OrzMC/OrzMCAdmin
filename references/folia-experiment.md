@@ -1,23 +1,40 @@
 # Folia 迁移实验（2026-08-17，本地双服实测）
 
 > 场景：评估本地测试服插件迁移 PaperMC Folia 核心的兼容性，并完成平替替换 + 数据迁移。
-> 结论先行：**8/9 插件不兼容 Folia 均已被平替覆盖，17 个插件全绿；唯一例外是自家 OrzMC（folia-supported: false 显式声明），需源码改造才支持。**
+> 结论先行：**9 个不兼容插件全部解决（8 平替 + OrzMC 升级 Folia 版 1.0.18-dev.296 后自身支持），18 插件全绿；2026-08-18 起 Folia 服全面接管原测试服（端口 25565/19132 + Paper 地图 symlink + 全量配置/权限/白名单同步）。**
 
-## 环境
+## 迁移全流程（总览，按序执行）
+
+```
+阶段 1 兼容性评估 → 阶段 2 平替选型 → 阶段 3 数据迁移 → 阶段 4 配置同步 → 阶段 5 全面接管 → 阶段 6 已知限制
+```
+
+| 阶段 | 关键动作 | 产物/结论 |
+|:--|:--|:--|
+| **1. 兼容性评估** | 复制全部 jar 到 Folia 服启动，看拒载清单 | 20 jar → 🟢12/🔴8；拒载=加载期错误（无标记即拒） |
+| **2. 平替选型** | Modrinth `loaders=folia` 检索 + 功能覆盖验证 | 8 平替定稿（见插件矩阵）；OrzMC 等官方 Folia 版 |
+| **3. 数据迁移** | 账号（BCrypt 复用）+ home（YAML→SQLite） | 359 账号 + 879 home，脚本化可复用 |
+| **4. 配置同步** | 全量 diff → 定制值合并 + 关键文件复制 | paper-global/world-defaults/ops/封禁/usercache 等 |
+| **5. 全面接管** | 端口换 Paper 的 + 地图 symlink | 25565/25575/19132 + 17G 世界零拷贝共享 |
+| **6. 已知限制** | 命令方块被 Folia 架构性禁用 | 需插件/数据包替代（见下文） |
+
+## 环境（2026-08-18 更新：Folia 已接管原测试服端口）
 
 | 项目 | 原测试服 | Folia 测试服 |
 |:--|:--|:--|
-| 核心 | Paper 26.2-112 | Folia 26.2-4 BETA（2026-08-11） |
+| 核心 | Paper 26.2-112（**已停运**） | Folia 26.2-4 BETA（2026-08-11） |
 | 路径 | `~/minecraft-server` | `~/folia-test` |
-| Java 端口 | 25565 | 25566 |
-| RCON | 25575（密码 orztest2026） | 25576（同密码） |
-| Geyser UDP | 19132 | 19133 |
+| Java 端口 | ~~25565~~（已让出） | **25565**（接管 Paper 的） |
+| RCON | ~~25575~~ | **25575**（接管，密码 orztest2026） |
+| Geyser UDP | ~~19132~~ | **19132**（接管 Paper 的） |
 | Geyser auth-type | offline | offline（2026-08-18 对齐 Paper；原 online 会触发 `MinecraftProfileNotFoundException 404`，offline 直连不查 XBL） |
-| MOTD | `§e[Paper] 测试服-验证地图恢复状况` | `§e[Folia] OrzMC Test` |
+| MOTD | `§e[Paper] 测试服-验证地图恢复状况` | `§e[Folia] OrzMC Test`（保留区分标识） |
 | SkinsRestorer 警告 | `offlineModeWarning.enabled: false` | false（2026-08-18 对齐 Paper：屏蔽离线玩家「第三方启动器可能覆盖皮肤」警告，纯噪音；原 true 每次登录都发） |
-| 白名单 | 开 | **关**（`white-list=false` `enforce-whitelist=false`） |
+| 白名单 | 开 | 开关**关**（`white-list=false` `enforce-whitelist=false`），但**列表已同步 139 玩家**（whitelist.json 复制） |
+| 世界 | `~/minecraft-server/world`（17G） | **symlink → Paper 世界**（`~/folia-test/world → ~/minecraft-server/world`，零拷贝，2026-08-18） |
 | 启动 | `./start.sh`（java -Xms2G -Xmx2G -jar folia-26.2-4.jar nogui） | 同左 |
 
+- ⚠️ **两服共享同一份世界（symlink）**：**绝不允许两服同时启动**（会损坏地图）；Paper 服若再启动需先删 `world/session.lock`，且 Paper 服端口已让出需另行规划
 - Folia 核心下载：`https://papermc.io/downloads/folia` 页面内嵌 JSON（fill-data 直链，sha256 校验）
 - ⚠️ Folia 26.2 目前只有 **BETA**（26.1.2 才是 STABLE）；Folia 版本节奏比 Paper 慢
 
@@ -47,9 +64,9 @@ WorldEdit 7.4.5 / WorldGuard 7.0.18（experimental）/ LuckPerms 5.5.77 / Geyser
 | BackOnDeath 0.4 | ↑ 并入 AxGraves | — | /axgraves tp 回死亡点 |
 | GetMeHome 3.0.0 | ↑ 并入 EssentialsC | — | /home 多 home |
 | EzShops（连带） | VaultUnlocked 后恢复 | — | 依赖链修复验证 ✅ |
-| **OrzMC 1.0.18** | ❌ **无平替** | — | 自家定制逻辑，需源码适配 Folia（另行排期） |
+| **OrzMC 1.0.18** | **升级 1.0.18-dev.296**（2026-08-17 发布，PR #191 Folia CI smoke） | — | jar 内 `folia-supported: true` 确认；**Folia 服已加载运行**（创建默认配置 + 权限组自动初始化） |
 
-**最终**：20 jar → 17 全绿（OrzMC 留目录但不加载）。
+**最终**：20 jar → 18 全绿（无拒载）。
 
 ### 平替关键细节
 - EssentialsC：`Successfully hooked into Vault`；home/tpa/warp/kits 全套；数据在 `databases/homes.db`（SQLite）
@@ -65,7 +82,7 @@ WorldEdit 7.4.5 / WorldGuard 7.0.18（experimental）/ LuckPerms 5.5.77 / Geyser
 | GetMeHome → EssentialsC | 186 玩家 / 879 home | homes.yml (YAML) → homes.db (SQLite)，字段一一映射，同名冲突跳过 |
 
 **无需迁移**：Vault（纯 API）/ DeathChest（临时容器+审计）/ BackOnDeath（内存态）/ EssentialsX（原服从未真正用起来，userdata 0 homes）/ GriefPrevention（ClaimData 空，无领地）。
-**待定**：OrzMC 配置（config/permission/portals/templates/easybot/ip_blacklist）——等 Folia 改造时随代码迁移。
+**OrzMC 配置**：2026-08-18 已迁移（config 定制值合并 + easybot.yml 完整复制，见「全面接管」章节）。
 
 ### 迁移脚本（技能 scripts/，均已参数化 + --dry-run）
 ```bash
@@ -78,6 +95,47 @@ python3 ~/.hermes/skills/gaming/orzmc/scripts/migrate_getmehome_to_essentialsc.p
 - 密码校验需真实登录测试（迁移工具无法验证 BCrypt 密码本身）
 - EssentialsC：`SELECT COUNT(*) FROM homes` = 879；坐标样本与原 yml 一致
 
+## 全面接管原测试服（2026-08-18）
+
+Folia 服实验成功后全面接管原测试服（两服停运 → 单服运行）。
+
+### 1. 地图（磁盘不足方案：symlink 零拷贝）
+- 磁盘仅剩 7.9G < 17G 地图 → **不能复制**，用符号链接：`~/folia-test/world → ~/minecraft-server/world`
+- Folia 原有全新世界备份为 `world.orig-newgen`（14M，可删）
+- 启动前必须删 `world/session.lock`
+- ⚠️ **两服共享地图，绝不同时启动**；Paper 服再启动需先让出端口
+
+### 2. 端口接管（Folia 改用原 Paper 端口）
+`server.properties`: `server-port=25565`、`rcon.port=25575`；Geyser `port: 19132`（改后 Java/Bedrock/RCON 三端口均与原 Paper 一致）
+
+### 3. LuckPerms 四档权限系统（H2 数据库替换）
+- 两服同版 LuckPerms 5.5.77 → **停服后直接复制** `plugins/LuckPerms/luckperms-h2-v2.mv.db`（229KB）
+- 备份原 Folia db 为 `.folia-orig`；删除 `luckperms-h2-v2.trace.db`（锁文件）
+- 验证：启动后 OrzMC **无「已创建组」日志** = 四档组（default→member→builder→admin + rank track）已从 Paper 库加载，未重复创建；Vault/F3F4Perms/AuthMe 均成功 hook
+- ⚠️ LP 命令经 RCON 不回显（异步 dispatch），验证靠日志
+
+### 4. OrzMC 配置迁移（新版模板为基底合并）
+- **config.yml**：Folia 新版模板（含 guard/chat/login_rate_limit/player_notify 等新键）为基底，应用 Paper 定制值：`backup_retention_count: 1`、`entity_teleport_enabled: false`（Paper 旧版模板缺新键，不能整文件覆盖）
+- **easybot.yml**：完整复制（网关 api_server/ws_server/api_key、QQ 群、飞书/QQ 平台会话）→ Folia 直连 EasyBot 认证成功
+- guide_book/ip_blacklist/permission/portals/templates：0 差异或新版已含旧版内容，不动
+- ⚠️ 两服同时连同一 EasyBot 网关，消息互通（测试期可接受）
+- ⚠️ `whitelist.kick_message.qq_group_id` 未配置警告无害（easybot.qq_group_id 兜底，Paper 同样）
+
+### 5. 服务端配置全量同步
+| 文件 | 处理 |
+|:--|:--|
+| ops.json | **合并**（Paper 24 OP + joker = 25，勿覆盖） |
+| banned-players.json / banned-ips.json | 复制（3 玩家 + 4 IP） |
+| usercache.json | 复制（356 条） |
+| help.yml | 复制 |
+| config/paper-world-defaults.yml | 4 处对齐：anti-xray（enabled/engine-mode=2）、tracking-range-y.enabled、prevent-moving-into-unloaded-chunks、enderpearl exploit |
+| config/paper-global.yml | proxies 段对齐：bungee-cord online-mode **true**（Paper 实值）、velocity false；`threaded-regions` 是 Folia 特有段**必须保留** |
+| spigot.yml / bukkit.yml / wepif.yml | 语义一致，不动（仅 YAML 数值格式 -1 vs -1.0） |
+| server.properties | 仅 MOTD 保留 `[Folia]` 标识 |
+
+- ⚠️ **坑：`paper-global.yml` 的 `online-mode` 是 proxies（Bungee/Velocity）认证，≠ server.properties 的 online-mode**——前者 Paper 实值 true（默认），曾误改成 false，后修正
+- ⚠️ `banlist` 命令被 EssentialsC 接管（显示 EssC 自己的存储），原版封禁文件已由 Bukkit 启动时加载生效，验证看文件格式 + 日志
+
 ## 坑与经验
 
 1. **Folia 拒载是加载期错误**，非运行时错误——`plugins` 列表红色 = 未启用，jar 可以留在目录
@@ -86,6 +144,20 @@ python3 ~/.hermes/skills/gaming/orzmc/scripts/migrate_getmehome_to_essentialsc.p
 4. **AuthMe 是库重插件**：首次启动要下 maven 库（mysql/argon2/bcrypt 等 20+ jar），启动时间显著变长
 5. **SQLite 迁移时目标服可在线**（WAL 模式），但保险起见迁移后重启一次让插件重载
 6. F3F4Perms 依赖 **packetevents**（硬依赖 depend），两者都支持 Folia；权限 `f3f4perms.use` 默认 op，让有 /gamemode 权限的玩家用 F3+F4/F3+N 热键
+7. ⚠️ **CustomWorldHeight 配置必须同步**：Folia 若沿用默认模板（example-world-name）→ 世界按 384 高度解析 Paper 的 1088 世界 → `Ignoring heightmap data ... expected: 37, got: 52` 错误 + 命令方块传送等跨区块操作异常。同步后错误方向反转（expected: 52, got: 37）= 世界内新旧区块高度图混存（CustomWorldHeight 2026-08-15 才启用，旧区块 384 生成）——**无害**（高度图只是缓存，忽略后自动重算，Paper 服同样存在）
+8. ⚠️⚠️ **命令方块在 Folia 被架构性禁用**（2026-08-18 实证）：官方 issue #429「fundamentally disabled」+ #485 请求加 `force-enable-command-blocks` 开关被关 `not_planned`。**无论 `enable-command-block` 怎么配，命令方块都不会执行任何命令**（含传送）——迁移后命令方块传送失效是此原因，非配置问题。替代：支持 Folia 的传送插件 / 数据包函数（触发机制受限）/ 接受限制
+9. ⚠️ **`paper-global.yml` 的 `online-mode` ≠ server.properties 的 online-mode**：前者是 proxies（Bungee/Velocity）段认证，Paper 实值 true（默认）；曾误把 Folia 改成 false 造成不一致，已修正
+10. ⚠️ **迁移服务端 JSON 文件看语义不看字节**：ops.json 要**合并**（Paper 24 OP + joker = 25，直接覆盖会丢 joker）；banned-* 直接复制（Bukkit 启动时加载，`banlist` 命令被 EssentialsC 接管显示其自身存储，验证看文件 + 日志）
+11. **磁盘不足时地图用 symlink 零拷贝**：`ln -s paper/world folia/world`（17G 无法复制时唯一方案）；⚠️ 两服共享地图绝不同时启动（session.lock + 数据损坏风险）
+12. **Folia 启动前必须删 `world/session.lock`**（symlink 共享场景下尤其重要，Paper 停服会残留）
+
+## 已知限制（Folia 架构性，无法配置解决）
+
+| 限制 | 官方依据 | 影响 | 替代方案 |
+|:--|:--|:--|:--|
+| **命令方块被禁用** | issue #429「fundamentally disabled」+ #485 `not_planned` | 所有命令方块不执行（含传送/红石触发逻辑） | 支持 Folia 的插件 / 数据包函数 / 接受限制 |
+| EssentialsC Scoreboard 不支持 | Folia 分区线程模型 | 计分板功能不可用（启动 WARN） | 其他计分板插件 |
+| OrzMC 需 Folia 版 | 旧版无 `folia-supported` 标记 | 1.0.18-dev.296 起已解决 | ✅ 已升级 |
 
 ## 相关文档
 - 兼容性调研方法论 + 替代品清单 → 本文件
