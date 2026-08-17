@@ -1,12 +1,20 @@
-# 三端配置差异审计（2026-08-11 三次审计；2026-08-12 重启审查 → v2 只审查不重启）
+# 三端配置差异审计（2026-08-11 三次审计；2026-08-12 重启审查 → v2 只审查不重启；2026-08-17 审查超时失败）
 
 > 触发：全量拉取三端（本地 ~/minecraft-server / Exaroton / MCSM）核心+插件配置，语义对比。**v2（2026-08-12 起，每周一 9:15 cron `ab06b886c39f`，脚本 `orzmc_config_audit.sh`）：不重启任何服务（Exaroton 重启耗积分、本地测试服无需每日重启），Exaroton+MCSM 并发拉取（`fetch3_configs.fetch_all`），去掉 GNU timeout（macOS 无此命令），输出 STATUS 成败行**。
 > 工具：`scripts/cmp3/fetch3_configs.py`（拉取）+ `cmp3_configs.py`（对比）+ `cmp3_diff_detail.py`（明细）+ `cmp3_report.py`（完整报告生成）+ `cmp3_trend.py`（新旧报告变化跟踪）。
 > 基线：77 个配置文件（核心 7 + 插件 70），**重启后全量审查（2026-08-11 四次）：8 个差异文件、8 个运行时数据文件、61 个完全一致**。
 > **完整报告（保留最近两次，最新为准）**：
-> - `references/config-drift-report-20260812.md`（2026-08-12 重启审查·⚠️ 审查失败无数据·最新）
-> - `references/config-drift-report-20260811.md`（四次审计·重启后·当前基线 61/8/8）
-> - `references/config-drift-report-20260810.md`（已轮换·cron 仅 file 工具未物理删除，留档备查）
+> - `references/config-drift-report-20260817.md`（2026-08-17 审查·❌ 脚本超时 3600s 无数据·最新）
+> - `references/config-drift-report-20260812.md`（2026-08-12 重启审查·⚠️ 审查失败无数据·基线 61/8/8）
+> - `references/config-drift-report-20260811.md`（已轮换·cron 仅 file 工具未物理删除，留档备查）
+> - `references/config-drift-report-20260810.md`（已轮换·同上留档备查）
+
+> **变化跟踪（20260817 三端配置审查·❌ 失败：脚本超时 3600s 无数据）**：
+> - **执行**：09:15:11 启动 → 拉取阶段（fetch3 并发拉取）挂死，**被 cron 3600s 超时杀死**；`/tmp/cmp3_report_latest.md` 未生成（文件不存在）、/tmp/exa_configs2 与 /tmp/mcsm_configs2 均 0 文件、无 STATUS 行 → 判定 **❌ FAIL**
+> - **三端状态（09:15，均未重启）**：MCSM ❌ 状态查询报「未开启API密钥创建功能」（面板侧 API 密钥权限异常，上轮 0812 未出现，需人工查面板）；Exa ✅ status=0(OFFLINE)；本地未重启（设计）
+> - **审查无新数据**：差异数不可比，基线沿用 20260812（61 一致 / 8 差异 / 8 数据）；对齐项（sync-chunk-writes 等）本次未验证，上轮结论维持（Exa sync-chunk-writes 平台保留 false）
+> - **卡点分析**：python 输出块缓冲 + 进程被杀 → 日志停在「--- 2. 三端配置审查 ---」，无法定位卡在 Exa 还是 MCSM；各单请求有超时（Exa GET 60s / MCSM POST 20s×3、下载 GET 60s×4）但 **MCSM 侧 77 文件×多轮重试最坏数小时、整脚本无总时长护栏**
+> - **修复建议**：① 查 MCSM 面板 API 密钥权限/重新生成（同步 .env）；② 脚本加总时长护栏（超时即输出 STATUS ❌ exit 非 0）；③ fetch3 错误响应 fast-fail 勿耗满重试；④ cron 侧「无 STATUS 行/无报告文件」直接判 FAIL
 
 > **变化跟踪（20260812 三端重启+审查）**：
 > - **三端重启**：MCSM ✅ 已重启（运行 15min<60min，玩家 1/150）；本地 ✅ 启动完成（`Done` 日志确认，pid 40655）；Exa 从 STOPPED(0) 启动 → LOADING(2)×3 → **STARTED(1) 稳定×10 → 实际已启动成功**，但脚本报「⚠️ 未确认」——**脚本 bug：等待常量写成 4（=RESTARTING），1（=STARTED）才是运行态**，正常 start 路径等不到 4（建议修复）
