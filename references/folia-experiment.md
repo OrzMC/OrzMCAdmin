@@ -137,6 +137,33 @@ Folia 服实验成功后全面接管原测试服（两服停运 → 单服运行
 - ⚠️ **坑：`paper-global.yml` 的 `online-mode` 是 proxies（Bungee/Velocity）认证，≠ server.properties 的 online-mode**——前者 Paper 实值 true（默认），曾误改成 false，后修正
 - ⚠️ `banlist` 命令被 EssentialsC 接管（显示 EssC 自己的存储），原版封禁文件已由 Bukkit 启动时加载生效，验证看文件格式 + 日志
 
+## 传送门 transfer 补偿方案（PR #195，2026-08-18 合并 b7d4b86）
+
+> PlayerPortalEvent 在 Folia 不触发 → PlayerMoveEvent 区域检测补偿跨服 transfer。以下为实施沉淀（评审 5 轮迭代验证），改 portal 相关代码前必读。
+
+### 传送门几何（触发判定的地基，实测+源码实证）
+- `PortalBuilder`：`baseY = 建造者脚方块`，框架底黑曜石行在 `baseY`，金块垫层 `baseY-1`，**`cy = baseY + 2`** → `rehydrateInterior` 写入的内部格 y ∈ **{baseY+1, baseY+2, baseY+3}**（3 格高，x/z 按轴 2 格宽）
+- **玩家脚底 `getTo()` 在 baseY，永远比内部格低 1 格** → 只查脚底格 = 永不触发（R4 评审抓出的严重几何回归）
+- ✅ 正确匹配：**身体两格**——脚底格 `findTargetExact(to)` 未命中再查躯干格 `(x, blockY+1, z)`；水平方向**精确命中**（`findTargetExact` 无邻域），垂直方向身体两格兜底
+
+### 精确 vs 邻域容差（误触发面）
+- `findTarget`（3×3×3 邻域容差）只用于 **Paper 路径**（玩家已站在门内，容差兜对齐偏差）
+- **move 路径必须 `findTargetExact`**（水平精确）：邻域容差会把触发区膨胀为「门 + 四周 1 格」，密集建筑/走廊路过玩家会被反复误拉走（G-A）
+- 躯干格扩展不产生可达误触发面：内部格正下方恰是框架底黑曜石行，站立/行走玩家无法占用
+
+### 双路径与事件语义
+- **5s 冷却双路径共享**：权威判断在 `transfer()` 内（`isOnCooldown` + `lastTransfer` CHM，UUID→时间戳）；`handleMove` 前置快速跳过省 findTarget/auth 开销
+- **冷却前置**：`handle()`（Paper 路径）在 setCancelled 前先查冷却——冷却内不接管事件（不取消原版传送），保证「取消 ⇔ transfer」自洽，避免「取消了但没传」卡门状态；副作用：5s 内二次激活会放行原版传送（已文档化接受）
+- **事件优先级 HIGHEST**：反作弊/区域防护（Grim/Vulcan）多在 HIGHEST 取消移动，默认 NORMAL 看不到取消态 → `@EventHandler(priority = EventPriority.HIGHEST)` + `handleMove` 开头 `if (event.isCancelled()) return`
+- **认证 fail-open**：LoginSecurity 反射检查失败默认放行（`PlayerAuthenticationService` catch → true）+ WARNING 日志；认证决策注入 `Predicate<Player>` 以便单测覆盖未认证分支（测试环境无 LoginSecurity 恒 true）
+
+### transfer 命令派发
+- Folia 上必须 **global region 线程**派发（`server.runSync`）；用 `executeConsoleCommand`（捕获 `ConsoleCommandResult.dispatched`）而非 `executeConsoleCommands`（无结果回调）——**失败打 WARNING**（目标服不可达时不再静默，玩家被取消一次后第二次放行原版进下界至少日志有痕）
+
+### 评审教训（流程价值）
+- 本地 claude review 把关流程有效：R4 抓出 findTargetExact 几何回归（测试 mock 掉 portalService 掩盖了真实几何）→ **测试必须覆盖真实几何**（脚底 null + 躯干命中 → transfer 的回归用例），不能只 mock 返回值
+- 补偿路径固有差异（已文档化接受）：无法取消原版下界传送（transfer 失败玩家进下界）、触发时机=踏入内部格当 tick（远早于 Paper 4s 激活）
+
 ## 坑与经验
 
 1. **Folia 拒载是加载期错误**，非运行时错误——`plugins` 列表红色 = 未启用，jar 可以留在目录
@@ -153,7 +180,7 @@ Folia 服实验成功后全面接管原测试服（两服停运 → 单服运行
    - 警告反复刷的机制：磁盘旧格式高度图加载时被忽略 → 内存重算 → **不写回磁盘**（除非区块 dirty）→ 每次重启/新区块加载都重新警告
    - **✅ CustomWorldHeight 已移除（2026-08-18 两端 Paper+Folia）**：全量扫描（nbtlib 解析 6380 region / 1,471,866 区块，scan_final.py）实证 **0 个区块含高空方块数据**（Y>319 的 section 有壳无 block_states=纯空气）→ 去掉零数据丢失。1088 格式区块 17,296（1%，83 个 region，玩家新探索区+出生点重载）**不会自动恢复也不会消失**——随玩家活动「加载→保存」循环自然收敛为 384 格式；未加载的保持 1088 文件但读取按 384 解析，游戏无影响
    - ⚠️ 扫描脚本坑（2026-08-18）：字节解析 sections 定位偏移 **idx+11**（1+2+8，idx+10 会指到名字末字符 's' 0x73 全失败）；`sections` 只存非空 section 且空 section 无 block_states 字段（「有 section」≠「有方块」）；可靠方案用 `nbtlib.File.parse(io.BytesIO(raw))` 全量解析（慢但准，6380 region 约 48 分钟，8 进程）
-8. ⚠️⚠️ **命令方块在 Folia 被架构性禁用**（2026-08-18 实证）：官方 issue #429「fundamentally disabled」+ #485 请求加 `force-enable-command-blocks` 开关被关 `not_planned`。**无论 `enable-command-block` 怎么配，命令方块都不会执行任何命令**（含传送）——迁移后命令方块传送失效是此原因，非配置问题。替代：支持 Folia 的传送插件 / 数据包函数（触发机制受限）/ 接受限制
+8. ⚠️⚠️ **命令方块在 Folia 被架构性禁用**（2026-08-18 实证）：官方 issue #429「fundamentally disabled」+ #485 请求加 `force-enable-command-blocks` 开关被关 `not_planned`。**无论 `enable-command-block` 怎么配，命令方块都不会执行任何命令**（含传送）——迁移后命令方块传送失效是此原因，非配置问题。本地复现（2026-08-18）：setblock 放置 `repeating_command_block{Command:"say ...",auto:1b}` 成功（无报错）但 8s+ 零输出；`execute if block` 经 RCON 触发 NPE（`Level.getCurrentWorldData()` null，Folia 26.2-4 RCON 上下文 bug，游戏内是否同样待验证）。**⚠️ 替代路线收窄（官方 FAQ 2025-08 + RCON 实证）：Folia 共禁用 24 个命令——bossbar/clone/data/datapack/debug/function/item/loot/reload/return/ride/rotate/schedule/scoreboard/spectate/spreadplayers/tag/team/teammsg/tick/trigger/perf/saveall/restart**——命令方块地图核心依赖（scoreboard 任务/tag 标记/trigger 按钮/schedule 定时/function 数据包）**全断**，`/function`+`/datapack` 被禁 = **数据包函数替代路线不通**（早前记录的「数据包函数替代（触发机制受限）」作废）。可用命令实测：execute/tp/give/effect/setblock/fill/summon/say/tellraw/title/playsound/advancement/worldborder/time 正常；⚠️ `gamerule` 在 26.2-4 注册了但任何参数都报 Incorrect argument（疑似 BETA bug，待查）。无现成 Folia 命令方块模拟插件（Modrinth 检索 2026-08-18：commandblocks 插件无 folia loader；CraftBook Folia 支持 PR #1315 未合）。⚠️ 世界命令方块现状（2026-08-18 修正，此前「0 命令方块」结论是我扫描脚本 bug，作废）：**测试服世界有 1262 个命令方块**（overworld 1252 / the_end 9 / the_nether 1，全为普通 command_block，auto=1 保持激活 246 个）。分布热区：r.-1.-2（303 个，主活动区 x-482~-432/z-561~-519）、r.0.-1（267）、r.-6.-55（226，传送目标主基地 -2767 70 -28039）、r.39006.39006（116，x~1997 万超远区）、r.-1.-1（95）、r.0.0（58，出生点冒险地图：附魔台密室/幻丝迷宫/机关/kill 陷阱/give 奖励/NPC 牌子）、r.-1.0（51）。命令分类：kill 239 / title 176 / tp 162 / 空 156 / execute 85 / give 80 / say 59 / effect 52 / spawnpoint 51 / playsound 41 / **scoreboard 35 / tag 22 / team 2（59 个依赖 Folia 被禁命令，模拟方案也无法恢复）** / gamemode 24 等。✅ **Folia 只禁执行不删数据**（加载保存多次后磁盘 NBT 完好）→ 回退 Paper 100% 恢复。**扫描脚本坑（2026-08-18 实测教训）**：① NBT list 中 compound 元素**无 type 字节**（直接以 entries 开始），流式解析多跳 1 字节 = block_entities 全漏（误报 0）；② `find -name "*.mca"` 会把 1.14+ 的 entities/poi 目录也算进去（region 实际 10713 个，非 21689）；③ 16G 内存宿主多进程扫描 worker 会被系统杀（OOM 边缘），**单进程串行最稳**（~19 region/s 小文件，大 region 慢）。**ExecutableEvents 实测（2026-08-19，3.26.8.10 + SCore 5.26.8.10 on Folia 26.2-4）**：✅ 加载成功（SCore 硬依赖必须装，plugin.yml 注释了 depend 但代码需要 com.ssomar.score API 类；首次启动 SpigotLibraryLoader 下载 maven 库）；✅ 配置加载正常（**events/ 目录一个 .yml 文件 = 一个事件**，`events: {name: {type, world, actions: [{type: COMMAND, command}]}}`，`/ee reload` 生效）；❌ **事件监听不触发**——PLAYER_WALK（bot 真实行走 8 格）/ PLAYER_JUMP_EVENT（跳跃 5 次）/ `/ee debug` 全零输出（debug 已开），判定事件系统与 Folia 分区线程模型不兼容 → **当前版本在 Folia 26.2 上不可用，插件替代方案整体不可行**（WarZ 系列等 1.21+ 插件同理存疑）。⚠️ 防重登限制来源=**GriefPrevention3D 的 Spam.LoginCooldownSeconds（默认 60）**，踢出消息 "You must wait X seconds before logging-in again"，改 0 解除（2026-08-19 已改，重启生效）。方案矩阵：A 回退 Paper=100% 恢复（插件矩阵反向回退）；B Folia 主服+Paper 地图子服；C 自研模拟插件=仅覆盖简单命令（tp/give/effect/say 等，依赖被禁命令的逻辑无法恢复）；D 接受限制按需替代（传送→OrzMC 传送门/传送弓、EssentialsC warp；公告→EasyBot；奖励→kit/商店）
 9. ⚠️ **`paper-global.yml` 的 `online-mode` ≠ server.properties 的 online-mode**：前者是 proxies（Bungee/Velocity）段认证，Paper 实值 true（默认）；曾误把 Folia 改成 false 造成不一致，已修正
 10. ⚠️ **迁移服务端 JSON 文件看语义不看字节**：ops.json 要**合并**（Paper 24 OP + joker = 25，直接覆盖会丢 joker）；banned-* 直接复制（Bukkit 启动时加载，`banlist` 命令被 EssentialsC 接管显示其自身存储，验证看文件 + 日志）
 11. **磁盘不足时地图用 symlink 零拷贝**：`ln -s paper/world folia/world`（17G 无法复制时唯一方案）；⚠️ 两服共享地图绝不同时启动（session.lock + 数据损坏风险）
@@ -164,8 +191,8 @@ Folia 服实验成功后全面接管原测试服（两服停运 → 单服运行
 
 | 限制 | 官方依据 | 影响 | 替代方案 |
 |:--|:--|:--|:--|
-| **命令方块被禁用** | issue #429「fundamentally disabled」+ #485 `not_planned` | 所有命令方块不执行（含传送/红石触发逻辑） | 支持 Folia 的插件 / 数据包函数 / 接受限制 |
-| **PlayerPortalEvent 不触发**（2026-08-18 实测+反编译实证） | 下界传送门走 `portalAsync` 新路径，`callPlayerPortalEvent` 无任何调用者 | 依赖该事件的跨服 transfer 完全失效（玩家踩传送门只触发原版维度传送） | OrzMC PR #195：PlayerMoveEvent 补偿路径（方块坐标变化+interiorTargets 命中→transfer 命令+5s 冷却；仅 Folia 生效，Paper 保持原路径）。`EntityPortalReadyEvent` 语义不符（只能改目标世界不能替换 transfer） |
+| **命令方块被禁用** | issue #429「fundamentally disabled」+ #485 `not_planned` | 所有命令方块不执行（含传送/红石触发逻辑）；**连带 24 命令被禁**（含 /function /datapack /scoreboard /tag /schedule，数据包函数路线不通） | 回退 Paper（100%）/ Paper 地图子服 / 自研模拟插件（仅简单命令）/ 接受限制按需替代 |
+| **PlayerPortalEvent 不触发**（2026-08-18 实测+反编译实证；✅ 已解决 = OrzMC PR #195 合并 b7d4b86，2026-08-18） | 下界传送门走 `portalAsync` 新路径，`callPlayerPortalEvent` 无任何调用者 | 依赖该事件的跨服 transfer 完全失效（玩家踩传送门只触发原版维度传送） | OrzMC PR #195 已合并：PlayerMoveEvent 补偿路径（方块坐标变化+interiorTargets 命中→transfer 命令+5s 冷却；仅 Folia 生效，Paper 保持原路径）。`EntityPortalReadyEvent` 语义不符（只能改目标世界不能替换 transfer） |
 | EssentialsC Scoreboard 不支持 | Folia 分区线程模型 | 计分板功能不可用（启动 WARN） | 其他计分板插件 |
 | OrzMC 需 Folia 版 | 旧版无 `folia-supported` 标记 | 1.0.18-dev.296 起已解决 | ✅ 已升级 |
 

@@ -18,6 +18,7 @@
 1. **下界传送门最小内尺寸 2×3**（宽 2 高 3）——**2×2 无效**（fill 建测试门极易建错）
 2. **NoAI 实体不触发传送**（`NoAI:1b` 村民站门内 10 秒也不传——不代表插件问题）；验证必须用普通村民（有 AI）
 3. 实体需在传送门方块内持续停留（约 80 tick）才触发
+4. ⚠️ **Folia 26.2 下 `PlayerPortalEvent` 不触发**（portalAsync 新路径绕过 Bukkit 事件，反编译实证 `callPlayerPortalEvent` 无调用者）——玩家跨服 transfer 依赖该事件会静默失效；OrzMC 已用 PlayerMoveEvent 补偿（PR #195）。几何关键：地面传送门内部格在**脚底+1 起**（`cy=baseY+2`），玩家身体两格匹配（脚底+躯干），水平精确命中防路过误触发。详见 `folia-experiment.md`「传送门 transfer 补偿方案」小节
 
 ## 插件策略设计参考（OrzMC 2026-08 落地）
 

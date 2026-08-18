@@ -1,7 +1,7 @@
 ---
 name: orzmc
 description: "Minecraft 运维统一技能（唯一入口）：三端服务器运维/插件构建升级/性能诊断/权限体系/测试/基岩支持，46 个知识体系 + 31 个脚本。"
-version: 2.0.0
+version: 2.0.1
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux]
@@ -49,9 +49,10 @@ required_commands: [java, curl, tar]
 > | LoginSecurity→AuthMe 数据迁移（`scripts/migrate_loginsecurity_to_authme.py [--ls-db X --authme-db Y] [--dry-run]`；BCrypt 哈希直接复用，AuthMe 须改 passwordHash: BCRYPT） | `scripts/migrate_loginsecurity_to_authme.py` |
 > | GetMeHome→EssentialsC 数据迁移（`scripts/migrate_getmehome_to_essentialsc.py [--yml X --db Y] [--dry-run]`；homes.yml YAML→homes.db SQLite，字段一一映射） | `scripts/migrate_getmehome_to_essentialsc.py` |
 > | PaperMC 插件 E2E 测试方案调研（MockBukkit/WatchWolf/GameTest/真实环境/容器化 + 推荐组合） | `references/plugin-e2e-testing.md` |
+> | **命令方块/方块实体扫描（2026-08-18 入库）：`scripts/scan_cmdblocks.py <世界目录> <out.json> [workers=8] [min_size=0]` 流式 NBT 解析提取命令方块+block_entities（workers=1 串行最稳，内存紧张宿主勿用多进程）；`scripts/analyze_cmdblocks.py <json>` 输出分类统计（类型/auto/维度/命令词频/被禁命令依赖/区域分布）** | `scripts/scan_cmdblocks.py` + `scripts/analyze_cmdblocks.py` |
 > | **跨网互联/中转方案（电信服×联通移动玩家；FRP 中转 + PROXY protocol 真实 IP 透传；部署资产在 `OrzMC/proxy` 子模块 = OrzMCProxy 仓库：install-frp.sh/ps1 一键安装、verify-tunnel.sh、health-check.sh、bedrock_ping.py、mc_login.py、**relay-monitor.sh 外部隧道监控（formal/temp 双档看门狗，2026-08-14 本地双模式验收 100% 通过）**、configs 模板、systemd/launchd/Windows 计划任务、manual-apply-windows.md 手动改法）** | `references/cross-carrier-networking.md` |
 > | **世界高度调整（1.18+ 高度是 worldgen 属性非服务器配置；CustomWorldHeight 插件方案 2026-08-15 本地实测通过 height=1088；硬限制 min_y≥-2032/height≤4064/min_y+height≤2032；RCON setblock 边界验证法）** | `references/world-height.md` |
-> | **Folia 迁移实验（2026-08-17 本地双服实测：兼容矩阵 20 jar→18 全绿；9 不兼容插件平替方案含合并策略；LoginSecurity→AuthMe 359 账号 / GetMeHome→EssentialsC 879 home 数据迁移；❌ Hangar API 不能查 Folia（supportedPlatforms 只标 PAPER），检索用 Modrinth loaders 含 folia；Folia 26.2 目前仅 BETA；2026-08-18 全面接管原测试服（端口 25565/19132 + 地图 symlink + 配置/权限/白名单全量同步）；⚠️ 命令方块被 Folia 架构性禁用（#429/#485 not_planned）；⚠️⚠️ log4j2 自定义配置必须 start.sh JVM 参数 -Dlog4j2.configurationFile 指定（config/ 下不会自动加载）；CustomWorldHeight 已移除（全量扫描 0 高空数据，1088 格式区块随加载自然收敛 384）；Essentials tpa 漏配 tpaccept 已修复）** | `references/folia-experiment.md` |
+> | **Folia 迁移实验（2026-08-17 本地双服实测：兼容矩阵 20 jar→18 全绿；9 不兼容插件平替方案含合并策略；LoginSecurity→AuthMe 359 账号 / GetMeHome→EssentialsC 879 home 数据迁移；❌ Hangar API 不能查 Folia（supportedPlatforms 只标 PAPER），检索用 Modrinth loaders 含 folia；Folia 26.2 目前仅 BETA；2026-08-18 全面接管原测试服（端口 25565/19132 + 地图 symlink + 配置/权限/白名单全量同步）；⚠️ 命令方块被 Folia 架构性禁用（#429/#485 not_planned）；⚠️⚠️ log4j2 自定义配置必须 start.sh JVM 参数 -Dlog4j2.configurationFile 指定（config/ 下不会自动加载）；CustomWorldHeight 已移除（全量扫描 0 高空数据，1088 格式区块随加载自然收敛 384）；Essentials tpa 漏配 tpaccept 已修复；**PlayerPortalEvent Folia 不触发已解决（PR #195 合并 b7d4b86：PlayerMoveEvent 补偿路径，几何=内部格脚底+1 起须身体两格匹配+水平精确命中，5s 双路径共享冷却，详见「传送门 transfer 补偿方案」小节）**）** | `references/folia-experiment.md` |
 
 ## 使用时机
 - 用户要创建新的 PaperMC 服务器（本机/Exaroton/MCSM）
