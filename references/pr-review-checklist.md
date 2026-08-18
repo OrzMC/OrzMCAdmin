@@ -45,3 +45,12 @@ gh pr checks <n>                                  # CI 状态
 - **权限校验**：每个命令入口查拦截器（guardAdminCommand / adminInterceptors / requires）
 - **异步链路**：runSync + CompletableFuture.join 模式检查异常传播（Bukkit 调度器吞异常只打日志）
 - **状态一致性**：副作用（LP 授权）与持久化（状态落盘）的顺序——「先 handler 后落状态」正确，但 handler 失败信号必须能传播
+
+## 四、Folia 异步/并发审查检查点（2026-08-19 PR #196 实战新增）
+
+1. **服务器调度线程等 LP future = 自锁**：全局搜 `loadUser|saveUser|\.get\(|\.join\(`，确认没有任何 global/region 线程同步等待 LP 异步 future（回调排自己后面必自锁/超时）。授权类操作必须 `CompletableFuture` 异步化（LP 在自己管理的异步线程执行）。
+2. **状态漂移**：授权结果与业务状态必须原子一致——「LP 已晋升 + 状态 PENDING」= 漂移，重复操作会越级。检查异步回调落状态前是否重读校验。
+3. **并发竞态（异步化新引入）**：异步授权后同一实体可被并发操作——in-flight 去重（CHM keySet 占位）或 PROCESSING 占位 CAS；授权在途时撤回/拒绝互斥。
+4. **region 线程判定**：`Bukkit.isGlobalTickThread()` 不覆盖 region 线程（Folia 需 `isRegionOwnedByCurrentThread()`，paper-api 编译期无此方法须反射）；任何服务器调度线程上都不应做可能阻塞的离线读。
+5. **写盘并发**：异步化把写挪到不同线程后，共享配置对象（FileConfiguration）读写必须加锁，防丢更新/YAML 损坏。
+6. **join 超时**：所有 `done.join()` 必须有超时（调度器停摆时防永久挂起）。

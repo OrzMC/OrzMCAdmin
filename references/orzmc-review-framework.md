@@ -23,7 +23,7 @@
 - `ReviewRequest` — record(id, typeId, applicantId, data, status, createdAt, reviewedAt, reviewerName)；Status 枚举 PENDING/APPROVED/REJECTED/CANCELLED；`reviewed()` 生成审核后新记录
 - `ReviewType` — record(id, displayName, commandKey, argsParser, eligibility, summary, handler)；`parseArgs(rawArgs)` / `isEligible(uuid)` / `summarize(data)`
 - `ReviewService` — 核心编排：`submit`（资格预检→防重复→PENDING→双端通知）/ `cancel`（仅本人 PENDING）/ `review`（通过时执行 handler）/ `reviewByApplicantName`（按玩家名定位，多条待审提示用类型区分）/ `cancelForApplicant`；通知逻辑收在 service 层，任何入口触发都自动通知
-- `ReviewHandler` — `@FunctionalInterface void onApproved(UUID applicantId)`
+- `ReviewHandler` — `@FunctionalInterface CompletableFuture<Boolean> approve(UUID applicantId)`；**异步授权**（2026-08-19 PR #196 改造，见下节）
 - 端口接口：`ReviewStore`（save/findById/listPending/listByApplicant/pendingFor/hasPending）、`ReviewNotifier`（gameMessage/groupEvent）、`PlayerLookup`（resolve/name）
 
 宿主侧端口实现：
@@ -59,10 +59,20 @@ notifier.event(templateKey, env);
 用真实 vars 渲染 `review_submitted/approved/rejected` 断言「含玩家名」且「不含字面 `{message}`」。
 新增模板键时在此测试补断言（同时记得 4 处注册，见下节）。
 
+## ⚠️⚠️⚠️ 授权处理已异步化（2026-08-19 PR #196，Folia 死锁修复核心）
+
+> 背景：`/review approve` 在 Folia 上曾死锁 132s+（region 线程同步等 LP 异步 future → 自锁）。三阶段演进后定为**异步授权**模式，改 review 相关代码必读 `docs/dev/folia-luckperms-gotchas.md` 与 `folia-experiment.md` 线程红线节。
+
+- **ReviewHandler 签名**：`CompletableFuture<Boolean> approve(UUID applicantId)`——LP 操作（loadUser/saveUser 的 `.get()`）必须在**自己管理的异步线程**执行（`Bukkit.getAsyncScheduler().runNow`），**任何服务器调度线程（global/region）不得同步等待 LP future**（回调排自己后面必自锁）。
+- **状态一致性**：`ReviewService` 异步等待 handler 结果后**才落 APPROVED**（授权成功才通过，失败保持 PENDING）；落状态前重读校验仍 PENDING（防并发覆盖）。授权结果与申请状态**原子一致，无漂移**。
+- **in-flight 去重（防并发越级）**：异步授权后双管理员同时 approve 会并发操作同一 LP User → 跳过中间档越级（member→admin）。`ReviewService` 用 `ConcurrentHashMap.newKeySet()` 按 requestId 占位，处理中重复 approve/reject/cancel 一律返回「正在处理中」，`whenComplete` 释放。
+- **写盘加锁**：approve 在 global 线程落状态、submit/cancel/reject 在 region 线程写——`PermissionStore.save` 用锁包住 write+saveConfig 临界区（防丢更新/YAML 损坏）。
+- 游戏内反馈：「已通过 X 的申请」= 授权成功；「申请保持待审」= 授权失败（链顶/LP 异常）。
+
 ## PR 代码 review 检查点（Paper 插件通用，2026-08-07 权限二期 review 实战）
 
 1. **模板/消息渲染**：renderTemplate vars 键 ⊇ 占位符键（上条）；模板键 4 处注册齐全；`command_review_list` 类传 `message` 键所以没事，`review_*` 四键没传所以坏——逐个核对
-2. **handler 副作用顺序**：`store.save(APPROVED)` 先于 `handler.onApproved()` 执行 → handler 抛异常（LP 命令失败）时**状态已存但权限未授**，玩家看到「已通过」实际无权限。应 handler 先执行再落状态，或 try-catch + 告警（S3 建议）
+2. **handler 副作用顺序**（2026-08-19 起已异步化，见上节）：`store.save(APPROVED)` 必须在 handler **授权成功之后**（异步等结果），失败保持 PENDING——「已通过但无权限」或「已晋升但状态 PENDING（漂移，重复 approve 会越级）」都是不允许的；旧实现「先落状态再执行 handler」的坑已被异步化根除
 3. **ID 生成**：`System.currentTimeMillis() + UUID.randomUUID().hashCode()` —— hashCode 可能为负、同毫秒碰撞概率存在；用完整 UUID 更稳（S1）
 4. **语义字段**：`cancel()` 把申请人 UUID 当 reviewer 存（CANCELLED 记录的 reviewer 应是名字或 null，W5）
 5. **迁移性能**：循环内每次 `save()` 全量落盘 → 批量迁移攒批一次保存（W3）

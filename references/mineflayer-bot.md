@@ -42,6 +42,43 @@ cd ~/minecraft-bot && BOT_COUNT=5 node stay-with-joker.js [分钟=60] [前缀=Te
 - **验证**：`rc list` 看到 Test01-05 在线 + 服务器日志 `[Rcon: Teleported Test01 to 悅咪丿 - joker]`
 - 2026-08-16 实测：5/5 稳定在线 2 分钟零掉线（IPv4 3 + IPv6 2 分流）
 
+## bot 测试插件事件（2026-08-19 ExecutableEvents 实测沉淀）
+
+- ⚠️ **防重登限制坑**：连续快速登录被踢 `You must wait X seconds before logging-in again`——来源是 **GriefPrevention3D 的 `Spam.LoginCooldownSeconds`（默认 60）**，不是登录插件；改 0 + 重启解除（SimpleLogin 无此限制）
+- ⚠️ **SimpleLogin 密码重置**（忘记 bot 密码时）：直改 `plugins/SimpleLogin/passwords.db` 的 `users` 表（uuid→password BCrypt $2a$10$）；Python bcrypt 生成的是 `$2b$` 前缀，Java BCrypt 不认 → **必须替换为 `$2a$`**
+- ⚠️ **mineflayer `setControlState('forward')` 不稳定**：同一脚本有时移动有时不动（疑似物理/时序问题）；**RCON `minecraft:tp <bot>` 移动可靠**（触发 PlayerMoveEvent）但**不触发 sevents 自定义事件**（如 PLAYER_WALK 只认真实行走）
+- ✅ **玩家位置持久化**：bot 下线位置 = 下次重进 spawn 位置（离线服）——测试位置敏感场景先 `/minecraft:tp` 到开阔地
+- ✅ **事件类插件测试套路**：bot 驻留脚本（登录后保持在线 N 秒）→ RCON tp 或 bot 跳跃/行走 → 服务端日志/插件 debug 模式看触发；`version: '1.21.11'` + `/login <pwd>`（SimpleLogin）后 OrzMC 日志「上线」= 登录成功铁证
+- 参考脚本：`scripts/bot/ee-event-test.js`（双事件测试：PLAYER_JUMP_EVENT + PLAYER_WALK）
+
+## 频繁上下线测试（freq-relog.js，2026-08-19 实测沉淀）
+
+```bash
+cd ~/minecraft-bot && BOT_COUNT=6 node freq-relog.js [轮数=8] [在线秒=3] [离线秒=5]
+# 6 bot 循环 登录→保持→退出→等待→再登录；输出 /tmp/freq_relog_result.json（每 bot 每轮时间线）
+```
+
+- **用途**：验证 player_notify 聚合防刷屏（JOIN/QUIT/KICK 窗口聚合）+ 观察群消息行为
+- **前置**：bot 必须已加**原版白名单**（OrzMC force_whitelist=true 时启动会把原版白名单打开，ProfileWhitelistVerifyEvent 拦截未在白名单的玩家，`whitelist add <name>` 实时生效；改 config 的 force_whitelist 不改变运行时原版开关，需重启才生效）；离线间隔 ≥5s 绕 bukkit connection-throttle 4000ms（4s 内重连被拒）；IPv4+IPv6 分流绕 per-IP 5 限制
+- **实测结论（2026-08-19，6 bot × 8 轮 = 96 事件/85s）**：聚合生效——96 事件 → **14 条群消息**（85% 削减），3s 窗口内多条合并为 player_digest（`🟢 +4 上线：Fq04、Fq02...⏎🔴 -4 下线：...`），max_list_items=6 截断（`等1人`），窗口内单事件延迟一窗口单发；QQ+飞书全部投递成功
+- 🚨 **whitelist_block（白名单拦截通知）不走聚合/无限频**：`Notifier.event → routeEvent` 直接发送，每次被拦尝试逐条双发（QQ+飞书）→ 48 次被拦尝试即打爆 QQ 频控（`40034100 主动消息发送超过频控限制`）导致消息失败；飞书无此频控正常。**高频触发面 = 恶意脚本反复尝试未在白名单的玩家名**。修复方向：复用 ThrottledNotifier 按 key 限频，或并入聚合器
+- ⚠️ login_rate_limit（5 次/分钟/IP）会挡住高频登录测试——测纯聚合效果需临时 `enabled: false`（改 config.yml + `/config reload` 即生效，Supplier 实时读取），测完恢复
+- 实测 96 事件 Folia 零 Can't keep up（region TPS 15-17 为 BETA 常态）
+
+## 命令执行 bot（exec-cmds.js / stay-for-kick.js，2026-08-19 样式审计沉淀）
+
+```bash
+cd ~/minecraft-bot
+node exec-cmds.js <玩家名> <命令1> [命令2...]   # 登录→/login→依次执行游戏内命令→退出（chat 响应打印）
+node stay-for-kick.js <玩家名>                  # 登录后驻留 60s（供 RCON kick 测试）
+```
+
+- ⚠️ **必须等 AuthMe /login 成功后再执行命令**：mineflayer spawn 事件早于 AuthMe 登录完成，未登录时命令被**静默拦截**（无输出、无通知）——exec-cmds.js 在 spawn 后固定等 3s
+- ⚠️ **/review approve 在 Folia 上曾卡死服务器**（2026-08-19 发现并修复）：根因=LP 异步 future（loadUser/saveUser）完成回调调度回服务器同步线程，而 promote 在 global/region 线程同步 `.get()` 等它 → 自锁 3s 超时（修复前是死锁 132s+）；修复=ReviewHandler 异步化（CompletableFuture<Boolean>，LP 操作在自己管理的异步线程执行，审核框架异步等待后落状态，杜绝漂移）。⚠️ 通用教训：**Folia 上任何服务器调度线程（global/region）绝不能同步等待 LP 异步 future**（回调排在自己后面必自锁）；已修提交 f0fbe1b/8000f2f/bf2f588（分支 fix/folia-review-deadlock-and-notify）
+- ⚠️ **/apply builder 需要先成为 member**：ReviewType 资格预检 `isEligible`（builder 申请要求当前组 member）；default 组玩家 `/apply` 返回「当前没有可申请的审核类型」——测试前先 `lp user X parent set member`
+- ⚠️ **login_rate_limit 干扰高频 bot 测试**：恢复 enabled:true 后同 IP 每分钟 5 次登录尝试被踢（"登录过于频繁"）；测试分流 IPv4+IPv6 或临时关闭
+- ✅ **群消息样式审计经验**：orzdebug 只回显日志**不发群**（callback 写死 logger.info）；要真实发群必须 bot 游戏内触发事件（/apply、/review、上下线、kick）或真实群消息；easybot_deliveries.py 拉投递记录看实际渲染
+
 ## 压测脚本（stress-stay.js，2026-08-12/13 实测沉淀）```bash
 cd ~/minecraft-bot && BOT_COUNT=10 node stress-stay.js 2   # N bot 驻留 2 分钟 + RCON 每 5s 采样 TPS
 # 输出 /tmp/stress_stay_result.json（采样数组 + joined/peakOnline/avgTps/minTps）

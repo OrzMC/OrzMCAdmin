@@ -137,6 +137,31 @@ Folia 服实验成功后全面接管原测试服（两服停运 → 单服运行
 - ⚠️ **坑：`paper-global.yml` 的 `online-mode` 是 proxies（Bungee/Velocity）认证，≠ server.properties 的 online-mode**——前者 Paper 实值 true（默认），曾误改成 false，后修正
 - ⚠️ `banlist` 命令被 EssentialsC 接管（显示 EssC 自己的存储），原版封禁文件已由 Bukkit 启动时加载生效，验证看文件格式 + 日志
 
+## Folia 线程模型红线（2026-08-19 /review approve 死锁实战，OrzMC PR #196 已修）
+
+> **任何插件开发/修复在 Folia 上遇到「卡服/超时/状态不一致」先读本节。** 完整案例见插件仓库 `docs/dev/folia-luckperms-gotchas.md`。
+
+### 核心红线（最高优先级）
+
+1. **服务器调度线程（global/region）绝不能同步等待 LuckPerms 的异步 future**（`loadUser`/`saveUser`/`track.promote` 的 `.get()/.join()`）：LP 的 future 完成回调**调度回服务器同步线程执行**——在 global/region 线程上同步等待 = 回调排在自己后面，必自锁（实测三阶段：修复前 132s 死锁卡服 → 转 global 线程后 3s 必超时 → 异步化才根治）。
+2. **授权/晋升类操作必须异步化**：`ReviewHandler` 返回 `CompletableFuture<Boolean>`，LP 操作在**自己管理的异步线程**（`Bukkit.getAsyncScheduler().runNow`）执行，框架异步等待结果后再落状态。
+3. **状态一致性**：授权结果与业务状态必须原子一致（LP 已晋升 + 申请仍 PENDING = 漂移 → 重复 approve 会把 member 再 promote 到 admin 越级）。
+4. **并发防越级**：异步授权后两个管理员同时 approve 同一申请会并发操作同一 LP User → `normalizeSingleGroup` 时序交错 → 跳过中间档越级。必须 **in-flight 去重**（`ConcurrentHashMap.newKeySet()` requestId 粒度占位，处理完 `whenComplete` 释放）；授权在途时 reject/cancel 也要互斥（占位前置）。
+5. **线程判定**：`Bukkit.isGlobalTickThread()` 只判 global，**region 线程不命中**——离线读（`loadUser` 同步等待）在 region 线程同样会卡住该 region 所有玩家 tick。判定「任意服务器调度线程」需补 `isRegionOwnedByCurrentThread()`（Folia 独有 API，paper-api 编译期无此方法 → **反射调用**，Paper 上 null → false）。任意调度线程离线缓存未命中一律降级返回 null（离线读留给 bot/异步线程）。
+6. **调度工具**：用 `ServerFacade.runSync`（Folia GlobalRegionScheduler / Paper 主线程），勿用 removed 的 BukkitScheduler；嵌套 runSync 在同步线程直接内联；`done.join()` 必须带超时（`done.get(3s)`）防调度器停摆永久挂起。
+7. **读路径**：查当前组等优先 `um.getUser(uuid)` 在线缓存（不阻塞不调度），仅离线才异步加载。
+
+### 修复演进（四轮，每轮都是教训）
+
+| 轮次 | 方案 | 结果 |
+|:--|:--|:--|
+| ① | LP 操作转 global 线程 | 死锁→自锁 3s 超时 + **状态漂移**（promote SUCCESS 但申请 PENDING） |
+| ② | runSync 超时 + 读路径免 G 往返 | 仍超时（global 上等 LP future 本质自锁） |
+| ③ | **异步化**：ReviewHandler → CompletableFuture，LP 在异步线程执行 | 真机 approve 全流程通过，零超时零漂移 ✅ |
+| ④ | 合并前审查加固：in-flight 去重、region 线程离线读降级、写盘加锁 | 并发/阻塞面收口 ✅ |
+
+**教训**：修线程问题第一问是「这里能不能不等」，而不是「换个线程等」。
+
 ## 传送门 transfer 补偿方案（PR #195，2026-08-18 合并 b7d4b86）
 
 > PlayerPortalEvent 在 Folia 不触发 → PlayerMoveEvent 区域检测补偿跨服 transfer。以下为实施沉淀（评审 5 轮迭代验证），改 portal 相关代码前必读。
