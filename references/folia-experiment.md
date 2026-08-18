@@ -145,6 +145,10 @@ Folia 服实验成功后全面接管原测试服（两服停运 → 单服运行
 5. **SQLite 迁移时目标服可在线**（WAL 模式），但保险起见迁移后重启一次让插件重载
 6. F3F4Perms 依赖 **packetevents**（硬依赖 depend），两者都支持 Folia；权限 `f3f4perms.use` 默认 op，让有 /gamemode 权限的玩家用 F3+F4/F3+N 热键
 7. ⚠️ **CustomWorldHeight 配置必须同步**：Folia 若沿用默认模板（example-world-name）→ 世界按 384 高度解析 Paper 的 1088 世界 → `Ignoring heightmap data ... expected: 37, got: 52` 错误 + 命令方块传送等跨区块操作异常。同步后错误方向反转（expected: 52, got: 37）= 世界内新旧区块高度图混存（CustomWorldHeight 2026-08-15 才启用，旧区块 384 生成）——**无害**（高度图只是缓存，忽略后自动重算，Paper 服同样存在）
+   - **根治（日志层，2026-08-18 实测）**：`config/log4j2.xml` 用 **Paper 官方模板**（GitHub master `paper-server/src/main/resources/log4j2.xml`）+ Root 级 `RegexFilter regex="Ignoring heightmap data for chunk" onMatch="DENY" onMismatch="NEUTRAL"` → 警告归零
+   - **两个易踩坑**：① 自定义 log4j2.xml **必须重启才加载**（运行中写入无效）；② **Logger level 挡不住具体消息**，必须 RegexFilter（放 Root `<filters>` 段，官方模板的 MarkerFilter 旁）
+   - 警告反复刷的机制：磁盘旧格式高度图加载时被忽略 → 内存重算 → **不写回磁盘**（除非区块 dirty）→ 每次重启/新区块加载都重新警告
+   - 治本方案（未做）：停服脚本批量重写全部 region 的 Heightmaps 为 1088 格式；去掉 CustomWorldHeight ❌ 不可取（维度回 384 → Y>319 高空方块静默裁剪丢失 + 警告换来源）
 8. ⚠️⚠️ **命令方块在 Folia 被架构性禁用**（2026-08-18 实证）：官方 issue #429「fundamentally disabled」+ #485 请求加 `force-enable-command-blocks` 开关被关 `not_planned`。**无论 `enable-command-block` 怎么配，命令方块都不会执行任何命令**（含传送）——迁移后命令方块传送失效是此原因，非配置问题。替代：支持 Folia 的传送插件 / 数据包函数（触发机制受限）/ 接受限制
 9. ⚠️ **`paper-global.yml` 的 `online-mode` ≠ server.properties 的 online-mode**：前者是 proxies（Bungee/Velocity）段认证，Paper 实值 true（默认）；曾误把 Folia 改成 false 造成不一致，已修正
 10. ⚠️ **迁移服务端 JSON 文件看语义不看字节**：ops.json 要**合并**（Paper 24 OP + joker = 25，直接覆盖会丢 joker）；banned-* 直接复制（Bukkit 启动时加载，`banlist` 命令被 EssentialsC 接管显示其自身存储，验证看文件 + 日志）
