@@ -32,7 +32,8 @@
 | SkinsRestorer 警告 | `offlineModeWarning.enabled: false` | false（2026-08-18 对齐 Paper：屏蔽离线玩家「第三方启动器可能覆盖皮肤」警告，纯噪音；原 true 每次登录都发） |
 | 白名单 | 开 | 开关**关**（`white-list=false` `enforce-whitelist=false`），但**列表已同步 139 玩家**（whitelist.json 复制） |
 | 世界 | `~/minecraft-server/world`（17G） | **symlink → Paper 世界**（`~/folia-test/world → ~/minecraft-server/world`，零拷贝，2026-08-18） |
-| 启动 | `./start.sh`（java -Xms2G -Xmx2G -jar folia-26.2-4.jar nogui） | 同左 |
+| 启动 | `./start.sh`（java -Xms2G -Xmx2G **-Dlog4j2.configurationFile="config/log4j2.xml"** -jar folia-26.2-4.jar nogui） | 同左（Paper start.sh 也已加同参数） |
+| CustomWorldHeight | **已移除（2026-08-18 两端）**，jar 在 `plugins/.disabled/` | 已移除（同左） |
 
 - ⚠️ **两服共享同一份世界（symlink）**：**绝不允许两服同时启动**（会损坏地图）；Paper 服若再启动需先删 `world/session.lock`，且 Paper 服端口已让出需另行规划
 - Folia 核心下载：`https://papermc.io/downloads/folia` 页面内嵌 JSON（fill-data 直链，sha256 校验）
@@ -145,21 +146,26 @@ Folia 服实验成功后全面接管原测试服（两服停运 → 单服运行
 5. **SQLite 迁移时目标服可在线**（WAL 模式），但保险起见迁移后重启一次让插件重载
 6. F3F4Perms 依赖 **packetevents**（硬依赖 depend），两者都支持 Folia；权限 `f3f4perms.use` 默认 op，让有 /gamemode 权限的玩家用 F3+F4/F3+N 热键
 7. ⚠️ **CustomWorldHeight 配置必须同步**：Folia 若沿用默认模板（example-world-name）→ 世界按 384 高度解析 Paper 的 1088 世界 → `Ignoring heightmap data ... expected: 37, got: 52` 错误 + 命令方块传送等跨区块操作异常。同步后错误方向反转（expected: 52, got: 37）= 世界内新旧区块高度图混存（CustomWorldHeight 2026-08-15 才启用，旧区块 384 生成）——**无害**（高度图只是缓存，忽略后自动重算，Paper 服同样存在）
-   - **根治（日志层，2026-08-18 实测）**：`config/log4j2.xml` 用 **Paper 官方模板**（GitHub master `paper-server/src/main/resources/log4j2.xml`）+ Root 级 `RegexFilter regex="Ignoring heightmap data for chunk" onMatch="DENY" onMismatch="NEUTRAL"` → 警告归零
-   - **两个易踩坑**：① 自定义 log4j2.xml **必须重启才加载**（运行中写入无效）；② **Logger level 挡不住具体消息**，必须 RegexFilter（放 Root `<filters>` 段，官方模板的 MarkerFilter 旁）
+   - **⚠️⚠️ log4j2 过滤最大坑（2026-08-18 实测修正）**：`config/log4j2.xml` **不会自动加载**！光放文件重启无效（日志格式无 [%logger] 即未加载）。**必须 start.sh JVM 参数显式指定**：`-Dlog4j2.configurationFile="config/log4j2.xml"`。此前「放 config/ 重启即可」的结论是假象（当时 CustomWorldHeight 在位警告本来就少/方向匹配，并非过滤生效）
+   - **⚠️⚠️⚠️ paperclip 必须绝对路径（2026-08-18 实测）**：Folia 是 paperclip bootstrap（`folia-26.2-4.jar` 下载/解包真实 jar 到 `versions/26.2/` 后另起子进程），`-Dlog4j2.configurationFile="config/log4j2.xml"` **相对路径在子进程下解析失败 → 回退内置配置 → 过滤无效**（实测 976 条警告刷屏）。**必须绝对路径**：`-Dlog4j2.configurationFile="/Users/bot/folia-test/config/log4j2.xml"`（Paper 是普通 jar 直接加载，相对路径可用；但两服统一用绝对路径最稳）。验证法：召唤实体到 1088 格式 region（如 r.-5.-54）强制加载 → 警告数仍 0 = 生效
+   - **根治（日志层，2026-08-18 实测归零）**：`config/log4j2.xml` 用 **Paper 官方模板**（GitHub master `paper-server/src/main/resources/log4j2.xml`）+ Root 级 `RegexFilter regex="Ignoring heightmap data for chunk" onMatch="DENY" onMismatch="NEUTRAL"` → 警告归零（加 JVM 参数后实测 9108 → 0）
+   - **易踩坑**：① 必须 JVM 参数加载（见上）；② **Logger level 挡不住具体消息**，必须 RegexFilter（放 Root `<filters>` 段，官方模板的 MarkerFilter 旁）；③ 改配置后必须重启
    - 警告反复刷的机制：磁盘旧格式高度图加载时被忽略 → 内存重算 → **不写回磁盘**（除非区块 dirty）→ 每次重启/新区块加载都重新警告
-   - 治本方案（未做）：停服脚本批量重写全部 region 的 Heightmaps 为 1088 格式；去掉 CustomWorldHeight ❌ 不可取（维度回 384 → Y>319 高空方块静默裁剪丢失 + 警告换来源）
+   - **✅ CustomWorldHeight 已移除（2026-08-18 两端 Paper+Folia）**：全量扫描（nbtlib 解析 6380 region / 1,471,866 区块，scan_final.py）实证 **0 个区块含高空方块数据**（Y>319 的 section 有壳无 block_states=纯空气）→ 去掉零数据丢失。1088 格式区块 17,296（1%，83 个 region，玩家新探索区+出生点重载）**不会自动恢复也不会消失**——随玩家活动「加载→保存」循环自然收敛为 384 格式；未加载的保持 1088 文件但读取按 384 解析，游戏无影响
+   - ⚠️ 扫描脚本坑（2026-08-18）：字节解析 sections 定位偏移 **idx+11**（1+2+8，idx+10 会指到名字末字符 's' 0x73 全失败）；`sections` 只存非空 section 且空 section 无 block_states 字段（「有 section」≠「有方块」）；可靠方案用 `nbtlib.File.parse(io.BytesIO(raw))` 全量解析（慢但准，6380 region 约 48 分钟，8 进程）
 8. ⚠️⚠️ **命令方块在 Folia 被架构性禁用**（2026-08-18 实证）：官方 issue #429「fundamentally disabled」+ #485 请求加 `force-enable-command-blocks` 开关被关 `not_planned`。**无论 `enable-command-block` 怎么配，命令方块都不会执行任何命令**（含传送）——迁移后命令方块传送失效是此原因，非配置问题。替代：支持 Folia 的传送插件 / 数据包函数（触发机制受限）/ 接受限制
 9. ⚠️ **`paper-global.yml` 的 `online-mode` ≠ server.properties 的 online-mode**：前者是 proxies（Bungee/Velocity）段认证，Paper 实值 true（默认）；曾误把 Folia 改成 false 造成不一致，已修正
 10. ⚠️ **迁移服务端 JSON 文件看语义不看字节**：ops.json 要**合并**（Paper 24 OP + joker = 25，直接覆盖会丢 joker）；banned-* 直接复制（Bukkit 启动时加载，`banlist` 命令被 EssentialsC 接管显示其自身存储，验证看文件 + 日志）
 11. **磁盘不足时地图用 symlink 零拷贝**：`ln -s paper/world folia/world`（17G 无法复制时唯一方案）；⚠️ 两服共享地图绝不同时启动（session.lock + 数据损坏风险）
 12. **Folia 启动前必须删 `world/session.lock`**（symlink 共享场景下尤其重要，Paper 停服会残留）
+13. ⚠️ **Essentials tpa「没有授受传送请求的权限」（2026-08-18 修复）**：现象 = 玩家 `/tpa <玩家>` 后提示「没有授受传送请求的权限」（Essentials 消息 `teleportNoAcceptPermission`）。根因 = **OrzMC 权威权限文档 `plugin/docs/permission-groups.md` member 组漏配 `essentials.tpaccept`**（只有 tpa/tpahere 发请求/邀请，无接受权限；Essentials 权限无默认值=非 op 默认拒绝；与 OrzMC 实体传送拦截 `entity_teleport_enabled: false` 无关）。修复 = 文档补行 + `gen_perm_commands.py` 重新生成 + RCON 执行 `lp group member permission set essentials.tpaccept true`（H2 落库验证）。⚠️ 三端同步
 
 ## 已知限制（Folia 架构性，无法配置解决）
 
 | 限制 | 官方依据 | 影响 | 替代方案 |
 |:--|:--|:--|:--|
 | **命令方块被禁用** | issue #429「fundamentally disabled」+ #485 `not_planned` | 所有命令方块不执行（含传送/红石触发逻辑） | 支持 Folia 的插件 / 数据包函数 / 接受限制 |
+| **PlayerPortalEvent 不触发**（2026-08-18 实测+反编译实证） | 下界传送门走 `portalAsync` 新路径，`callPlayerPortalEvent` 无任何调用者 | 依赖该事件的跨服 transfer 完全失效（玩家踩传送门只触发原版维度传送） | OrzMC PR #195：PlayerMoveEvent 补偿路径（方块坐标变化+interiorTargets 命中→transfer 命令+5s 冷却；仅 Folia 生效，Paper 保持原路径）。`EntityPortalReadyEvent` 语义不符（只能改目标世界不能替换 transfer） |
 | EssentialsC Scoreboard 不支持 | Folia 分区线程模型 | 计分板功能不可用（启动 WARN） | 其他计分板插件 |
 | OrzMC 需 Folia 版 | 旧版无 `folia-supported` 标记 | 1.0.18-dev.296 起已解决 | ✅ 已升级 |
 
