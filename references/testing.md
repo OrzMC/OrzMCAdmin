@@ -7,6 +7,13 @@
 
 > **「哪些逻辑可以用单元测试和集成测试保证的，优先使用单元测试和集成测试；其他情况必须要真实验收的，再使用机器人做端到端真实测试。」**
 
+> **⚠️ 当前 E2E 测试服 = Folia 测试服（2026-08-18 接管，2026-08-19 实测确认）**：`~/folia-test/`（folia-26.2-4，端口 25565/19132，RCON 25575/orztest2026，登录插件 SimpleLogin 非 LoginSecurity，OrzMC 1.0.18-dev.jar 本地构建）——**papermc-test 目录已停用**（旧文档/脚本中的路径引用勿照抄）。日志路径 `~/folia-test/logs/latest.log`。
+> **E2E 套件 = 插件仓库 `plugin/e2e/`**（2026-08-19 建立）：`bash e2e/run-all.sh [-c NN] [-r]` 一键跑；**双核心支持**：Folia 用默认（25565/25575），Paper 用 `ORZMC_TEST_PORT=25566 ORZMC_RCON_PORT=25576 ORZMC_LOG_PATH=.../papermc-test/logs/latest.log ORZMC_BACKUP_DIR=...` 环境变量（papermc-test 已改 25566/25576 端口避开 Folia，登录插件 LoginSecurity）；`lib/rcon.js`（Promise RCON + waitLog tail 3000 防刷屏挤出）+ `lib/bot.js`（spawnBot 自适应 SimpleLogin/LoginSecurity 登录：probeLogin 先发 /login 探测、未注册转 /register；⚠️ 成功判定只认「登录成功/注册成功」，勿匹配「Welcome! just joined」首登广播否则过早 resolve 命令被拦）；用例自包含（专用账号自动注册+清理白名单）。测试账号密码：SimpleLogin 版 E2E 专用 E2EPass123（旧 LoginSecurity 版 TestNewbie/NewbiePass123 已不适用）。
+> **BUG-E2E-001（✅ 已修复并双核心验证 2026-08-19）**：`$w` 白名单分页在 Folia 上抛 `IllegalArgumentException: Delay ticks may not be <= 0`——Paginator.paginatePages L71 `i * delayTicks` 在 i=0 时 delay=0，Paper BukkitScheduler 允许 0 tick、**Folia FoliaGlobalRegionScheduler.runDelayed 要求 ≥1**（`delayTicks<=0?5L` 保护只覆盖配置值不覆盖 i=0 首页）→ $w 分页 Folia 完全不可用。**修复**：Paginator 两处 `Math.max(1L, (long) i * ...)` + ServerFacade.runLater 钳位 ≥1 + PaginatorTest 回归护栏（首页 delay≥1）。验证：Folia `$w` 输出 123 人 ✅、Paper 01 用例 8/8 ✅。记录：`plugin/e2e/buglog.md`。
+> **BUG-E2E-002（P1 未修）**：大世界（Paper 服 317 万 chunk）`$b` 备份失败——backup-core 0.1.6 MCA 解析 `unknown compression: 31`（MC 26.2 世界新压缩格式）→ `地图备份 失败` 无 zip 产出。建议升级 backup-core 或跳过无法解析 MCA。**E2E 04 用例已改「阶段进度断言 + .zip 落盘检查」**（tempDir 不算成功；ORZMC_ASSERT_COMPLETE=1 强制完成断言，仅小世界）。
+> **BUG-E2E-003（P2 未修）**：CommandGuard 审计日志洪泛——命令方块循环每 tick ~20 条 effect/execute → 每条「危险命令放行」WARN → 53MB 日志/20 分钟（Paper 测试服实测）→ 建议放行类降级 DEBUG 或限频；E2E waitLog tail 已加大到 3000 缓解。
+> **质量周报 cron（2026-08-19 建立，job `079c34424888` 每周一 9:30）**：`~/.hermes/scripts/orzmc_quality_report.py` 跑 gradlew test/integrationTest/jacoco → 解析用例数/通过率/四类覆盖率 → 对比上周基线（`~/.hermes/state/orzmc_quality.json`）→ Markdown 表格发飞书。基线（2026-08-19 补测后）：1296 用例 / INSTRUCTION 83.6% / BRANCH 72.7% / METHOD 85.0%+ / CLASS 96.6%+；薄弱模块补测进展：maintenance 66.9%、paging 80.8%、ws 59.0%，剩余 review 65.9%、teleport 73.6% 下一轮。
+
 | 逻辑类型 | 手段 |
 |:--|:--|
 | 业务状态机 / 纯逻辑 | 单测（JUnit+Mockito，mock 端口） |

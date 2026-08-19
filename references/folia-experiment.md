@@ -1,5 +1,6 @@
 # Folia 迁移实验（2026-08-17，本地双服实测）
 
+> **双核心插件全景对比表（Paper vs Folia：核心差异/插件对应/渠道/功能/启用状态）已沉淀为官网文章**：OrzMCSite `content/posts/2.server/27.paper-vs-folia.md`（公开版，无内部路径/密码；版本号仅参考）。内部细节仍以本文件为准。
 > 场景：评估本地测试服插件迁移 PaperMC Folia 核心的兼容性，并完成平替替换 + 数据迁移。
 > 结论先行：**9 个不兼容插件全部解决（8 平替 + OrzMC 升级 Folia 版 1.0.18-dev.296 后自身支持），18 插件全绿；2026-08-18 起 Folia 服全面接管原测试服（端口 25565/19132 + Paper 地图 symlink + 全量配置/权限/白名单同步）。**
 
@@ -60,7 +61,7 @@ WorldEdit 7.4.5 / WorldGuard 7.0.18（experimental）/ LuckPerms 5.5.77 / Geyser
 | EssentialsX 2.22.0 | **EssentialsC** | 4.2.8 | 🔀 吸收 GetMeHome（自带 /home 多 home） |
 | Vault 1.7.3 | **VaultUnlocked** | 2.20.2 | ✅ drop-in 平替，顺带恢复 EzShops |
 | GriefPrevention 16.18.7 | **GriefPrevention3D** | 18.3.4 | ✅ GP 官方 fork + Folia fix + 3D 分区 |
-| LoginSecurity 3.3.2 | **AuthMeReloaded** | 6.0.0-Folia | ✅ 官方明确 Folia 版 |
+| LoginSecurity 3.3.2 | **SimpleLogin** | 1.16.7 | ✅ Modrinth loaders 含 folia；2026-08-18 实际部署（AuthMe-6.0.0-Folia.jar 在 .disabled/） |
 | DeathChest 3.0.1 | **AxGraves** | 1.29.0 | 🔀 吸收 BackOnDeath（死亡箱 + 回死亡点） |
 | BackOnDeath 0.4 | ↑ 并入 AxGraves | — | /axgraves tp 回死亡点 |
 | GetMeHome 3.0.0 | ↑ 并入 EssentialsC | — | /home 多 home |
@@ -79,7 +80,7 @@ WorldEdit 7.4.5 / WorldGuard 7.0.18（experimental）/ LuckPerms 5.5.77 / Geyser
 
 | 源插件 → 目标 | 数据量 | 方法 |
 |:--|:--|:--|
-| LoginSecurity → AuthMe | 359 账号 | BCrypt 哈希**直接复用**（LS 算法 7=`$2a$10$`，AuthMe 原生 BCRYPT），改 `passwordHash: BCRYPT`，复制 username/password/ip/regdate/lastlogin |
+| LoginSecurity → SimpleLogin | 359 账号 | BCrypt 哈希直接复用（LS 算法 7=`$2a$10$`）；2026-08-18 部署 SimpleLogin 1.16.7 后接入（AuthMe 中间方案已弃用，jar 在 .disabled/） |
 | GetMeHome → EssentialsC | 186 玩家 / 879 home | homes.yml (YAML) → homes.db (SQLite)，字段一一映射，同名冲突跳过 |
 
 **无需迁移**：Vault（纯 API）/ DeathChest（临时容器+审计）/ BackOnDeath（内存态）/ EssentialsX（原服从未真正用起来，userdata 0 homes）/ GriefPrevention（ClaimData 空，无领地）。
@@ -92,7 +93,7 @@ python3 ~/.hermes/skills/gaming/orzmc/scripts/migrate_getmehome_to_essentialsc.p
 ```
 
 ### 迁移后验证
-- AuthMe：日志 `AuthMe 6.0.0 successfully enabled!` + `SELECT COUNT(*) FROM authme` = 359
+- AuthMe：日志 `AuthMe 6.0.0 successfully enabled!` + `SELECT COUNT(*) FROM authme` = 359（⚠️ 2026-08-18 后实际部署改用 SimpleLogin 1.16.7，AuthMe jar 在 .disabled/；SimpleLogin 数据经 Modrinth 渠道，登录接入后须实测密码校验）
 - 密码校验需真实登录测试（迁移工具无法验证 BCrypt 密码本身）
 - EssentialsC：`SELECT COUNT(*) FROM homes` = 879；坐标样本与原 yml 一致
 
