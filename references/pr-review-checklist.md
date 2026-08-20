@@ -54,3 +54,13 @@ gh pr checks <n>                                  # CI 状态
 4. **region 线程判定**：`Bukkit.isGlobalTickThread()` 不覆盖 region 线程（Folia 需 `isRegionOwnedByCurrentThread()`，paper-api 编译期无此方法须反射）；任何服务器调度线程上都不应做可能阻塞的离线读。
 5. **写盘并发**：异步化把写挪到不同线程后，共享配置对象（FileConfiguration）读写必须加锁，防丢更新/YAML 损坏。
 6. **join 超时**：所有 `done.join()` 必须有超时（调度器停摆时防永久挂起）。
+
+## 五、backup-core/备份功能审查检查点（2026-08-20 PR #215 实战新增）
+
+1. **依赖 API 语义先确认源码，勿凭命名猜测**：review 曾把 `IOOptions` 第三参 `syncOnFinalize` 误判为 zipOutput（结论需返工）——升级依赖的 PR，review 前先 `git show <tag>:core/.../OptimizerConfig.kt` 确认参数语义与默认值。
+2. **overlap 校验**：0.3.x input/output 不得重叠（相同/祖先/后代全拒）——备份 output 必须放 input 外。**正解：input 用世界目录**（`getWorldFolder()`），output=`backup/tempDir`（backup/ 是世界目录兄弟路径）。勿用「output 放系统临时目录 + zip 移回」的绕路方案（多一步移动就多一个静默丢备份点）。
+3. **世界目录选择**：`getWorlds().get(0)` 顺序不保证主世界在前——优先选择含 `dimensions/` 或 `region/` 的真实世界目录（26.2 结构各维度均在 world/ 内）。
+4. **备份成功判定**：zip **计数**有误判（同名覆盖 count 不变→假失败；空 zip 计成功→prune 删旧留空）——用「最新 zip mtime 变化」判定（`before` 记录最新 mtime，`after` 无更新 mtime 的 zip 才报失败）。
+5. **空世界语义**：zipOutput 模式 0 chunk 也产出 22B 最小 zip（**成功**，非失败）——失败判定只能靠「无新 zip」。
+6. **启动清理**：崩溃/断电残留的 `backup/tempDir` 启动清理——**必须异步**（大残留同步删除阻塞启动），onEnable 调度安全。
+7. **备份完成验证**：zip 边写边落盘（进行中 64M → 完成 1.1G），验证完成看日志「地图备份 完成」+ tempDir 消失，勿用「zip 出现」。
