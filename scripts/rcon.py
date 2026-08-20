@@ -5,8 +5,9 @@
 - 多包响应循环读取；AUTH FAIL 退出码 1
 用法示例:
   python3 rcon.py "list" 25575
-  python3 rcon.py "stop" 25576
+  python3 rcon.py "stop" 25575
   python3 rcon.py "transfer {LAN_IP} 25566 HermesBot" 25575
+# 注：本地测试服端口已统一 25575（2026-08-20），25566 仅双服 transfer 测试第二服
 """
 import socket
 import struct
