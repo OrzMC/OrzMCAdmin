@@ -49,8 +49,7 @@ required_commands: [java, curl, tar]
 > | LoginSecurity→AuthMe 数据迁移（`scripts/migrate_loginsecurity_to_authme.py [--ls-db X --authme-db Y] [--dry-run]`；BCrypt 哈希直接复用，AuthMe 须改 passwordHash: BCRYPT） | `scripts/migrate_loginsecurity_to_authme.py` |
 > | GetMeHome→EssentialsC 数据迁移（`scripts/migrate_getmehome_to_essentialsc.py [--yml X --db Y] [--dry-run]`；homes.yml YAML→homes.db SQLite，字段一一映射） | `scripts/migrate_getmehome_to_essentialsc.py` |
 > | PaperMC 插件 E2E 测试方案调研（MockBukkit/WatchWolf/GameTest/真实环境/容器化 + 推荐组合） | `references/plugin-e2e-testing.md` |
-|> | **命令方块/方块实体扫描（2026-08-18 入库）：`scripts/scan_cmdblocks.py <世界目录> <out.json> [workers=8] [min_size=0]` 流式 NBT 解析提取命令方块+block_entities（workers=1 串行最稳，内存紧张宿主勿用多进程）；`scripts/analyze_cmdblocks.py <json>` 输出分类统计（类型/auto/维度/命令词频/被禁命令依赖/区域分布）** | `scripts/scan_cmdblocks.py` + `scripts/analyze_cmdblocks.py` |
-|> | **命令方块全量梳理成文档（2026-08-20 入库）：`scripts/mc_cb_scan.py` 一体化 扫描→CSV→自动 Markdown 报告（统计/空间集群/指令分类/异常风险[OP提权·超大坐标残留·超大fill]/Folia 禁用指令交叉核对）；子命令 `run`/`scan`/`report`（`--dims`/`--jobs`/`--cluster-threshold`/`--max-coord`）；纯标准库零依赖；原理=流式 NBT 只解析 block_entities 跳过 Sections（10GB 全图约 49 分钟）；Folia 架构性禁用命令方块（#429/#485）故盘点用于找替换方案** | `references/command-block-inventory.md` + `scripts/mc_cb_scan.py` |
+> | **命令方块/方块实体扫描（2026-08-18 入库）：`scripts/scan_cmdblocks.py <世界目录> <out.json> [workers=8] [min_size=0]` 流式 NBT 解析提取命令方块+block_entities（workers=1 串行最稳，内存紧张宿主勿用多进程）；`scripts/analyze_cmdblocks.py <json>` 输出分类统计（类型/auto/维度/命令词频/被禁命令依赖/区域分布）** | `scripts/scan_cmdblocks.py` + `scripts/analyze_cmdblocks.py` |
 > | **ExecutableEvents 实测（2026-08-19，3.26.8.10+SCore 5.26.8.10 on Folia 26.2-4）：加载✅ 事件监听不触发❌（PLAYER_WALK/PLAYER_JUMP_EVENT/debug 全零输出，sevents 与 Folia 分区线程不兼容）→ 插件替代命令方块方案整体不可行；⚠️ SCore 硬依赖（plugin.yml 注释 depend 但代码需要）；⚠️ events/ 一文件一事件；⚠️ 防重登限制=GriefPrevention3D Spam.LoginCooldownSeconds** | `references/folia-experiment.md` |
 > | **群消息样式规范（2026-08-19 PR #197 统一）：表情标题+33 连字符分割线+版块式排版；四类消息模板键与格式表；聚合摘要空版块省略/单人无人数/多人(N)；改模板 4+1 联动清单（templates.yml+Templates.java+ReviewNotifierAdapter fallback+占位符白名单+测试）；存量服改键值须手动同步 templates.yml+reload；真实环境验证法（bot 触发+easybot 投递查询）；Folia 测试服操作坑（screen stuff stop 不可靠→RCON、防多实例、--rerun-tasks 强制重打）** | `references/group-message-style.md` |
 > | **跨网互联/中转方案（电信服×联通移动玩家；FRP 中转 + PROXY protocol 真实 IP 透传；部署资产在 `OrzMC/proxy` 子模块 = OrzMCProxy 仓库：install-frp.sh/ps1 一键安装、verify-tunnel.sh、health-check.sh、bedrock_ping.py、mc_login.py、**relay-monitor.sh 外部隧道监控（formal/temp 双档看门狗，2026-08-14 本地双模式验收 100% 通过）**、configs 模板、systemd/launchd/Windows 计划任务、manual-apply-windows.md 手动改法）** | `references/cross-carrier-networking.md` |
@@ -65,7 +64,6 @@ required_commands: [java, curl, tar]
 - 用户要排查性能/卡顿（→ `references/spark-analysis.md`）
 - 用户要统计实体或定位 FPS 问题（→ `references/entity-statistics.md`）
 - 用户要机器人玩家/自动操作（→ `references/mineflayer-bot.md`）
-- 用户要盘点某世界/地图的命令方块（数量/坐标/指令/触发方式）或为 Paper→Folia 迁移评估命令方块影响（→ `references/command-block-inventory.md`，工具 `scripts/mc_cb_scan.py`）
 
 ## 架构：一套动作，三种后端
 
