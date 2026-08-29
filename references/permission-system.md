@@ -1,5 +1,13 @@
 # OrzMC 权限系统设计（LuckPerms 4 组方案，2026-08-06 本地验证）
 
+## ⚠️ gamemode 权限真值（2026-08-29 bot 实测确立，勿再猜）
+- `/gamemode` 是 **Essentials 命令**：权限节点 `essentials.gamemode`（父=命令基础）+ **子权限独立**（`.creative`/`.survival`/`.spectator`/`.adventure` 各自判断，父权限**不含**子模式）
+- 实测矩阵（bot 玩家身份，gamemode-test.js）：default 全拒 / builder = creative✅ survival✅ spectator❌ adventure❌ / admin = creative✅ survival✅ spectator✅（**需显式 `essentials.gamemode.spectator`**，2026-08-29 补，文档 permission-groups.md PR#229）adventure❌
+- `minecraft.command.gamemode`/`bukkit.command.gamemode` 仅 admin 配（改他人模式；原版命令被 Paper 接管 /minecraft:gamemode Unknown）
+- **限制普通玩家 = 不授予**（Essentials 默认拒绝）；**勿 default 显式 set false**（覆盖子组 true）
+- 测试方法：`~/minecraft-bot/gamemode-test.js <玩家> <密码>`（bot 执行 /gamemode ×4，chat 反馈「将X设置为创造模式/你没有切换X模式的权限」判断）；临时换组用 `lp user X parent add/remove`（**勿用 parent set**——只剩 default 坑）+ 恢复
+- **矫正场景**（2026-08-29 已落地，PR#230 四通道）：builder/admin 降级后 gamemode 残留（创造/观察不匹配）→ OrzMC 插件自动矫正。实现：GamemodeCorrectionService（权限推导零配置：CREATIVE/SPECTATOR/ADVENTURE 无对应 essentials.gamemode.* 权限 → 切 SURVIVAL；SPECTATOR 矫正前安全位置处理；compute 原子防抖）；**四通道**：①ReviewService 审核通过后 ②RankService 升降级后 ③LP UserPromoteEvent/DemoteEvent（track 事件，软依赖；**手动 lp parent 改组不触发**）④30s 周期扫描（覆盖手动改组）+ 登录兜底。⚠️ **Folia 实体操作线程红线**：所有通道经 correctAsync（player.getScheduler().execute 投递到玩家 region 线程），global 线程直接 setGameMode/teleport 在 Folia 抛异常（Review 发现 🔴）；EntityScheduler.execute 需 4 参（plugin, task, retired, delayTicks）。配置 config.yml gamemode-correction 段（/config set 可调）。bot 实测闭环：builder 切创造 → lp parent remove 降级 → 30s 内自动回生存+权限拒绝 ✅
+
 ## 组结构（继承链）
 ```
 admin (全权限) → builder (创造建造) → member (进阶) → default (新手)

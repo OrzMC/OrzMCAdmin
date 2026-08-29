@@ -33,6 +33,7 @@
 
 ## 坑
 
+- ⚠️⚠️ **prompt 含反引号会触发 bash 命令替换**（2026-08-29 实测翻车）：`claude -p "...反引号..."` 里 Java 泛型/行内代码用反引号 → bash 把反引号内容当命令执行 → 语法错误 + prompt 损坏 → Claude Code 瞎跑。**正确姿势：prompt 写文件，用 `claude -p "$(cat /tmp/prompt.md)"` 传参**（命令替换结果不再递归求值，反引号安全）；或 prompt 里一律不用反引号（用普通引号/纯文本描述代码）
 - 非交互 `claude -p` 无文件写权限 → 加 `--permission-mode acceptEdits`
 - shell 命令（python3 验证等）会被会话权限拦 → 验收交给 Hermes
 - 模型提示 `deepseek-v4-flash is not a model this version recognizes` 为已知提示，可忽略（auto-compact 按 200k 处理）；设 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` 为真实窗口可消除
