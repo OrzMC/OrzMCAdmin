@@ -10,7 +10,7 @@ required_commands: [java, curl, tar]
 
 # OrzMC Minecraft 运维（统一技能）
 
-> **技能治理（2026-08-11 用户决策，已合并）**：与 MC 运维强相关的技能一律**合并进本技能**维护迭代（references + scripts），不再单独立技能；新增强相关知识直接落这里。已合并：easybot-gateway-ops（→ references/easybot-gateway.md）、deployment-config-sync（→ references/config-sync.md）、git-submodule-sync（→ references/git-submodule-sync.md，OrzMC monorepo 子模块同步）、java-test-pitfalls（→ references/java-test-pitfalls.md，插件单测编译坑）；模组托管（minecraft-modpack-server）已清理，与原生 PaperMC 场景无关。
+> **技能治理（2026-08-11 用户决策，已合并）**：与 MC 运维强相关的技能一律**合并进本技能**维护迭代（references + scripts），不再单独立技能；新增强相关知识直接落这里。已合并：easybot-gateway-ops（→ references/easybot-gateway.md）、deployment-config-sync（→ references/config-sync.md）、git-submodule-sync（→ references/git-submodule-sync.md，OrzMC monorepo 子模块同步）、java-test-pitfalls（→ references/java-test-pitfalls.md，插件单测编译坑）、**ai-coding-agents（→ references/coding-agents.md，2026-08-29：编程交给 Claude Code 编排工作流 + 合并前一次 review 时机 + acceptEdits 坑）**；模组托管（minecraft-modpack-server）已清理，与原生 PaperMC 场景无关。
 
 > **知识分类索引**：本 SKILL.md 只留决策路径；详细知识在 `references/`（后端 API 表 / Spark / 实体统计 / 机器人）：
 >
@@ -23,6 +23,7 @@ required_commands: [java, curl, tar]
 > | **部署配置同步（config drift 判定/fallback 判断/补键同步；原 deployment-config-sync 技能合并）** | `references/config-sync.md` |
 > | **Git 子模块全量同步（OrzMC monorepo 15 子模块；默认分支探测/发布后指针/分支清理/独立 clone 去重；原 git-submodule-sync 技能合并）** | `references/git-submodule-sync.md` |
 > | **Java 测试编译陷阱（Mockito 泛型捕获/SuppressWarnings 位置/CI warnings 清零；原 java-test-pitfalls 技能合并）** | `references/java-test-pitfalls.md` |
+> | **AI 编码智能体协作（编程交给 Claude Code + Hermes 编排；三模式/acceptEdits 坑/合并前一次 review；原 ai-coding-agents 技能合并）** | `references/coding-agents.md` |
 > | Spark 性能分析（命令/JSON/判断/踩坑） | `references/spark-analysis.md` |
 > | 快速实体统计（paper entity list / Spark / 计分板） | `references/entity-statistics.md` |
 > | 机器人玩家 Mineflayer（运维视角；开发细节见独立技能 `minecraft-bot-mineflayer`；**挂机脚本 stay-with-joker.js：5 bot 跟随真人玩家 + IPv4/IPv6 分流绕 per-IP 限制**） | `references/mineflayer-bot.md` |
