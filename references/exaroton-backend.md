@@ -37,6 +37,7 @@
 - ⚠️ **文件端点必须带尾部斜杠**：`files/data/plugins/x.jar/`
 - ⚠️ 文件列表用 `files/info/`，**没有** `files/` 裸端点
 - ⚠️ 高频 API 调用会触发 Cloudflare 风控（error 1010，全部端点 403），**冷却 30s+ 自动恢复**；脚本间请求间隔 ≥ 5s
+- ⚠️⚠️ **PUT 写操作会被 Cloudflare managed challenge 拦截（2026-08-30 实测）**：GET 文件正常，但 PUT 返回 403 "Just a moment..." JS 挑战页（curl/urllib/完整浏览器 UA 均过不了——managed challenge 需真实浏览器执行 JS 通过挑战）；触发后**不是冷却能解决的**，需真实浏览器（browser_exec 或面板）或等待数小时风控自然解除；写文件失败先看响应体是不是 `<!DOCTYPE html>...Just a moment`（区分 Cloudflare 拦截 vs API 报错）
 - ⚠️ **备份无 API**：官方 OpenAPI 全部 29 端点无 backup/snapshot。备份是 Web 面板功能（需链接 Google Drive 等云存储，支持手动/自动备份、恢复、完整性校验）。**自动备份已由用户在面板配置**，脚本不做备份
 - ✅ **插件残留目录可安全删除**（2026-08-03 实测）：卸载插件后 `plugins/{插件名}/` 配置残留（config.yml + 空子目录）可用 `DELETE /files/data/plugins/{名}/` 整目录删除，不影响运行（Chunky 案例）
 - ⚠️ 服务器无玩家在线会自动停止（Exaroton 默认行为，省配额，日志会正常保存世界）

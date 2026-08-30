@@ -52,6 +52,7 @@
 ## 平台要点（2026-08-03 实测）
 
 - ⚠️ **apikey 是普通用户权限**：管理员端点（`/api/overview`、`/api/service/remote_services_system`、`/api/auth/search`、`/api/service/remote_service_instances`）返回 403「密钥不正确/权限不足」；只能访问自己名下的 `/api/instance`（需正确 daemonId+uuid）
+- ⚠️ **「未开启API密钥创建功能」= 面板系统设置开关被关（2026-08-30 实测）**：apikey 认证全部失效（status != 200 + data=该消息）——MCSM 面板 系统设置→安全设置→「允许创建 API 密钥」被关闭所致（非 key 无效，**key 本身没问题**；8-24 审查时仍正常，近期被改或面板更新默认）；需面板管理员（机主）在面板开启；**影响所有依赖 apikey 的 cron**（周一 9:15 三端配置审查）
 - ⚠️ **查实例必须先有 daemonId + instanceId**：普通用户无法列出 daemon/实例清单，这两个 ID 从面板网页 URL 获取，存 `.env`
 - ⚠️ **daemonId 稳定性**：日常运行/重启面板不变；但 **daemon 重装、迁移服务器、面板删除重绑** 会生成新 UUID（实例删除重建同理）——届时需从面板重新获取
 - ✅ **实例状态字段**：`status`(-1=忙碌 0=停止 1=停止中 2=启动中 3=运行中)、`info.currentPlayers/maxPlayers`、`info.version`、`processInfo.pid/memory/elapsed`、`config.eventTask.autoStart/autoRestart`、`config.pingConfig.port`
