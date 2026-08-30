@@ -54,6 +54,8 @@
 - **⚠️ 压测在线数统计**：mineflayer `spawn` 事件计数只增不减会虚高（被踢也算"进入"）——用 Set 维护真实在线（spawn 增 / end 减），采样打 `在线=N/总数`
 - **⚠️ 登录风暴：冷区块首登崩、热世界不崩**（2026-08-13 实测）：冷启动后首轮登录加载全冷 chunk → 10 bot 就 TPS 4.2；预热后（同轮测试后半程）40 bot 登录风暴 TPS 最低 16.1 稳定 18+，0 次 Can't keep up → **活动当天必须预热 spawn 区域**（提前登录/加载），登录风暴本身不是杀手，冷 chunk 生成才是
 - **LP check true ≠ 命令可用（子权限陷阱）**：`/mail send` 需 `essentials.mail.send`、`/warp` 需 `essentials.warp.list`、`/time set` 需 `essentials.time.set`——最终验收必须 bot 实测命令
+- **RCON 发 LP 命令偶发丢失 + mtime 验证不可靠（2026-08-30 沉淀）**：LP 命令经 RCON 偶发不生效；且**文件 mtime 变化 ≠ 命令成功**（插件后台定时保存/玩家数据写入也会写库写盘，mtime 被刷新是假阳性）——验证必须以 bot 实测（权限/命令真值）为准，必要时重复执行命令
+- **测试服重启规范流程（2026-08-30 沉淀）**：① RCON stop（screen stuff 不可靠）→ ② `kill -0 <pid>` 轮询确认进程真死（勿凭日志行数/直觉判断）→ ③ **确认死后**才删 `world/session.lock`（⚠️ 进程存活时删锁 = 双实例风险，两服同跑损坏共享世界）→ ④ 启动后轮询 **jar mtime 变化 + 日志 `Done (` + 端口监听**（勿用日志行数基线法——日志滚动/截断时行数不可靠）
 
 ## 跨服/双服测试（transfer）
 
