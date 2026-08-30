@@ -7,14 +7,20 @@
 - 下载直链: https://fill-data.papermc.io/v1/objects/{sha256}/{jar名}
 
 用法:
-  python3 parse_papermc.py            # 最新 STABLE 构建
+  python3 parse_papermc.py [paper|folia]  # 最新 STABLE 构建（默认 paper）
   python3 parse_papermc.py --all      # 列出所有版本的最新构建
 输出（默认）: <jar文件名> <sha256>
 （下载直链: https://fill-data.papermc.io/v1/objects/{sha256}/{jar名}）
 """
 import re, sys, urllib.request
 
-PAGE_URL = "https://papermc.io/downloads/paper"
+PROJECT = "paper"
+for arg in sys.argv[1:]:
+    if arg in ("paper", "folia"):
+        PROJECT = arg
+        break
+
+PAGE_URL = f"https://papermc.io/downloads/{PROJECT}"
 
 def fetch_page():
     req = urllib.request.Request(PAGE_URL, headers={"User-Agent": "Mozilla/5.0"})
@@ -27,7 +33,7 @@ def extract_json(html):
     html = html.replace("&quot;", '"').replace("\\u003d", "=").replace("\\u0026", "&")
     matches = []
     # 匹配 name + sha256 组合（React flight 序列化格式）
-    for fm in re.finditer(r'"name":\[0,"(paper-[^"]+\.jar)"\].*?"sha256":\[0,"([a-f0-9]{64})"\]', html):
+    for fm in re.finditer(r'"name":\[0,"(' + PROJECT + r'-[^"]+\.jar)"\].*?"sha256":\[0,"([a-f0-9]{64})"\]', html):
         matches.append((fm.group(1), fm.group(2)))
     return matches
 
@@ -46,7 +52,7 @@ def main():
     # 去重（内嵌数据会重复出现）
     seen = {}
     for name, sha in builds:
-        m = re.match(r"paper-(\d+\.\d+)-(\d+)\.jar", name)
+        m = re.match(rf"{PROJECT}-(\d+\.\d+)-(\d+)\.jar", name)
         if m:
             ver, bid = m.group(1), int(m.group(2))
             seen.setdefault(ver, []).append((bid, name, sha))
