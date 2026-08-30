@@ -14,7 +14,8 @@ python3 ~/.hermes/skills/gaming/orzmc/scripts/gen_perm_commands.py -o /tmp/perm.
 
 ## 关键决策（防回归）
 
-- 四组增量：default(13) / member(13) / builder(33) / admin(32)；继承链 member→default、builder→member、admin→builder（LuckPermsBootstrap 启动自动校正）
+- 四组增量：default(23) / member(19) / builder(35) / admin(37)；继承链 member→default、builder→member、admin→builder（LuckPermsBootstrap 启动自动校正）
+- **2026-08-30 重规划**（老板审核通过，决策记录见仓库文档）：L0 +10 生存工具（rules/motd/list/depth/compass/getpos/recipe/hat/near/seen）、L1 +5（tpdeny/tpacancel/ptime/pweather/abandonclaim）、L2 +2（speed/f3f4perms.use）、L3 +4 运营工具（mute/tempban/banip/unbanip）；/nick 不开放；/kit 维持 member；siege/GetMeHome 家功能保持默认
 - **高危节点任何组不授**：`*`、`luckperms.*`、`minecraft.command.op`、`bukkit.command.op`、`essentials.stop/reload`
 - builder 必须显式 `essentials.gamemode.others false`（父权限含 .others，防改他人模式）
 - Litematica 投影三件套：`minecraft.command.setblock/fill/data`；**不授 `summon`**

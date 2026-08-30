@@ -52,6 +52,7 @@ lp user <name> parent set default
 - TestPlayer → member（测试进阶功能）
 - Newbie → default（新手基线）
 - HermesBot → default（运维 bot，不用特权）
+- **WeTestBot → 四组切换验证账号（2026-08-30 新增）**：`lp user WeTestBot parent set <组>` 切组 + bot 实测（RCON 发 LP 命令偶发丢，parent set 后必须 bot 实测命令确认切换；实测 `//limit` Unknown 确认无 worldedit.limit、`/speed` 确认 builder 权限等）；密码 orztest2026
 
 ## 验证方法（bot 玩家身份）
 ```bash
