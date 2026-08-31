@@ -1,14 +1,23 @@
-# 三端配置差异审计（2026-08-11 三次审计；2026-08-12 重启审查 → v2 只审查不重启；2026-08-17 审查超时失败；2026-08-24 二次超时失败·Exa 侧成功 MCSM 侧挂死）
+# 三端配置差异审计（2026-08-11 三次审计；2026-08-12 重启审查 → v2 只审查不重启；2026-08-17 审查超时失败；2026-08-24 二次超时失败·Exa 侧成功 MCSM 侧挂死；2026-08-31 三次超时失败·同因·MCSM 密钥连续三周未修）
 
 > 触发：全量拉取三端（本地 ~/minecraft-server / Exaroton / MCSM）核心+插件配置，语义对比。**v2（2026-08-12 起，每周一 9:15 cron `ab06b886c39f`，脚本 `orzmc_config_audit.sh`）：不重启任何服务（Exaroton 重启耗积分、本地测试服无需每日重启），Exaroton+MCSM 并发拉取（`fetch3_configs.fetch_all`），去掉 GNU timeout（macOS 无此命令），输出 STATUS 成败行**。
 > 工具：`scripts/cmp3/fetch3_configs.py`（拉取）+ `cmp3_configs.py`（对比）+ `cmp3_diff_detail.py`（明细）+ `cmp3_report.py`（完整报告生成）+ `cmp3_trend.py`（新旧报告变化跟踪）。
 > 基线：77 个配置文件（核心 7 + 插件 70），**重启后全量审查（2026-08-11 四次）：8 个差异文件、8 个运行时数据文件、61 个完全一致**。
-> **完整报告（保留最近两次，最新为准）**：
-> - `references/config-drift-report-20260824.md`（2026-08-24 审查·❌ 脚本超时 3600s·Exa 77/77 成功 MCSM 0 文件挂死·最新）
-> - `references/config-drift-report-20260817.md`（2026-08-17 审查·❌ 脚本超时 3600s 无数据·基线快照）
-> - `references/config-drift-report-20260812.md`（已轮换·cron 仅 file 工具未物理删除，留档备查·基线 61/8/8）
-> - `references/config-drift-report-20260811.md`（已轮换·同上留档备查）
-> - `references/config-drift-report-20260810.md`（已轮换·同上留档备查）
+> **完整报告（保留最近两份，最新为准；其余已轮换·cron 仅 file 工具未物理删除，留档备查）**：
+> - `references/config-drift-report-20260831.md`（2026-08-31 审查·❌ 脚本超时 3600s·Exa 77/77 成功 MCSM 0 文件挂死·连续三周同因·最新）
+> - `references/config-drift-report-20260824.md`（2026-08-24 审查·❌ 脚本超时 3600s·Exa 77/77 成功 MCSM 0 文件挂死·已轮换）
+> - `references/config-drift-report-20260817.md`（2026-08-17 审查·❌ 脚本超时 3600s 无数据·基线快照·已轮换）
+> - `references/config-drift-report-20260812.md`（基线 61/8/8·已轮换）
+> - `references/config-drift-report-20260811.md`（已轮换）
+> - `references/config-drift-report-20260810.md`（已轮换）
+
+> **变化跟踪（20260831 三端配置审查·❌ 失败：脚本超时 3600s，连续三周同因；Exa 77/77 成功，MCSM 0 文件挂死）**：
+> - **执行**：09:15:54 启动 → 三端状态读取完成（MCSM ❌「未开启API密钥创建功能」，**与 0817/0824 同因，连续三周**；Exa ✅ status=0(OFFLINE) 未重启；本地未重启）→ 并发拉取阶段 **Exa 77/77 完整落盘**（/tmp/exa_configs2 实测 77 文件），**MCSM 0 文件**（/tmp/mcsm_configs2 实测 0 文件），python fetch_all 未返回 → 被 cron 3600s 超时杀死 → `/tmp/cmp3_report_latest.md` 未生成、无 STATUS 行 → 判定 **❌ FAIL**
+> - **三端状态（09:15，均未重启）**：MCSM ❌ API 密钥异常（**连续三周，0824 已建议修复未落地，需人工查面板**）；Exa ✅ status=0(OFFLINE)；本地未重启（设计）
+> - **审查无新对比数据**：差异基线沿用 20260812（61 一致 / 8 差异 / 8 数据）；**对齐项部分验证（Exa 今日新鲜数据 vs 本地实测）**：sync-chunk-writes Exa=false 平台保留（0811 结论维持）、command-spam-threshold-seconds=100000 Exa/本地均确认生效（2026-08-12 对齐值）、max-tick-time 60000/600000 平台差异不变、resource-pack-prompt 无实质差异；MCSM 侧全部对齐项无法验证（连续三周）
+> - **诊断进展（vs 0824）**：与 0824 完全同构——Exa 侧再次 77/77 完整落盘，卡点再次锁定 **MCSM 线程**；无新信息量，根因（MCSM 面板密钥）三周未修，本周照挂
+> - **观察项复核**：0824 观察「本地 view-distance 8→6、simulation-distance 6→3」今日实测**仍为 6/3**（~/minecraft-server/server.properties），确认持续存在，待人工确认是否有意为之
+> - **修复建议（0824 已提，本周重申）**：① **修复 MCSM 面板 API 密钥**（连续三周，不修则每周审查必挂）；② 脚本加总时长护栏 + MCSM 错误响应 fast-fail；③ MCSM 失败时保留 Exa 数据出双端部分报告；④ cron 兜底维持（无 STATUS 行/无报告判 FAIL）
 
 > **变化跟踪（20260824 三端配置审查·❌ 失败：脚本超时 3600s；Exa 77/77 成功，MCSM 0 文件挂死）**：
 > - **执行**：09:15:31 启动 → 三端状态读取完成（MCSM ❌「未开启API密钥创建功能」，**与 0817 同因，连续两周**；Exa ✅ status=0(OFFLINE) 未重启；本地未重启）→ 并发拉取阶段 **Exa 77/77 完整落盘**（/tmp/exa_configs2 实测 77 文件），**MCSM 0 文件**（/tmp/mcsm_configs2 实测 0 文件），python fetch_all 未返回 → 被 cron 3600s 超时杀死 → `/tmp/cmp3_report_latest.md` 未生成、无 STATUS 行 → 判定 **❌ FAIL**
