@@ -34,6 +34,8 @@
 ## 坑
 
 - ⚠️⚠️ **prompt 含反引号会触发 bash 命令替换**（2026-08-29 实测翻车）：`claude -p "...反引号..."` 里 Java 泛型/行内代码用反引号 → bash 把反引号内容当命令执行 → 语法错误 + prompt 损坏 → Claude Code 瞎跑。**正确姿势：prompt 写文件，用 `claude -p "$(cat /tmp/prompt.md)"` 传参**（命令替换结果不再递归求值，反引号安全）；或 prompt 里一律不用反引号（用普通引号/纯文本描述代码）
+- ⚠️ **claude 会话沙箱只读工作目录内文件**（2026-09-02 实测）：`Read`/`cat` 读工作目录外（如 /tmp/pr_task4.md）被拦，Claude 拒绝用 python 绕过 → 任务规格文件必须放**仓库内**（如 `.task/`，实现完删）或直接粘贴进 prompt
+- ⚠️ **实现会话可能整轮勘察耗尽 turns 零产出**（2026-09-02 实测两次）：大任务 `claude -p` 新会话 25-30 turns 全花在读文件分析，git status 无任何改动 → 耗尽是**正常退出**不是失败。续跑指令要点明「**勘察已足够，直接按序动手实现**」防再次空转；UUID 未固定时从 `~/.claude/projects/-Users-bot-OrzMC-plugin/*.jsonl` 按 mtime 取最新文件名即为 session UUID
 - 非交互 `claude -p` 无文件写权限 → 加 `--permission-mode acceptEdits`
 - shell 命令（python3 验证等）会被会话权限拦 → 验收交给 Hermes
 - 模型提示 `deepseek-v4-flash is not a model this version recognizes` 为已知提示，可忽略（auto-compact 按 200k 处理）；设 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` 为真实窗口可消除
