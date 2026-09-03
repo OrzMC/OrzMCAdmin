@@ -4,8 +4,8 @@
 # 依赖环境变量（~/.hermes/.env）: MCSM_URL MCSM_API_KEY MCSM_DAEMON_ID MCSM_INSTANCE_ID
 set -euo pipefail
 
-# 载入 .env（若未手动 export）
-if [ -z "${MCSM_URL:-}" ] && [ -f "$HOME/.hermes/.env" ]; then
+# 载入 .env（无条件：持久 shell 环境可能残留旧值，改 .env 后不刷新会误用旧 key）
+if [ -f "$HOME/.hermes/.env" ]; then
   set -a; source "$HOME/.hermes/.env"; set +a
 fi
 

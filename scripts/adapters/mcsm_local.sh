@@ -6,7 +6,8 @@
 # ⚠️ 本机测试服共享 world 严禁同跑——start 前须面板确认另一实例已停（docker ps --filter name=MCSM-）
 set -euo pipefail
 
-if [ -z "${MCSM_LOCAL_URL:-}" ] && [ -f "$HOME/.hermes/.env" ]; then
+# ⚠️ 无条件 source：持久 shell 环境可能残留旧值（改 .env 后不刷新会误用旧 key）
+if [ -f "$HOME/.hermes/.env" ]; then
   set -a; source "$HOME/.hermes/.env"; set +a
 fi
 
