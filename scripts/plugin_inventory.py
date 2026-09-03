@@ -16,7 +16,7 @@
 """
 import zipfile, yaml, os, sys, json, datetime, argparse
 
-DEFAULT_PLUGIN_DIR = os.path.expanduser("~/minecraft-server/plugins")
+DEFAULT_PLUGIN_DIR = os.path.expanduser("/Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/716c2fb712154c36ba5ab0f1480d3f87/plugins")
 DEFAULT_JSON = os.path.expanduser("~/.hermes/state/plugin_inventory.json")
 DEFAULT_MD = os.path.expanduser("~/.hermes/skills/gaming/orzmc/references/plugin-inventory.md")
 
@@ -226,7 +226,7 @@ def generate_md(inventory, group_map=None):
     lines.append("")
     lines.append(f"> 生成时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
     lines.append("> 生成方式：`scripts/plugin_inventory.py`（自动提取 jar plugin.yml + 人工补充字典 EXTRA_PERMS）")
-    lines.append("> 数据源：`~/minecraft-server/plugins/*.jar`；组分配标注来源 `permission-groups.md` 唯一事实源")
+    lines.append("> 数据源：`/Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/716c2fb712154c36ba5ab0f1480d3f87/plugins/*.jar`（Paper 实例）；组分配标注来源 `permission-groups.md` 唯一事实源")
     lines.append("> 定时更新：重新运行 `python3 ~/.hermes/skills/gaming/orzmc/scripts/plugin_inventory.py` 即可（可挂 cron）")
     lines.append("")
 

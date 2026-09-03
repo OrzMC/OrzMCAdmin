@@ -60,8 +60,8 @@ OrzMC 插件的 Bot 命令（`$l/$w/$h/$a/$r/$b/$o/$e/$d`）正常由**真实群
 
 **命令**：
 ```bash
-screen -dmS mc ~/minecraft-server/start.sh     # 起服（detached）
-screen -S mc -p 0 -X stuff 'orzdebug $h\n' # 注入命令（\n 用实际换行，stuff 里写 'cmd' + 换行）
+# 2026-09-03 迁 MCSM 后：起服 = 面板启动实例（无 screen/start.sh）
+# orzdebug 注入 = bot 玩家游戏内执行 /orzdebug（Paper 26 Brigadier 命令不触发 RCON 事件；RCON 直连见 scripts/rcon.py）
 ```
 注意：`screen -X hardcopy` 在 detached 模式下可能输出空文件；判断命令生效看 `logs/latest.log`（如 `[OrzMC] cmd debug:`）。
 

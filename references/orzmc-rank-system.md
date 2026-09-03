@@ -40,7 +40,7 @@ Notifier.routeEvent 按模板键路由，PRIVATE 仅 3 键：exception_alert（�
 
 ## 测试环境
 
-- 本地服 ~/minecraft-server（enable-rcon=true, 25575）；部署链：kill java → cp build/libs/OrzMC-1.0.16-dev.jar → rm world/session.lock → start.sh（~50s Done）
+- 本地服 = MCSM 实例 papermc-test（uuid 716c2fb7，enable-rcon=true, 25575 容器内）；部署链（2026-09-03 起）：cp build/libs/OrzMC-*.jar → 实例目录 `plugins/` → 面板重启实例（~60s Done）
 - RCON 驱动 orzdebug 模拟群消息：~/minecraft-bot/p-test.js（`$p` 参数须单引号防 shell 展开）
 - bot 玩家登录跑游戏内命令：rank-single.js / cmd-one.js（自动 /login，LoginSecurity 有 30s 重登冷却）
 - 测试账号：TestMember=81b4d507…、HermesBot=74ce0d95…、joker=bbb8b47e…（密码在脚本内，勿外泄）

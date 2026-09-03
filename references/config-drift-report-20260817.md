@@ -1,4 +1,5 @@
 # 三端配置差异审计报告（2026-08-17·❌ 审查失败：脚本超时 3600s，无新数据）
+> ⚠️ **2026-09-03 迁移标注**：本地测试服已迁 MCSM 本机栈（mcs.{SERVER_NAME}.cn Docker 实例，数据在 `/Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/<uuid>`）。文中 `~/minecraft-server`、`~/folia-test` 路径及裸跑/symlink 机制为迁移前历史状态，已失效；现行拓扑见 `testing.md`。
 
 > **本次结论：❌ FAIL（脚本未产出报告即被 cron 超时杀死）**。本文件为失败标记 + 基线快照（差异明细沿用上一轮 2026-08-11/12 成功审计数据，详见 `config-drift-report-20260812.md`），**不代表 2026-08-17 三端实际配置状态**。
 

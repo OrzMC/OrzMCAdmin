@@ -1,4 +1,5 @@
 # Folia 迁移实验（2026-08-17，本地双服实测）
+> ⚠️ **2026-09-03 迁移标注**：本地测试服已迁 MCSM 本机栈（mcs.{SERVER_NAME}.cn Docker 实例，数据在 `/Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/<uuid>`）。文中 `~/minecraft-server`、`~/folia-test` 路径及裸跑/symlink 机制为迁移前历史状态，已失效；现行拓扑见 `testing.md`。
 
 > **双核心插件全景对比表（Paper vs Folia：核心差异/插件对应/渠道/功能/启用状态）已沉淀为官网文章**：OrzMCSite `content/posts/2.server/27.paper-vs-folia.md`（公开版，无内部路径/密码；版本号仅参考）。内部细节仍以本文件为准。
 > 场景：评估本地测试服插件迁移 PaperMC Folia 核心的兼容性，并完成平替替换 + 数据迁移。

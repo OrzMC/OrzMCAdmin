@@ -1,4 +1,5 @@
 # 三端配置差异审计报告（2026-08-24·❌ 审查失败：脚本超时 3600s；Exa 侧 77/77 成功，MCSM 侧 0 文件挂死）
+> ⚠️ **2026-09-03 迁移标注**：本地测试服已迁 MCSM 本机栈（mcs.{SERVER_NAME}.cn Docker 实例，数据在 `/Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/<uuid>`）。文中 `~/minecraft-server`、`~/folia-test` 路径及裸跑/symlink 机制为迁移前历史状态，已失效；现行拓扑见 `testing.md`。
 
 > **本次结论：❌ FAIL（脚本未产出 cmp3 报告即被 cron 3600s 超时杀死）**。本文件为失败标记 + 部分数据快照：**Exaroton 侧 77/77 配置已完整拉取**（/tmp/exa_configs2，本次新鲜数据，已用于 Exa vs 本地对齐项核对），**MCSM 侧 0 文件**（面板 API 密钥异常致拉取挂死），cmp3 语义对比与完整报告未执行。差异基线沿用 2026-08-11/12 成功审计数据（详见 `config-drift-report-20260812.md`），**不代表 2026-08-24 三端实际配置状态**。
 

@@ -32,8 +32,9 @@
 
 **安装**（新插件首次装，jar 直接放 plugins/）：
 ```bash
-cp CustomWorldHeight.jar ~/minecraft-server/plugins/
+cp CustomWorldHeight.jar /Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/716c2fb712154c36ba5ab0f1480d3f87/plugins/
 # 启动一次 → 插件生成 config 模板后日志提示「first time... restart after finish your config」
+# （插件已移除 2026-08-18；上行为历史实验步骤，路径已按 MCSM 实例化）
 ```
 
 **配置** `plugins/CustomWorldHeight/config.yml`：

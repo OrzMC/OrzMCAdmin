@@ -17,13 +17,23 @@ def _load_env():
     return env
 
 def get_mcsm_config():
-    """返回 MCSM 连接配置字典"""
+    """返回 MCSM 连接配置字典（远程 Win11 面板）"""
     env = _load_env()
     return {
         "url": env.get("MCSM_URL", ""),
         "apikey": env.get("MCSM_API_KEY", ""),
         "daemon_id": env.get("MCSM_DAEMON_ID", ""),
         "instance_id": env.get("MCSM_INSTANCE_ID", ""),
+    }
+
+def get_mcsm_local_config():
+    """本机 MCSM 栈（mcs.{SERVER_NAME}.cn，本地测试服双实例；2026-09-03 迁移后成为三端审查「本地端」）"""
+    env = _load_env()
+    return {
+        "url": env.get("MCSM_LOCAL_URL", "https://mcs.{SERVER_NAME}.cn/"),
+        "apikey": env.get("MCSM_LOCAL_API_KEY", ""),
+        "daemon_id": env.get("MCSM_LOCAL_DAEMON_ID", ""),
+        "instance_id": env.get("MCSM_LOCAL_INSTANCE_ID", ""),
     }
 
 def get_exaroton_config():

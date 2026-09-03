@@ -2,6 +2,8 @@
 
 > 适用：本机目录部署的 PaperMC 服务器（`PAPER_BACKEND=local`，`PAPER_DIR` 指定目录）。
 > 适配器：`scripts/adapters/local.sh`（create / upgrade / status / logs / command）。
+>
+> ⚠️ **2026-09-03 迁移标注**：本机 OrzMC 测试服（原 `~/minecraft-server`/`~/folia-test` 裸跑）已全部迁入 MCSM 本机栈 Docker 实例（mcs.{SERVER_NAME}.cn 面板管理），**不再用 local 后端启停**——本文档/local.sh 现仅适用于临时本机目录服（如一次性的 minecraft-server 实验目录）。MCSM 实例的数据仍在本机宿主（`/Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/<uuid>/`），jar 升级/插件部署可直接对实例目录操作后由面板重启实例（见 `testing.md`）。
 
 ## 版本获取（PaperMC 下载机制）
 

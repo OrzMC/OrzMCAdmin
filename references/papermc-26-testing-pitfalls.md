@@ -1,4 +1,5 @@
 # Paper 26 测试踩坑明细（2026-08-07 权限系统二期 E2E 实测）
+> ⚠️ **2026-09-03 迁移标注**：本地测试服已迁 MCSM 本机栈（mcs.{SERVER_NAME}.cn Docker 实例，数据在 `/Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/<uuid>`）。文中 `~/minecraft-server`、`~/folia-test` 路径及裸跑/symlink 机制为迁移前历史状态，已失效；现行拓扑见 `testing.md`。
 
 本文件记录在本地测试服（Paper 26.2-92, papermc-test）做插件 E2E 时遇到的全部非平凡问题与证据链。
 

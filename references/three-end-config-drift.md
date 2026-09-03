@@ -1,6 +1,8 @@
-# 三端配置差异审计（2026-08-11 三次审计；2026-08-12 重启审查 → v2 只审查不重启；2026-08-17 审查超时失败；2026-08-24 二次超时失败·Exa 侧成功 MCSM 侧挂死；2026-08-31 三次超时失败·同因·MCSM 密钥连续三周未修）
+# 三端配置差异审计（2026-08-11 三次审计；2026-08-12 重启审查 → v2 只审查不重启；2026-08-17/24/31 审查超时失败（MCSM 侧密钥三周未修）；**2026-09-03 v3：本地端迁 MCSM 本机栈**）
 
-> 触发：全量拉取三端（本地 ~/minecraft-server / Exaroton / MCSM）核心+插件配置，语义对比。**v2（2026-08-12 起，每周一 9:15 cron `ab06b886c39f`，脚本 `orzmc_config_audit.sh`）：不重启任何服务（Exaroton 重启耗积分、本地测试服无需每日重启），Exaroton+MCSM 并发拉取（`fetch3_configs.fetch_all`），去掉 GNU timeout（macOS 无此命令），输出 STATUS 成败行**。
+> **v3（2026-09-03，本地测试服迁 MCSM 后）**：三端 = **本地端**（本机 MCSM 栈 Paper 实例 716c2fb7，**目录直读复制** → `/tmp/mcsm_local_configs2`）/ **Exa**（Exaroton 海外服 API）/ **MCSM**（远程 Win11 面板 API）。脚本 `orzmc_config_audit.sh` v3 三路并发（fetch3_configs.fetch_all），STATUS 三端文件数检查。
+> ⚠️ **v10 面板下载协议不兼容**：本机 MCSM 面板为 v10.18（文件下载走 wss 私有协议，非 v9 http 两步法）——本地端配置本就在宿主（InstanceData/<uuid>），fetch3 用**目录直读复制**（产物与 API 拉取目录同构，cmp3/report 复用不变）；远程 MCSM 若同为 v10 则 `mcsm_download`（v9 协议）同样失效，需 v10 wss 适配（未做，见下方根因）。
+> ⚠️ **远程 MCSM 连续三周挂死根因（2026-09-03 实证）**：远程面板报「未开启API密钥创建功能」= 远程 `enableApiKey=false`（MCSM API key 需面板开启 + 用户配置 apiKey；.env `MCSM_API_KEY` 同步）。**修复需在远程 Win11 面板操作**（本机栈已同法修复验证：SystemConfig enableApiKey=true + User apiKey + 重启 web → API 通）。
 > 工具：`scripts/cmp3/fetch3_configs.py`（拉取）+ `cmp3_configs.py`（对比）+ `cmp3_diff_detail.py`（明细）+ `cmp3_report.py`（完整报告生成）+ `cmp3_trend.py`（新旧报告变化跟踪）。
 > 基线：77 个配置文件（核心 7 + 插件 70），**重启后全量审查（2026-08-11 四次）：8 个差异文件、8 个运行时数据文件、61 个完全一致**。
 > **完整报告（保留最近两份，最新为准；其余已轮换·cron 仅 file 工具未物理删除，留档备查）**：

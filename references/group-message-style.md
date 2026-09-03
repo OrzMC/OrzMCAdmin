@@ -45,7 +45,8 @@
 
 ```bash
 # 1. 打包 + 部署（带版本号 jar 不走 update/：停服 → cp 覆盖 plugins/ 同名 jar → 启动）
-cd ~/OrzMC/plugin && ./gradlew shadowJar && cp build/libs/OrzMC-*.jar ~/folia-test/plugins/
+cd ~/OrzMC/plugin && ./gradlew shadowJar && cp build/libs/OrzMC-*.jar /Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/8A932DD47F4D42AAAD6A6A9A5FAD2A91/plugins/
+# 重启 = 面板重启 folia-test 实例（2026-09-03 起无 start.sh；实例目录宿主可见可直接 cp）
 # 2. 触发事件（bot 脚本，见 mineflayer-bot.md）
 cd ~/minecraft-bot
 node exec-cmds.js StyleUp "list"          # 上下线（先 RCON whitelist add StyleUp）
@@ -63,5 +64,5 @@ node exec-cmds.js StyleAdm "/review approve TestNewbie"  # 申请通过（StyleA
 - ⚠️ **screen stuff 喂 stop 不可靠**（`> stop` 显示但服务器不退）→ 用 RCON `stop`（rcon.py）
 - ⚠️ **重复 `screen -dmS folia ./start.sh` 会叠加多实例**：同端口第二个实例 bind 失败但仍占 screen/资源——启动前先 `ps aux | grep folia-26` 确认无残留 + `screen -wipe`
 - ⚠️ **cp 覆盖运行中 jar 不生效**（旧类已加载），且重新打包后必须核对 sha256（Gradle 增量可能跳过 shadowJar → 用 `--rerun-tasks` 强制）
-- 干净启动流程：kill 残留 java → `rm -f world/session.lock` → `screen -dmS folia ./start.sh` → 等端口监听 + 日志 `Done (.*)! For help`
-- 测试服目录 `~/folia-test`（Folia 26.2，端口 25565/25575，RCON 密码本地），配置在 `plugins/OrzMC/`
+- 测试服 = MCSM 实例 `folia-test`（uuid 8A932DD4，Folia 26.2，端口 25565/25575），配置在实例目录 `plugins/OrzMC/`（宿主 `/Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/8A932DD47F4D42AAAD6A6A9A5FAD2A91/`）
+- 干净启动流程（2026-09-03 迁 MCSM 后）：面板停止实例 → 清共享 world `session.lock` 残留 → 面板启动 folia-test → 等端口监听 + 日志 `Done (.*)! For help`

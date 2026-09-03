@@ -24,6 +24,7 @@ curl -s "https://hangar.papermc.io/api/v1/projects/OrzMC/versions/1.0.14-dev.237
 ```
 
 ## 本地升级流程（papermc-test，2026-08-04 实测 1.0.13→1.0.14）
+<!-- ⚠️ 2026-09-03 注：文中本地测试服目录路径为迁 MCSM 前状态；现行路径见 testing.md（实例 InstanceData/<uuid>）-->
 
 > ⚠️ **必须分清两条路径（PaperMC 官方机制，用户 2026-08-04 纠正）**：
 > - 🆕 **首次新装** → jar **直接放 `plugins/`**（重启扫描加载；放 update/ 无效/非标准）

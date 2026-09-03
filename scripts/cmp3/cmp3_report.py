@@ -6,9 +6,9 @@
 """
 import os, sys, re
 
-LOCAL = os.path.expanduser("~/minecraft-server")
-E = "/tmp/exa_configs2"
-M = "/tmp/mcsm_configs2"
+LOCAL = "/tmp/mcsm_local_configs2"   # 基准端 = 本机 MCSM 栈 Paper 实例配置（2026-09-03 起；原 ~/minecraft-server 目录已迁 MCSM）
+E = "/tmp/exa_configs2"              # Exaroton（海外服）
+M = "/tmp/mcsm_configs2"             # MCSM 远程 Win11（国内服）
 SKIP_DIRS = {"userdata", "homes", "data", "players", "backups", "logs", "cache", "worlds", "messages"}
 SKIP_FILES = {"ops.json", "whitelist.json", "banned-players.json", "banned-ips.json",
               "usercache.json", "permissions.yml", "help.yml"}
@@ -102,7 +102,7 @@ out.append("|:--|:--|")
 out.append("| 核心配置（服务端） | 7 |")
 out.append("| 插件配置 | 70 |")
 out.append("| **合计** | **77** |\n")
-out.append("三端：**本地** ~/minecraft-server / **Exa** Exaroton（海外服） / **MCSM**（国内服）")
+out.append("三端：**本地**（本机 MCSM 栈 Paper 实例）/tmp/mcsm_local_configs2 / **Exa** Exaroton（海外服） / **MCSM**（远程 Win11 国内服）")
 out.append("判定口径：**交集语义**（三端共同 key 值全同=完全一致；单端独有 key 另计）\n")
 
 out.append("---\n## 一、核心配置（服务端 7 个）\n")

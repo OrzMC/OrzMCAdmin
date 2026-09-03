@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """三端配置全量对比（本地 vs Exaroton vs MCSM，语义级）
 用法: python3 cmp3_configs.py <exaroton_dir> <mcsm_dir> [local_dir]
-  例: python3 cmp3_configs.py /tmp/exa_configs2 /tmp/mcsm_configs2 ~/minecraft-server
+  例: python3 cmp3_configs.py /tmp/exa_configs2 /tmp/mcsm_configs2 /tmp/mcsm_local_configs2
 对比内容: 核心配置文件（server.properties/bukkit/spigot/commands/paper-*）+ 插件配置
 排除: 数据文件（userdata/homes/players 等）
 """
 import os, sys
 
-LOCAL = os.path.expanduser(sys.argv[3] if len(sys.argv) > 3 else "~/minecraft-server")
+LOCAL = os.path.expanduser(sys.argv[3] if len(sys.argv) > 3
+                           else "/Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/716c2fb712154c36ba5ab0f1480d3f87")
 E = sys.argv[1] if len(sys.argv) > 1 else "/tmp/exa_configs2"
 M = sys.argv[2] if len(sys.argv) > 2 else "/tmp/mcsm_configs2"
 SKIP_DIRS = {"userdata", "homes", "data", "players", "backups", "logs", "cache", "worlds", "messages"}

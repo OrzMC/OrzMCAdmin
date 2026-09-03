@@ -8,12 +8,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from mcsm_env import get_mcsm_config, get_exaroton_config, mcsm_download
+from mcsm_env import get_mcsm_config, get_mcsm_local_config, get_exaroton_config, mcsm_download
 from exa_file import get_file as exa_get  # GET 自动解包 JSON/裸文本
 
-LOCAL = os.path.expanduser("~/minecraft-server")
+# 本地基准清单源 = 本机 MCSM Paper 实例目录（宿主可见；只作「要拉哪些配置文件」的清单，非对比数据源）
+LOCAL = os.path.expanduser("/Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/716c2fb712154c36ba5ab0f1480d3f87")
 EXA_OUT = "/tmp/exa_configs2"
-MCSM_OUT = "/tmp/mcsm_configs2"
+MCSM_OUT = "/tmp/mcsm_configs2"          # 远程 Win11 MCSM（对比端 B）
+MCSM_LOCAL_OUT = "/tmp/mcsm_local_configs2"  # 本机 MCSM 栈（对比端 A = 本地端，2026-09-03 起）
 CORE = ["server.properties", "bukkit.yml", "spigot.yml", "commands.yml", "wepif.yml"]
 CORE_MAP = {  # 云上路径 → 本地平铺名
     "config/paper-global.yml": "config_paper-global.yml",
@@ -83,26 +85,30 @@ def fetch_exa(files):
     print(f"Exaroton 完成: ok={ok} fail={fail} → {EXA_OUT}\n")
 
 # ---------- MCSM ----------
-def fetch_mcsm(files):
-    cfg = get_mcsm_config()
-    os.makedirs(f"{MCSM_OUT}/plugins", exist_ok=True)
-    print("=== MCSM 配置拉取 ===")
+def fetch_mcsm(files, cfg=None, out_dir=None, label="MCSM"):
+    """MCSM 配置拉取（参数化：远程 Win11 或本机栈共用；内部串行+退避规避面板限流）"""
+    if cfg is None:
+        cfg = get_mcsm_config()
+    if out_dir is None:
+        out_dir = MCSM_OUT
+    os.makedirs(f"{out_dir}/plugins", exist_ok=True)
+    print(f"=== {label} 配置拉取 ===")
     ok = fail = 0
     for path, local in CORE_MAP.items():
         data = mcsm_download(cfg, f"/{path}")
         if data is not None and data[:2] != b"PK":
-            open(f"{MCSM_OUT}/{local}", "wb").write(data)
+            open(f"{out_dir}/{local}", "wb").write(data)
             print(f"  ✅ {path} ({len(data)}B)"); ok += 1
         else:
-            print(f"  ⚠️  {path}: 失败"); fail += 1
+            print(f"  ⚠️ {path}: 失败"); fail += 1
         time.sleep(2)
     for f in CORE:
         data = mcsm_download(cfg, f"/{f}")
         if data is not None and data[:2] != b"PK":
-            open(f"{MCSM_OUT}/{f}", "wb").write(data)
+            open(f"{out_dir}/{f}", "wb").write(data)
             print(f"  ✅ {f} ({len(data)}B)"); ok += 1
         else:
-            print(f"  ⚠️  {f}: 失败"); fail += 1
+            print(f"  ⚠️ {f}: 失败"); fail += 1
         time.sleep(2)
     # 串行拉取 + 失败自动重试（MCSM 面板全局限流，并发必 500；串行+退避最稳）
     failed = []
@@ -114,7 +120,7 @@ def fetch_mcsm(files):
                 break
             time.sleep(3)  # 限流退避
         if data is not None and data[:2] != b"PK":
-            dst = f"{MCSM_OUT}/plugins/{rel}"
+            dst = f"{out_dir}/plugins/{rel}"
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             open(dst, "wb").write(data)
             ok += 1
@@ -122,19 +128,59 @@ def fetch_mcsm(files):
             fail += 1
             failed.append(rel)
             print(f"  ⚠️  plugins/{rel}: 失败")
-    print(f"MCSM 完成: ok={ok} fail={fail} → {MCSM_OUT}")
+    print(f"{label} 完成: ok={ok} fail={fail} → {out_dir}")
     if failed:
         print(f"失败清单({len(failed)}): {', '.join(failed)}")
 
+# ---------- 本地端（本机 MCSM Paper 实例，2026-09-03 起） ----------
+# ⚠️ 不走 MCSM API 下载：v10 面板文件下载是 wss 私有协议（mcsm_env v9 http 两步法不兼容），
+#    且本地端配置本来就在宿主（InstanceData/<uuid>）——目录直读复制，产物与 API 拉取目录同构，
+#    cmp3/report/audit 下游全复用（这就是"本地端与 MCSM 端同构"的实质）。
+def fetch_local_dir(out_dir=None):
+    """本地端配置 → 拉取目录（与 fetch_exa/fetch_mcsm 输出同构）"""
+    import shutil
+    if out_dir is None:
+        out_dir = MCSM_LOCAL_OUT
+    if os.path.exists(out_dir):
+        shutil.rmtree(out_dir)
+    os.makedirs(out_dir, exist_ok=True)
+    ok = fail = 0
+    print("=== 本地端(目录直读) 配置复制 ===")
+    for f in CORE:  # server.properties/bukkit/spigot/commands/wepif 平铺
+        src = f"{LOCAL}/{f}"
+        if os.path.exists(src):
+            shutil.copy2(src, f"{out_dir}/{f}"); ok += 1
+        else:
+            print(f"  ⚠️ {f}: 缺失"); fail += 1
+    for path, local in CORE_MAP.items():  # config/paper-*.yml → 平铺 config_paper-*.yml
+        src = f"{LOCAL}/{path}"
+        if os.path.exists(src):
+            shutil.copy2(src, f"{out_dir}/{local}"); ok += 1
+        else:
+            print(f"  ⚠️ {path}: 缺失"); fail += 1
+    for rel in local_plugin_configs():  # plugins/<目录>/<相对路径> 保留结构（同拉取目录）
+        src = f"{LOCAL}/plugins/{rel}"
+        if os.path.exists(src):
+            dst = f"{out_dir}/plugins/{rel}"
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst); ok += 1
+        else:
+            fail += 1
+            print(f"  ⚠️ plugins/{rel}: 缺失")
+    print(f"本地端 完成: ok={ok} fail={fail} → {out_dir}\n")
+    return ok, fail
+
 def fetch_all(files):
-    """并发拉取 Exaroton + MCSM（两平台互不干扰；MCSM 内部保持串行+退避规避面板全局限流）"""
-    print(f"并发拉取: Exaroton + MCSM 并行（基准 {len(files)} 个插件配置）\n")
-    with ThreadPoolExecutor(max_workers=2) as ex:
+    """三路并发：Exaroton(API) + 远程 MCSM(API v9 协议) + 本地端(目录直读)"""
+    print(f"并发: Exaroton + MCSM(远程) + 本地端（基准 {len(files)} 个插件配置）\n")
+    with ThreadPoolExecutor(max_workers=3) as ex:
         f1 = ex.submit(fetch_exa, files)
-        f2 = ex.submit(fetch_mcsm, files)
+        f2 = ex.submit(fetch_mcsm, files, get_mcsm_config(), MCSM_OUT, "MCSM(远程Win11)")
+        f3 = ex.submit(fetch_local_dir)
         f1.result()
         f2.result()
-    print("=== 并发拉取全部完成 ===\n")
+        f3.result()
+    print("=== 三路全部完成 ===\n")
 
 if __name__ == "__main__":
     files = local_plugin_configs()

@@ -35,7 +35,7 @@ def delete(path):
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode()[:150]
 
-PLUGINS = os.path.expanduser("~/minecraft-server/plugins")
+PLUGINS = os.path.expanduser("/Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/716c2fb712154c36ba5ab0f1480d3f87/plugins")
 
 # 1. 删旧 OrzMC 1.0.13（防新旧并存冲突）
 print("① 删除旧 OrzMC-1.0.13-pr.153.394.jar")

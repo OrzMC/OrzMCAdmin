@@ -67,8 +67,8 @@ TNT/fire **已在默认列表**（无需重复）。效果：`//set sand` 在**�
 
 | 端 | 状态 |
 |:--|:--|
-| 本地 Paper（papermc-test）| ✅ 已改 + 重启 + 验证 |
-| 本地 Folia（folia-test）| ✅ 已同步（config.yml 复制，下次接管生效）|
+| 本地 Paper 实例（716c2fb7）| ✅ 已改 + 重启验证；2026-09-03 随迁移保留生效 |
+| 本地 Folia 实例（8A932DD4）| ✅ 已同步（config.yml 复制，2026-09-03 随迁移生效）|
 | Exaroton | ⏳ 已改好存 `~/backups/we-config/exa_we_config_20260830.yml`，PUT 被 Cloudflare challenge 拦截 → 老板面板手动或风控解除 |
 | MCSM | ⏳ 待面板「API 密钥创建功能」开启后同步（同文件两处改动）|
 

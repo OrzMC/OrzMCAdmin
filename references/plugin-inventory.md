@@ -2,7 +2,7 @@
 
 > 生成时间：2026-08-30 17:12
 > 生成方式：`scripts/plugin_inventory.py`（自动提取 jar plugin.yml + 人工补充字典 EXTRA_PERMS）
-> 数据源：`~/minecraft-server/plugins/*.jar`；组分配标注来源 `permission-groups.md` 唯一事实源
+> 数据源：`/Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/716c2fb712154c36ba5ab0f1480d3f87/plugins/*.jar`（Paper 实例；2026-09-03 迁 MCSM 后）；组分配标注来源 `permission-groups.md` 唯一事实源
 > 定时更新：重新运行 `python3 ~/.hermes/skills/gaming/orzmc/scripts/plugin_inventory.py` 即可（可挂 cron）
 
 ## 插件总览

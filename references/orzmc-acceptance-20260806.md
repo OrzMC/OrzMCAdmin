@@ -1,4 +1,5 @@
 # OrzMC 插件真实环境验收报告（2026-08-06）
+> ⚠️ **2026-09-03 迁移标注**：本地测试服已迁 MCSM 本机栈（mcs.{SERVER_NAME}.cn Docker 实例，数据在 `/Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/<uuid>`）。文中 `~/minecraft-server`、`~/folia-test` 路径及裸跑/symlink 机制为迁移前历史状态，已失效；现行拓扑见 `testing.md`。
 
 > **范围**：Paper 26.2-92 + OrzMC 1.0.14-dev.237 修复版，本地测试服（~/minecraft-server，25565）+ 双服 transfer 测试（~/minecraft-server2，25566）
 > **方式**：mineflayer bot（HermesBot/TestPlayer）+ screen 控制台注入 + RCON

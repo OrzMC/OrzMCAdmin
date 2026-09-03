@@ -7,9 +7,9 @@
 
 > **「哪些逻辑可以用单元测试和集成测试保证的，优先使用单元测试和集成测试；其他情况必须要真实验收的，再使用机器人做端到端真实测试。」**
 
-> **⚠️ 当前 E2E 测试服 = 仅 Paper（2026-08-20 老板决策：只运行 Paper 测试服）**：`~/minecraft-server/`（登录插件 LoginSecurity）——Folia 测试服 `~/folia-test/`（SimpleLogin）**已停服**，需要双核心验证时再启动。**⚠️ 端口已统一（2026-08-20）：两服都用 25565/RCON 25575/Geyser 19132**（既然共用地图不能同跑，端口统一后客户端/RCON 地址固定，无需记两套）。日志路径 Paper=`~/minecraft-server/logs/latest.log`、Folia=`~/folia-test/logs/latest.log`。
-> **⚠️⚠️ 共用地图、严禁同跑（2026-08-20 确认）**：`~/folia-test/world` 是 **symlink → `~/minecraft-server/world`**（2026-08-18 Folia 接管原测试服时定的方案），物理地图只有一份（18G/317 万 chunk），玩家存档/建筑/level.dat 全部共享。**两台服绝不能同时运行**：Paper 在线时 world 被 session.lock 锁定，Folia 启动报 `DirectoryLock$LockException` 直接拒绝；强制绕过会数据冲突损坏地图。切换规则：停 Paper → 再启 Folia（反之亦然），先查 `lsof -iTCP:25565` 确认无占用（端口已统一，占用即另一台在跑）。paper-transfer-test 目录（transfer 测试临时目标服 25566/RCON 25575，231M）是独立世界，非 symlink，测完即删。
-> **E2E 套件 = 插件仓库 `plugin/e2e/`**（2026-08-19 建立）：`bash e2e/run-all.sh [-c NN] [-r]` 一键跑；**双核心支持（2026-08-20 端口统一后改自动检测）**：run-all.sh 前置检查会**自动检测运行中的测试服核心**（`ps` 进程检测 folia-test/papermc-test jar，`ORZMC_CORE=folia|paper` 可显式覆盖），日志路径/模板路径按核心推断，端口统一 25565/RCON 25575 无需再传环境变量——**05-groupmsg.js 群消息场景**（2026-08-19 加入，PR #201）：whitelist_block 拦截/player_join 上线/player_digest 双 bot 下线聚合/player_quit 单发/ip_blacklist_block——**日志断言**（Notifier.routeEvent 统一 `[群消息:<key>]` 日志 + ⏎ 转义换行，JUL→log4j 只输出首行）+ 占位符残留检查（防 {online_list} 类模板回归）；Folia 11/11 + Paper 11/11 双绿；**06-permission-msg.js 权限/审核消息**（2026-08-19 加入，PR #202）：review_submitted 申请发起 / review_approved 审核通过（含审核人）/ rank_promoted 晋升（🎉「建造者」中文显示名）/ review_rejected 拒绝 / review_cancelled 撤回——**关键坑**：LP 设组须**先建后设**（parent set 对不存在用户创建的虚拟用户会被首登覆盖：先进服建用户→quit→parent+group set→重进）；**登录节流 20s**（login_rate_limit 5/min + LoginSecurity 冷却 13s+，Folia SimpleLogin 无此坑）；/review 仅玩家可用 + isOp/orzmc.admin（自建 op 审核人 RCON op+deop 还原）；异常路径 try/finally quit（防残留 bot 触发 per-IP 限流）；Folia 19/19 + Paper 19/19 双绿；`lib/rcon.js`（Promise RCON + waitLog tail 3000 防刷屏挤出）+ `lib/bot.js`（spawnBot 自适应 SimpleLogin/LoginSecurity 登录：probeLogin 先发 /login 探测、未注册转 /register；⚠️ 成功判定只认「登录成功/注册成功」，勿匹配「Welcome! just joined」首登广播否则过早 resolve 命令被拦）；用例自包含（专用账号自动注册+清理白名单）。测试账号密码：SimpleLogin 版 E2E 专用 E2EPass123（旧 LoginSecurity 版 TestNewbie/NewbiePass123 已不适用）。
+> **⚠️ 当前测试服拓扑（2026-09-03 起全部迁 MCSM 本机栈）**：双 Docker 实例 **`papermc-test`**（uuid 716c2fb7，LoginSecurity）与 **`folia-test`**（uuid 8A932DD4）由本机 MCSM 面板 **mcs.{SERVER_NAME}.cn** 管理（节点 orzmc-local），启停走面板（实例配置/数据在宿主 `/Users/Shared/orzmc/mcsmanager/daemon/data/`，目录 `InstanceData/<uuid>/` 含 server.properties/plugins/ 完整服务端）。旧裸跑目录 `~/minecraft-server`/`~/folia-test` 与 start.sh/screen 启动**已废弃删除**。详见下文「MCSM 本地栈 Docker 实例」节（2026-09-03 迁移实测 + 五连坑）。
+> **⚠️⚠️ 共享 world、严禁同跑**：物理地图一份（`/Users/Shared/orzmc/worlds/test`，extraVolumes 挂载两实例容器 `/server/world`，2026-08-20 优化裁剪后 ~2.1G），玩家存档/建筑/level.dat 全部共享。**两实例绝不能同时运行**（同抢 25565 + world 双写毁档；daemon 软关闭会跳过 docker 实例不自动停）。切换规则：面板先停另一台 → 再启目标实例（docker ps 确认无 MCSM 容器残留后启动）。
+> **E2E 套件 = 插件仓库 `plugin/e2e/`**（2026-08-19 建立）：`bash e2e/run-all.sh [-c NN] [-r]` 一键跑；**双核心支持**：`ORZMC_CORE=folia|paper` 显式指定 + 测试服目录/日志/备份路径环境变量注入（run-all.sh 不再自动检测核心——Docker 实例 java 进程在容器内，宿主 ps 不可见；MCSM 对接层由技能 wrapper 脚本 `scripts/e2e-mcsm-wrapper.sh` 负责：确认实例状态 + 注入全部环境变量 + 调仓库 run-all.sh，2026-09-03 起）——**05-groupmsg.js 群消息场景**（2026-08-19 加入，PR #201）：whitelist_block 拦截/player_join 上线/player_digest 双 bot 下线聚合/player_quit 单发/ip_blacklist_block——**日志断言**（Notifier.routeEvent 统一 `[群消息:<key>]` 日志 + ⏎ 转义换行，JUL→log4j 只输出首行）+ 占位符残留检查（防 {online_list} 类模板回归）；Folia 11/11 + Paper 11/11 双绿；**06-permission-msg.js 权限/审核消息**（2026-08-19 加入，PR #202）：review_submitted 申请发起 / review_approved 审核通过（含审核人）/ rank_promoted 晋升（🎉「建造者」中文显示名）/ review_rejected 拒绝 / review_cancelled 撤回——**关键坑**：LP 设组须**先建后设**（parent set 对不存在用户创建的虚拟用户会被首登覆盖：先进服建用户→quit→parent+group set→重进）；**登录节流 20s**（login_rate_limit 5/min + LoginSecurity 冷却 13s+，Folia SimpleLogin 无此坑）；/review 仅玩家可用 + isOp/orzmc.admin（自建 op 审核人 RCON op+deop 还原）；异常路径 try/finally quit（防残留 bot 触发 per-IP 限流）；Folia 19/19 + Paper 19/19 双绿；`lib/rcon.js`（Promise RCON + waitLog tail 3000 防刷屏挤出）+ `lib/bot.js`（spawnBot 自适应 SimpleLogin/LoginSecurity 登录：probeLogin 先发 /login 探测、未注册转 /register；⚠️ 成功判定只认「登录成功/注册成功」，勿匹配「Welcome! just joined」首登广播否则过早 resolve 命令被拦）；用例自包含（专用账号自动注册+清理白名单）。测试账号密码：SimpleLogin 版 E2E 专用 E2EPass123（旧 LoginSecurity 版 TestNewbie/NewbiePass123 已不适用）。
 > **BUG-E2E-001（✅ 已修复并双核心验证 2026-08-19）**：`$w` 白名单分页在 Folia 上抛 `IllegalArgumentException: Delay ticks may not be <= 0`——Paginator.paginatePages L71 `i * delayTicks` 在 i=0 时 delay=0，Paper BukkitScheduler 允许 0 tick、**Folia FoliaGlobalRegionScheduler.runDelayed 要求 ≥1**（`delayTicks<=0?5L` 保护只覆盖配置值不覆盖 i=0 首页）→ $w 分页 Folia 完全不可用。**修复**：Paginator 两处 `Math.max(1L, (long) i * ...)` + ServerFacade.runLater 钳位 ≥1 + PaginatorTest 回归护栏（首页 delay≥1）。验证：Folia `$w` 输出 123 人 ✅、Paper 01 用例 8/8 ✅。记录：`plugin/e2e/buglog.md`。
 > **BUG-E2E-002（✅ 已修复并端到端验证 2026-08-19，backup-core v0.2.2 = PR #46+#47）**：大世界（Paper 服 317 万 chunk）`$b` 备份极慢+失败误报——**不是新压缩格式**！三层坑：①compression byte 非法（如 49）②**长度字段荒谬但 compression 合法**（如 0x789c=ZLIB 但长度 20 亿 → dataBytes 读 20 亿字节卡死）③**offset 越过文件末尾 → BufferedRafAccess readFully avail<=0 死循环（CPU 100% 无进度）**。修复：McaEntry `UNKNOWN` 枚举 + 长度 >8MB 短路 + readFully EOF 保护 + pattern 异常安全保留。插件侧 errorHandler 聚合（Pattern/Write-损坏不报失败，Done 汇总）。**验证：Paper 服 $b 14分21秒完成 + zip 2.03GB + 「264 个损坏区块已安全保留」**。E2E 04 备份断言用「阶段进度 + .zip 落盘」（大世界全量备份 ~15min）。
 > **BUG-E2E-003（✅ 已修复验证 2026-08-19）**：CommandGuard「危险命令放行」WARN 刷屏（命令方块循环 20 条/tick → 21 万条/53MB）→ `ThrottledNotifier` WARN 日志 5s 限频（其余降 fine）+ BLOCK 通知 10s 限频；验证 4 分钟 13 条（修复前 4800+）。**备份并行化**：WorldMaintenanceService `RuntimeOptions(0)`（单线程）→ `RuntimeOptions(CPU 核数)`——Paper 服 $b **14分21秒→5分59秒**（速率 5 倍）。
@@ -45,7 +45,7 @@
 - **LP 命令必须主线程 dispatch**：异步线程抛 `IllegalStateException: Asynchronous Command Dispatched Async`——`scheduler.runSync` 回主线程；runSync 吞异常需 `CompletableFuture.join()` 传播
 - **RCON 包 length** = id(4)+type(4)+payload+2 null 总长（payload.length+10）；node 实现漏算 8 字节服务器立即断连
 - **`$` 防 shell 展开**：`$v l` 经双引号被 bash 展开成空——node spawnSync 数组参数/原生 net；bash 单引号
-- **测试环境配置漂移掩盖生产 bug**：E2E 前先 diff 测试服配置与仓库默认资源（`diff ~/minecraft-server/plugins/OrzMC/templates.yml src/main/resources/templates.yml`）——**2026-08-19 实测踩坑**：Paper 服 templates.yml 是 #197 群消息样式统一前的旧版（player_join 含 `{online_list}`），新代码渲染不传该变量 → 群消息出现 `{online_list}` 字面量（Folia 新版模板正常）→ 修复：`cp src/main/resources/templates.yml <服>/plugins/OrzMC/` + RCON `/config reload`（templates 热重载）。**已自动化（PR #200/#213）**：run-all.sh 前置模板一致性检查（**核心自动检测推断测试服路径**：ORZMC_CORE 显式指定 > 进程检测 folia/paper，端口统一 25565/25575 无法靠端口区分；日志/备份/模板路径按核心映射 folia→folia-test、paper→papermc-test；非法核心名/目录缺失报错退出、显式值与实际不一致告警——PR #213 2026-08-20）+ diff 拦截，`ORZMC_SKIP_TEMPLATE_CHECK=1` 临时跳过；**群消息模板变更后仍须同步所有测试服**（检查只拦截不自动修复）
+- **测试环境配置漂移掩盖生产 bug**：E2E 前先 diff 测试服配置与仓库默认资源（`diff /Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/<运行实例uuid>/plugins/OrzMC/templates.yml src/main/resources/templates.yml`）——**2026-08-19 实测踩坑**：Paper 服 templates.yml 是 #197 群消息样式统一前的旧版（player_join 含 `{online_list}`），新代码渲染不传该变量 → 群消息出现 `{online_list}` 字面量（Folia 新版模板正常）→ 修复：`cp src/main/resources/templates.yml <服>/plugins/OrzMC/` + RCON `/config reload`（templates 热重载）。**已自动化（PR #200/#213）**：run-all.sh 前置模板一致性检查（ORZMC_CORE 显式指定 > 环境注入路径；日志/备份/模板路径全部环境变量注入——PR #213 2026-08-20，2026-09-03 迁 MCSM 后不再进程检测）+ diff 拦截，`ORZMC_SKIP_TEMPLATE_CHECK=1` 临时跳过；**群消息模板变更后仍须同步所有测试服**（检查只拦截不自动修复）
 - **部署后必验**：`ls -la build/libs/*.jar` 与 plugins/ jar 时间戳一致 + `grep "Enabling X"` 确认版本；时间戳一致仍不够——python zipfile 读 .class 字节搜修复符号
 - **测试账号密码重置（LoginSecurity）**：`lc/lac unregister` 不可靠——直接 `sqlite3 plugins/LoginSecurity/LoginSecurity.db "DELETE FROM ls_players WHERE last_name='X';"`（表 ls_players）→ 重进服 `/register <pw> <pw>`
 - **mockStatic 泄漏**：@BeforeEach 开不关 → 后续测试污染——每个测试 try-with-resources 包住
@@ -55,18 +55,18 @@
 - **⚠️ 登录风暴：冷区块首登崩、热世界不崩**（2026-08-13 实测）：冷启动后首轮登录加载全冷 chunk → 10 bot 就 TPS 4.2；预热后（同轮测试后半程）40 bot 登录风暴 TPS 最低 16.1 稳定 18+，0 次 Can't keep up → **活动当天必须预热 spawn 区域**（提前登录/加载），登录风暴本身不是杀手，冷 chunk 生成才是
 - **LP check true ≠ 命令可用（子权限陷阱）**：`/mail send` 需 `essentials.mail.send`、`/warp` 需 `essentials.warp.list`、`/time set` 需 `essentials.time.set`——最终验收必须 bot 实测命令
 - **RCON 发 LP 命令偶发丢失 + mtime 验证不可靠（2026-08-30 沉淀）**：LP 命令经 RCON 偶发不生效；且**文件 mtime 变化 ≠ 命令成功**（插件后台定时保存/玩家数据写入也会写库写盘，mtime 被刷新是假阳性）——验证必须以 bot 实测（权限/命令真值）为准，必要时重复执行命令
-- **测试服重启规范流程（2026-08-30 沉淀）**：① RCON stop（screen stuff 不可靠）→ ② `kill -0 <pid>` 轮询确认进程真死（勿凭日志行数/直觉判断）→ ③ **确认死后**才删 `world/session.lock`（⚠️ 进程存活时删锁 = 双实例风险，两服同跑损坏共享世界）→ ④ 启动后轮询 **jar mtime 变化 + 日志 `Done (` + 端口监听**（勿用日志行数基线法——日志滚动/截断时行数不可靠）
+- **测试服启停规范（2026-09-03 MCSM 版，替代裸跑流程）**：实例启停一律走面板（docker 实例 daemon 软关闭不自动停——共享 world 严禁同跑，切换前手动停另一台）；启动成功判定 = 日志 `Done (` + 端口监听（`docker ps --filter name=MCSM-` 确认容器名）+ **jar mtime 变化**（换 jar 升级后）；重启/切换前检查共享 world `session.lock` 残留（异常崩溃遗留锁会拒启，需清）。⚠️ 裸跑期流程（RCON stop → kill -0 → 删锁）已废弃，仅适用于旧裸跑/进程模式实例
 
 ## 跨服/双服测试（transfer）
 
 ### 双服搭建（复制法）
 ```bash
-cd ~/minecraft-server && tar --exclude='logs' --exclude='cache' --exclude='world/session.lock' -cf - . | (mkdir -p ~/minecraft-server2 && cd ~/minecraft-server2 && tar -xf -)
-# ⚠️ 必改：start.sh 双路径（cd + jar）+ server.properties（server-port=25566、rcon.port=25576、motd）
-rm -f world/session.lock && screen -dmS mc2 ./start.sh
+cd /Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/<源实例uuid> && tar --exclude='logs' --exclude='cache' --exclude='world/session.lock' -cf - . | (mkdir -p ~/tmp-second-server && cd ~/tmp-second-server && tar -xf -)
+# ⚠️ 必改：server.properties（server-port=25566、rcon.port=25576、motd）；第二服 world 须独立（勿指向共享 world）
 ```
-- **✅ 测完即删（2026-08-15 老板决策）**：双服测试是临时动作，**完成后必须清理第二服**防占磁盘（~486M）——`rm -rf ~/minecraft-server2`（先确认无进程、无 cron 引用）；需要时随时按本节步骤重建
-- 坑：start.sh 没改路径 → `DirectoryLock$LockException`（锁的是主服 world）；screen stuff 不可靠 → **stop 用 RCON**；第二服复制 Geyser 配置会端口冲突（无害）；easybot 连同一网关 409（无害）
+- **✅ 测完即删（2026-08-15 老板决策）**：双服测试是临时动作，完成后必须清理防占磁盘（先确认无进程、无 cron 引用）
+- 坑：两服严禁同跑共享 world（session.lock/数据双写）；第二服复制 Geyser 配置会端口冲突（无害）；easybot 连同一网关 409（无害）
+- ⚠️ **MCSM 环境推荐克隆实例法**：双服测试目标服用「手工克隆实例」（见「MCSM 本地栈」节坑 5：uuidgen → rsync InstanceData → cp 实例 JSON 改 nickname/端口/独立 world 目录 → 重启 daemon），比目录复制 + 裸跑更贴合当前栈
 
 ### transfer 机制（核心认知）
 - OrzMC `PlayerPortalEvent` → `findTarget` → `transfer <host> <port> <player>`——**由玩家客户端主动去连目标**
@@ -88,6 +88,19 @@ y=68 obsidian（顶梁）/ y=65-67 nether_portal / y=64 obsidian（底梁）/ y=
 ### LoginSecurity 干扰（未登录玩家）
 - 未登录玩家站传送门：插件 `isAuthenticated=false` → 取消传送（设计正确）；**测试流程必须先 `/login` 再进传送门**
 - LoginSecurity 3.3.2 `SessionManager` 没有 `isAuthenticated(Player)`（只有 getPlayerSession + isLoggedIn）——反射回退失败则 fail-open 放行
+
+## MCSM 本地栈 Docker 实例（2026-09-03 迁移实测，五连坑）
+
+本地测试服（Paper/Folia）已迁入本机 MCSM 栈（mcs.{SERVER_NAME}.cn）管理，**双 Docker 实例共享 world**：
+- 实例 `papermc-test`（uuid 716c2fb7）/ `folia-test`（uuid 8A932DD4），共享 world `/Users/Shared/orzmc/worlds/test`（extraVolumes 挂两实例容器 `/server/world`），**严禁同跑**（同 25565 + world 双写毁档；daemon 软关闭 skip docker 实例——切实例前必须面板手动停另一台）
+- 面板 UI 建实例默认**进程模式**（模板误导）；改 Docker 走 InstanceConfig JSON：停实例 → 改 `daemon/data/InstanceConfig/<uuid>.json` → 重启 daemon 容器 → 面板启动
+- **五连坑**：
+  1. `extraVolumes` 元素分隔符是 **`|`（竖线）**：`"宿主路径|容器路径"`（daemon 源码 `item.split("|")` 实证；用 `:` 或加 `:rw` 报"额外挂载路径配置长度不正确"）
+  2. daemon 容器必须设 env **`MCSM_DOCKER_WORKSPACE_PATH=<宿主 InstanceData 绝对路径>`**，否则 docker 实例 cwd bind 用容器内路径（`/opt/mcsmanager/daemon/data/...`）→ 宿主引擎报 `bind source path does not exist`（ADR-019 移除旧 instances 时把此 env 一起删了，macOS/Linux compose 也需；已补进 kit compose.yaml daemon environment）
+  3. 容器 `memory`（MB）必须 **> Xmx + JVM overhead**：Xmx2G + limit 2048MB → JVM 无内存余量跑 ~2min 后 SIGSEGV 崩溃（`hs_err_pid1.log` 的 `method_hash` 崩溃实证）→ 2G 堆配 4096
+  4. `docker.ports` 字符串数组 `["25565:25565/tcp"]`、memory 单位 MB、`pty:true` 防日志乱码（papermc-template.md 已有）；UI 建完手工改 JSON 字段：processType=docker、image、ports、memory、networkMode=orzmc_default、workingDir=/server、changeWorkdir=true、extraVolumes
+  5. **手工克隆实例**：uuidgen → mkdir InstanceData/<uuid> → rsync 数据（排除 world/logs/cache/backups）→ cp 现有实例 JSON 改 nickname/cwd/startCommand/jar 名 → 重启 daemon 即注册（面板出现，无需 UI 建）
+- 迁移数据注意：jar 复制成固定名（paper.jar/folia.jar，升级换 jar 不动命令）；各实例 `plugins/OrzMC/easybot.yml` 是**独立拷贝**——逐个核对 api_server 指向（Folia 曾残留旧 `test-bot.{SERVER_NAME}.cn` → 502，改 `easybot.{SERVER_NAME}.cn` + 重启实例生效）
 
 ## 支持文件
 

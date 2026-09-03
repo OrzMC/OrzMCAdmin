@@ -3,33 +3,40 @@
 > 场景：排查/运维 EasyBot IM 网关（本机 docker，OrzMC 机器人接入）。所有 IM 网关相关问题先查本节。
 
 ## 概述
-EasyBot（`ghcr.io/easyindie/easybot`）是统一 IM 网关：OrzMC 插件通过它接入 QQ/飞书/Telegram/Discord/微信。**本机以 docker 方式运行**（容器名 `easybot`，端口 `9090→8080`，数据卷 easybot-data → `/var/lib/easybot`）。**2026-08-12 升级至 0.0.33（schema v3）**，部署 kit 在 `~/Services/easybot-deploy-kit-0.0.33/easybot-deploy-kit/`。升级法：备份 DB（`easybot-backup.sh backup sqlite` 或 docker cp+sqlite3 .backup）→ 下载新 kit 校验 checksum → 拉镜像 → `EASYBOT_PORT=9090 EASYBOT_BIND_ADDRESS=0.0.0.0 ./deploy.sh`（保留卷）→ 验证 health/adapters（`schema_version: 3`、adapters 5/5）。0.0.31 旧 kit/旧镜像/升级前 DB 备份已在验证 0.0.33 正常后清理（2026-08-12）。
+EasyBot（`ghcr.io/easyindie/easybot`）是统一 IM 网关：OrzMC 插件通过它接入 QQ/飞书/Telegram/Discord/微信。**2026-09-03 起迁移进 OrzMCDeploy compose 生产栈**（`~/Services/orzmc-deploy-0.0.3-dev/`，DATA_ROOT=`/Users/Shared/orzmc`）：容器 `orzmc-easybot`（EASYBOT_HOME=/var/lib/easybot → `$DATA_ROOT/easybot/data`），QQ+飞书 双 adapter，微信经 `$DATA_ROOT/easybot/data/gateway.local.yaml` 显式禁用；镜像 digest 锁定（≥0.0.35，schema v3 同旧版）。**旧独立容器 `easybot`（9090→8080，卷 easybot-data）已停删**（2026-09-03），其 gateway.db（17MB，api_keys/sessions/messages 9614 条）已迁移进新栈——插件旧 api_key 继续有效。栈管理用 `./orzmc.sh -d /Users/Shared/orzmc up|stop|status`；容器日志 `docker logs orzmc-easybot`。
 
-**架构链路**：
+**架构链路（2026-09-03 后）**：
 ```
-OrzMC 插件 (easybot.yml) → https://test-bot.{SERVER_NAME}.cn (反代在【另一台设备】) → 本机 easybot:9090 → 平台 adapter (QQ wss://api.sgroup.qq.com 等)
+OrzMC 插件 (easybot.yml) → https://easybot.{SERVER_NAME}.cn (Cloudflare Tunnel 5087fc61 → 容器) → 平台 adapter (QQ wss://api.sgroup.qq.com 等)
 ```
+- 插件 easybot.yml：api_server `https://easybot.{SERVER_NAME}.cn` / ws_server `wss://easybot.{SERVER_NAME}.cn`（旧 `test-bot.{SERVER_NAME}.cn` 反代指向已删旧容器，2026-09-03 已全部切新入口）
+- 新版本 API 变更（0.0.35+）：发送端点 `POST /api/v1/messages/send`（旧 `/api/v1/messages` 仅 GET 只读，POST 405）；插件 HttpSender 已适配 ✅
+- easybot 容器只 expose 不发布宿主端口——**宿主 8080 是 orzmusic-app**！验证 API 走公网 `https://easybot.{SERVER_NAME}.cn`（带浏览器 UA）或 `docker exec`
 
 ## 快速健康检查
 ```bash
-docker ps --filter name=easybot                # Up (healthy)
-curl -s http://127.0.0.1:9090/api/v1/health    # 200
-docker logs easybot --since 10m | tail          # 看 adapter 状态
+docker ps --filter name=orzmc-easybot          # Up (healthy)
+curl -s https://easybot.{SERVER_NAME}.cn/api/v1/health   # 200（公网隧道链路；带浏览器 UA 防 CF 拦截）
+docker logs orzmc-easybot --since 10m | tail    # 看 adapter 状态
 # 插件侧：
-grep -E "WebSocket|认证|重连" ~/minecraft-server/logs/latest.log | tail
+# ⚠️ 2026-09-03 迁 MCSM 后：实例日志 = /Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/<uuid>/logs/latest.log（716c2fb7=Paper、8A932DD4=Folia）
+grep -E "WebSocket|认证|重连" /Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/716c2fb712154c36ba5ab0f1480d3f87/logs/latest.log | tail
 ```
 - 插件 `/bot` 输出 `enabled httpUnknown wsNotOk`：`httpUnknown` = HTTP 健康检查异步未完成（设计态黄色警示，**非 bug**）
 - WS 正常 = 日志 `WebSocket连接建立` + `EasyBot WebSocket 认证成功`
+- adapter 状态 API：admin login（`POST /admin/login {password}` → `key`）→ `GET /api/v1/adapters`（Bearer）；qq 应为 Connected+Healthy；飞书 Connected（无事件签名验证时 health=Degraded 属正常降级标记，发送验证为准）
 
 ## 机器重启后恢复清单（Mac 重启后按序执行）
 ```bash
 open -a Docker                                   # 1. 启动 Docker Desktop
 for i in $(seq 1 6); do docker info >/dev/null 2>&1 && break || sleep 2; done
-docker ps --filter name=easybot                  # 2. ⚠️ 容器常停在 Exited(255)——daemon 起来≠容器在跑
-docker start easybot
-curl -s http://127.0.0.1:9090/api/v1/health      # 3. 期望 healthy + adapters 5/5 connected
+cd ~/Services/orzmc-deploy-0.0.3-dev && ./orzmc.sh -d /Users/Shared/orzmc up   # 2. 起整个 orzmc 栈（幂等；容器 restart: unless-stopped 也会自启）
+docker ps --filter name=orzmc-easybot            # 3. 确认 orzmc-easybot Up
+curl -s https://easybot.{SERVER_NAME}.cn/api/v1/health      # 4. 期望 200 + QQ/飞书 adapter connected
 ```
-- ⚠️ **Docker daemon 自启后 easybot 容器不会自动 start**（Exited 残留），必须手动 `docker start easybot`，然后 health 端点确认 5/5 adapter
+- ⚠️ Docker daemon 自启后容器通常能自启（restart: unless-stopped）；仍异常时 `docker start orzmc-easybot`
+- 测试服：启动前 `rm -f world/session.lock`（异常退出残留锁）→ `./start.sh` → grep `Done (`
+- 最终验证闭环：插件日志 `WebSocket连接建立` + `认证成功` + 投递诊断（`scripts/easybot_deliveries.py`）最近记录全 ✅
 - Shadowrocket 由用户手动开；确认直连规则：`ifconfig utun3` 存在（UP）+ `curl https://www.baidu.com` 快（~0.1s，直连）+ `curl https://www.google.com` 通（~2s，代理）+ `dig test-bot.{SERVER_NAME}.cn` 返 **198.18.x.x fake-IP 是正常**（隧道在工作），不是服务故障
 - 测试服：启动前 `rm -f world/session.lock`（异常退出残留锁）→ `./start.sh` → grep `Done (`
 - 最终验证闭环：插件日志 `WebSocket连接建立` + `认证成功` + 投递诊断（`scripts/easybot_deliveries.py`）最近记录全 ✅

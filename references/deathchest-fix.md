@@ -44,7 +44,7 @@ placeChest(model, location, world);  // setType(CHEST) + setPrevious(state)
 cd ~/death-chest
 # build.gradle.kts: toolchain.languageVersion 21 → 25（本机只有 JDK 25；options.release=17 保证产物兼容）
 ./gradlew shadowJar --no-daemon   # BUILD SUCCESSFUL → build/libs/deathchest.jar (267KB)
-cp build/libs/deathchest.jar ~/minecraft-server/plugins/deathchest.jar   # 原 jar 先备份
+cp build/libs/deathchest.jar /Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/716c2fb712154c36ba5ab0f1480d3f87/plugins/deathchest.jar   # 原 jar 先备份
 重启测试服 → 日志 `Enabling DeathChest` + 滞留任务补建 `Death chest block created at ...`
 ```
 
