@@ -1,4 +1,4 @@
-# 三端配置差异审计（2026-08-11 三次审计；2026-08-12 重启审查 → v2 只审查不重启；2026-08-17/24/31 审查超时失败（MCSM 侧密钥三周未修）；**2026-09-03 v3：本地端迁 MCSM 本机栈**）
+# 三端配置差异审计（2026-08-11 三次审计；2026-08-12 重启审查 → v2 只审查不重启；2026-08-17/24/31 审查超时失败（MCSM 侧密钥三周未修）；**2026-09-03 v3：本地端迁 MCSM 本机栈**；**2026-09-07 v3 首跑审查超时失败：远程 MCSM 密钥四周未修 + 本机 MCSM 面板 API「API 响应异常」**）
 
 > **v3（2026-09-03，本地测试服迁 MCSM 后）**：三端 = **本地端**（本机 MCSM 栈 Paper 实例 716c2fb7，**目录直读复制** → `/tmp/mcsm_local_configs2`）/ **Exa**（Exaroton 海外服 API）/ **MCSM**（远程 Win11 面板 API）。脚本 `orzmc_config_audit.sh` v3 三路并发（fetch3_configs.fetch_all），STATUS 三端文件数检查。
 > ⚠️ **v10 面板下载协议不兼容**：本机 MCSM 面板为 v10.18（文件下载走 wss 私有协议，非 v9 http 两步法）——本地端配置本就在宿主（InstanceData/<uuid>），fetch3 用**目录直读复制**（产物与 API 拉取目录同构，cmp3/report 复用不变）；远程 MCSM 若同为 v10 则 `mcsm_download`（v9 协议）同样失效，需 v10 wss 适配（未做，见下方根因）。
@@ -6,12 +6,21 @@
 > 工具：`scripts/cmp3/fetch3_configs.py`（拉取）+ `cmp3_configs.py`（对比）+ `cmp3_diff_detail.py`（明细）+ `cmp3_report.py`（完整报告生成）+ `cmp3_trend.py`（新旧报告变化跟踪）。
 > 基线：77 个配置文件（核心 7 + 插件 70），**重启后全量审查（2026-08-11 四次）：8 个差异文件、8 个运行时数据文件、61 个完全一致**。
 > **完整报告（保留最近两份，最新为准；其余已轮换·cron 仅 file 工具未物理删除，留档备查）**：
-> - `references/config-drift-report-20260831.md`（2026-08-31 审查·❌ 脚本超时 3600s·Exa 77/77 成功 MCSM 0 文件挂死·连续三周同因·最新）
+> - `references/config-drift-report-20260907.md`（2026-09-07 审查·❌ 脚本超时 3600s·v3 首跑：本地端 93/93 + Exa 79 成功、MCSM 远程 0 文件挂死·连续四周同因·最新）
+> - `references/config-drift-report-20260831.md`（2026-08-31 审查·❌ 脚本超时 3600s·Exa 77/77 成功 MCSM 0 文件挂死·连续三周同因·已轮换）
 > - `references/config-drift-report-20260824.md`（2026-08-24 审查·❌ 脚本超时 3600s·Exa 77/77 成功 MCSM 0 文件挂死·已轮换）
 > - `references/config-drift-report-20260817.md`（2026-08-17 审查·❌ 脚本超时 3600s 无数据·基线快照·已轮换）
 > - `references/config-drift-report-20260812.md`（基线 61/8/8·已轮换）
 > - `references/config-drift-report-20260811.md`（已轮换）
 > - `references/config-drift-report-20260810.md`（已轮换）
+
+> **变化跟踪（20260907 三端配置审查·❌ 失败：脚本超时 3600s，连续四周同因；v3 首跑：本地端(目录直读) 93/93 + Exa 79 成功落盘，远程 MCSM 0 文件挂死；本机 MCSM 面板 API 首次报「API 响应异常」）**：
+> - **执行**：09:15:41 启动 → 三端状态读取完成（MCSM 远程 ❌「未开启API密钥创建功能」，**与 0817/0824/0831 同因，连续四周**；**MCSM 本机栈 ❌「API 响应异常」——首次出现的新信号**；Exa ✅ status=0(OFFLINE) 未重启；三端均未重启）→ 并发拉取阶段 **本地端 93/93 完整落盘**（目录直读，不受面板 API 影响）、**Exa 79 文件完整落盘**（/tmp/exa_configs2 实测 79；本地清单 93 中约 14 路径为本地独有/Exa 端不存在），**远程 MCSM 0 文件**（/tmp/mcsm_configs2 实测 0）→ python fetch_all 未返回（卡远程 MCSM 线程）→ 被 cron 3600s 超时杀死 → `/tmp/cmp3_report_latest.md` 未生成、无 STATUS 行 → 判定 **❌ FAIL**
+> - **三端状态（09:15，均未重启）**：MCSM 远程 ❌ API 密钥异常（**连续四周，0824/0831 建议修复均未落地，需人工在 Win11 面板操作**）；**MCSM 本机栈 ❌ API 响应异常（🆕 需人工查 mcs.{SERVER_NAME}.cn 面板服务健康度；实例目录完好，不影响目录直读）**；Exa ✅ status=0(OFFLINE)；本地端未重启（设计）
+> - **审查无新对比数据**：差异基线沿用 20260812（61 一致 / 8 差异 / 8 数据）；⚠️ **口径变更**：v3 首跑，本地端 = 本机 MCSM Paper 实例（清单扩容 93 文件），本地列与旧基线不可直接同比
+> - **对齐项部分验证（Exa 今日新鲜数据 vs 本地端今日实测，新口径）**：sync-chunk-writes Exa=false 平台保留（0811 结论维持）、command-spam-threshold-seconds=100000 两端确认生效、force-gamemode/allow-flight/online-mode/enforce-whitelist ✅ 一致、difficulty/jmx/query 两端同为 easy/true/true（旧基线差异项随口径切换消失，非对齐动作）、max-tick-time 60000/600000 平台差异不变、resource-pack-prompt 无实质差异、view/simulation-distance 本地 6/3 vs Exa 10/5 维持（0831 观察项新口径复核仍在）；MCSM 远程侧全部对齐项无法验证（连续四周）
+> - **诊断进展（vs 0831）**：卡点第三次实证锁定**远程 MCSM 线程**——本周 Exa 与本地端均已完整落盘仍被拖死整脚本（两端数据齐全却零产出，「部分报告」论据最强）；**🆕 本机 MCSM 面板 API「API 响应异常」为新信号**；修复建议（总时长护栏/fast-fail/部分报告）三周未落地，本周照挂
+> - **修复建议（0824/0831 已提，本周第三次重申）**：① 修复远程 MCSM 面板 API 密钥（连续四周，不修则每周审查必挂）；② **排查本机 MCSM 面板 API「API 响应异常」**（mcs.{SERVER_NAME}.cn 服务健康）；③ 脚本加总时长护栏 + MCSM 错误响应 fast-fail；④ MCSM 失败时保留 Exa×本地端数据出部分报告；⑤ cron 兜底维持（无 STATUS 行/无报告判 FAIL）
 
 > **变化跟踪（20260831 三端配置审查·❌ 失败：脚本超时 3600s，连续三周同因；Exa 77/77 成功，MCSM 0 文件挂死）**：
 > - **执行**：09:15:54 启动 → 三端状态读取完成（MCSM ❌「未开启API密钥创建功能」，**与 0817/0824 同因，连续三周**；Exa ✅ status=0(OFFLINE) 未重启；本地未重启）→ 并发拉取阶段 **Exa 77/77 完整落盘**（/tmp/exa_configs2 实测 77 文件），**MCSM 0 文件**（/tmp/mcsm_configs2 实测 0 文件），python fetch_all 未返回 → 被 cron 3600s 超时杀死 → `/tmp/cmp3_report_latest.md` 未生成、无 STATUS 行 → 判定 **❌ FAIL**
