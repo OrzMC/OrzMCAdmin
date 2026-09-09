@@ -77,6 +77,28 @@ IMAGE_REF="ghcr.io/orzgeeker/orzmusic@sha256:a74ad4d62b4bfb1638fc916281cd1119856
 # 3. 验证：8 容器 Up/healthy + 4 端点 200（mcs/easybot/orzmcs/mcs-node.{SERVER_NAME}.cn）+ curl 127.0.0.1:8080/api/health
 ```
 
+### ⚠️ Windows 还原实测补充（2026-09-09 全流程跑通，勿跳过）
+
+**坑 A：`restore.sh` 在大归档上必崩（SIGPIPE / exit 141）——上面第 1 行别直接跑。**
+`restore.sh` 第 56 行 `top="$(tar tzf "$ARCHIVE" | head -n1)"` 对 >~2G 归档必触发：`tar` 持续写列表、`head -n1` 读一行即退关闭管道 → tar 收 SIGPIPE；配脚本顶部 `set -euo pipefail` → 整脚本退出 141（后台/前台均现）。Mac 小归档不触发、**2.36G 必触发**。未改仓库脚本，改为等价的受控手工还原：
+```bash
+python -c "import tarfile;print(tarfile.open('E:/migration/<归档>.tar.gz','r:gz').getnames()[0])"  # 看顶层目录(应=orzmc)
+cd /e && tar -xzf E:/migration/<归档>.tar.gz    # 顶层=orzmc → 直接落 E:/orzmc（无 head 管道，不 SIGPIPE）
+cd /e/orzmc && cp .env .env.bak-restore && sed 's#^DATA_ROOT=.*#DATA_ROOT=E:/orzmc#' .env.bak-restore > .env  # 改 DATA_ROOT(留备份)
+grep -E "^(DATA_ROOT|EDGE=)" .env               # 校验: DATA_ROOT=E:/orzmc、EDGE=cloudflare、无 /Users/Shared 残留
+cd /e/migration/orzmc-deploy-0.0.3-dev && ./orzmc.sh -d E:/orzmc validate
+```
+> 建议报上游：OrzMCDeploy `restore.sh` 的 `tar tzf | head -n1` 应改成不 SIGPIPE 的取顶层方式（大归档迁移是 restore.sh 的既定用途）。
+
+**坑 B：mariadb 还原冷数据后 healthcheck 报 unhealthy（`Access denied for user 'mysql'` no password）。**
+还原自 Mac 的 `database/mariadb` 冷数据目录**缺镜像首次 init 才创建的 `mysql@localhost` unix_socket 账号**；compose healthcheck `healthcheck.sh --su-mysql` 走 socket 以该用户连 → 失败。**库本身经 TCP 用 root / mc 凭据完全正常，仅 healthcheck 误报**（web 面板/节点不受影响）。修复 = 补该账号（等价镜像 init，不动 compose）：
+```bash
+docker exec orzmc-mariadb sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -e "CREATE USER IF NOT EXISTS \"mysql\"@\"localhost\" IDENTIFIED VIA unix_socket; GRANT ALL PRIVILEGES ON *.* TO \"mysql\"@\"localhost\" WITH GRANT OPTION; FLUSH PRIVILEGES;"'
+docker inspect --format '{{.Name}} {{.State.Health.Status}}' orzmc-mariadb   # → healthy
+```
+
+**还原验证结果（Windows 实测）**：8 容器全 Up（orzmc web/daemon/easybot/mariadb/status/cloudflared + orzmusic app/db）全 healthy；4 公网端点 `mcs/easybot/orzmcs/mcs-node.{SERVER_NAME}.cn` 全 200；orzmusic `curl 127.0.0.1:8080/api/health` → `{"status":"ready","database":"healthy","cas":"healthy","adminApi":"disabled",...}`；daemon 加载双实例、世界数据就位、保持停止。
+
 ## 传输：macOS SMB 共享（2026-09-09 实测坑）
 
 - macOS 共享名 = **目录显示名（中文系统 = 「下载」）**，不是路径名 Downloads → Windows 访问 `\\<IP>\下载`（或浏览根目录找共享）
@@ -84,8 +106,10 @@ IMAGE_REF="ghcr.io/orzgeeker/orzmusic@sha256:a74ad4d62b4bfb1638fc916281cd1119856
 - 排障定位法：Mac 本地 `smbutil view //bot@<IP>`（密码交互，pty+submit）；能 sudo 不能 SMB = 共享配置问题非密码问题
 - 局域网兜底：python3 -m http.server <port> --directory <dir>（只暴露迁移文件目录，用后即关）
 
-## 当前状态（2026-09-09）
+## 当前状态（2026-09-09 迁移完成）
 
-- Mac：迁移包 `~/Downloads/orzmc-migration-20260909.tar`（2.7G，5 项：orzmc-backup + cas/db tgz + 双部署包）；执行提示词 `~/hermes-windows-migration-prompt.md`；**Docker 全停**（容器 0/引擎退出/隧道无）
-- Windows：全新部署中（装 Docker→还原→起栈），容器 easybot 接管 easybot.{SERVER_NAME}.cn
+- Mac：源机已停（容器 0 / 引擎停 / 隧道无），迁移包已在 Windows `E:\migration\`（orzmc-backup-*.tar.gz + cas/db tgz + 双部署包）
+- Windows `E:/orzmc`：还原完成，8 容器健康运行（orzmc web/daemon/easybot/mariadb/status/cloudflared + orzmusic app/db），4 公网端点 200；容器 easybot 接管 `easybot.{SERVER_NAME}.cn`，隧道由本机 cloudflared **单点**接管
+- orzmusic `adminApi: disabled`（与 Mac 一致）；测试服双实例（papermc-test/folia-test）**保持停止**（世界数据就位于 daemon `InstanceData/`）
+- 遗留：`E:/orzmc/.env.bak-restore`（DATA_ROOT 改写前备份，可留作回退）；旧宿主 easybot 残留 `~/.easybot`（已脱离服务，可删）；`E:/migration` 迁移包 ~2.9G 可删
 - 隧道单点铁律：源机停 + 目标机 cloudflared 接管 {SERVER_NAME}.cn，**严禁双跑串流量**
