@@ -1,0 +1,1 @@
+PULL 验证内容: 面板 {SERVER_NAME}.cn、内网 {LAN_IP}、密码 {BOT_PASSWORD}
