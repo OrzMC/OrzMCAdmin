@@ -1,3 +1,14 @@
+# 配置差异审计（2026-09-09 v4 起：两端模型；历史三端档案见下方时间线）
+
+> **v4（2026-09-09，平台迁移 Windows 后）**：巡检端 = **MCSM（mcs.{SERVER_NAME}.cn Windows 运行栈，原本地测试服迁移后）+ Exaroton** 两端。
+> 本地端退役（目录直读废止）、{SERVER_HOST} 旧远程 MCSM 废弃。**关键变化**：
+> - 配置清单 = MCSM 面板 API **递归扫描**（`mcsm_env.mcsm_scan_plugin_configs`，真源，不再依赖本地目录；自动过滤 macOS `._` 垃圾）
+> - MCSM 配置拉取 = 面板 REST **list + https 下载**（download 两步法 addr 现返回 `wss://host:443`，实测 **HTTPS GET https://host/download/{pwd}/{fn} 可用**；mcsm_env v4 兼容；请求须带 Mozilla UA，面板中间件拦 Python UA）
+> - **性能模型（方案 B，joker 普通用户）**：面板 files API 全系**账号级限流 ~3s/次**（download 签发路由 `speedLimit(3)` 硬编码；files/list 实测同限流）→ MCSM 端 66 文件拉取下限 ≈ 签发 66×~3s ≈ 3.5-5min + 并行拉流 30s；scan 带清单缓存（`/tmp/mcsm_cfg_manifest.json`，顶层目录校验命中即跳过递归）→ 缓存命中总耗时实测 **6m34s**（零失败）；量级提速需管理员 API key（跳过限流，方案 A，未启用）
+> - 脚本：`orzmc_config_audit.sh` v4 + `fetch3_configs.py` v4（两阶段：串行签发 + 并行拉流）+ `cmp3_configs.py` v4（两目录对比）+ `cmp3_report.py` v3（两端报告 /tmp/cmp3_report_latest.md）
+> - cron：并入「orzmc MC 每周巡检」`d81c8325fe8b` 每周一 9:00（原三 job 已删）；MCSM API key = .env `MCSM_LOCAL_API_KEY`（面板需开 API 密钥功能）
+> - 2026-09-09 首跑：✅ SUCCESS，Exa=52/MCSM=66 文件（零失败），34 一致/25 差异/8 数据（差异多为 Exa 端缺失 + 定位类差异，属预期漂移项）
+
 # 三端配置差异审计（2026-08-11 三次审计；2026-08-12 重启审查 → v2 只审查不重启；2026-08-17/24/31 审查超时失败（MCSM 侧密钥三周未修）；**2026-09-03 v3：本地端迁 MCSM 本机栈**；**2026-09-07 v3 首跑审查超时失败：远程 MCSM 密钥四周未修 + 本机 MCSM 面板 API「API 响应异常」**）
 
 > **v3（2026-09-03，本地测试服迁 MCSM 后）**：三端 = **本地端**（本机 MCSM 栈 Paper 实例 716c2fb7，**目录直读复制** → `/tmp/mcsm_local_configs2`）/ **Exa**（Exaroton 海外服 API）/ **MCSM**（远程 Win11 面板 API）。脚本 `orzmc_config_audit.sh` v3 三路并发（fetch3_configs.fetch_all），STATUS 三端文件数检查。

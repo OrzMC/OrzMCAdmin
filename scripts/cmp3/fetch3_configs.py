@@ -9,7 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from mcsm_env import get_mcsm_local_config, get_exaroton_config, mcsm_download, mcsm_scan_plugin_configs
+from mcsm_env import (get_mcsm_local_config, get_exaroton_config,
+                      mcsm_scan_plugin_configs_cached, mcsm_sign, mcsm_fetch_stream)
 from exa_file import get_file as exa_get  # GET 自动解包 JSON/裸文本
 
 EXA_OUT = "/tmp/exa_configs2"
@@ -75,48 +76,54 @@ def fetch_mcsm(files, cfg=None, out_dir=None, label="MCSM({SERVER_NAME})"):
         import shutil; shutil.rmtree(out_dir)
     os.makedirs(f"{out_dir}/plugins", exist_ok=True)
     print(f"=== {label} 配置拉取 ===")
+    # 统一任务清单: (MCSM 源路径, 落盘相对路径)
+    tasks = [(f"/{path}", local) for path, local in CORE_MAP.items()]
+    tasks += [(f"/{f}", f) for f in CORE]
+    tasks += [(f"/plugins/{rel}", f"plugins/{rel}") for rel in files]
     ok = fail = 0
-    for path, local in CORE_MAP.items():
-        data = mcsm_download(cfg, f"/{path}")
-        if data is not None and data[:2] != b"PK":
-            open(f"{out_dir}/{local}", "wb").write(data)
-            print(f"  ✅ {path} ({len(data)}B)"); ok += 1
-        else:
-            print(f"  ⚠️ {path}: 失败"); fail += 1
-        time.sleep(1.5)
-    for f in CORE:
-        data = mcsm_download(cfg, f"/{f}")
-        if data is not None and data[:2] != b"PK":
-            open(f"{out_dir}/{f}", "wb").write(data)
-            print(f"  ✅ {f} ({len(data)}B)"); ok += 1
-        else:
-            print(f"  ⚠️ {f}: 失败"); fail += 1
-        time.sleep(1.5)
     failed = []
-    for rel in files:
-        data = None
-        for attempt in range(3):
-            data = mcsm_download(cfg, f"/plugins/{rel}")
-            if data is not None and data[:2] != b"PK":
-                break
-            time.sleep(2)  # 限流退避
-        if data is not None and data[:2] != b"PK":
-            dst = f"{out_dir}/plugins/{rel}"
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            open(dst, "wb").write(data)
-            ok += 1
+    # ⚠️ 两阶段模型（2026-09-09 老板源码级实证）：
+    #   阶段1 签发凭据 = 面板硬编码限流 speedLimit(3)（普通用户同账号 3s 窗口 1 次，500「冷却中」）→ 串行 + 冷却等待
+    #   阶段2 文件流 = 无并发限制（多 password 并行实测 200）→ 可安全并发拉流
+    print("  阶段1/2: 串行签发凭据（限流 3s/次）→ 并行拉流")
+    creds = []
+    for task in tasks:
+        src, dst = task
+        cred = mcsm_sign(cfg, src)
+        if cred:
+            creds.append((src, dst, cred))
         else:
             fail += 1
-            failed.append(rel)
-            print(f"  ⚠️  plugins/{rel}: 失败")
-    print(f"{label} 完成: ok={ok} fail={fail} → {out_dir}")
+            failed.append(src)
+            print(f"  ⚠️  {src}: 签发失败（限流重试耗尽）")
+        time.sleep(3.1)  # speedLimit 3s 窗口：每次签发后等待
+
+    def pull(item):
+        src, dst, cred = item
+        data = mcsm_fetch_stream(cfg, cred, src.split("/")[-1])
+        if data is not None and data[:2] != b"PK":
+            return src, dst, True, data
+        return src, dst, False, None
+
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        for src, dst, ok_f, data in ex.map(pull, creds):
+            if ok_f:
+                full = f"{out_dir}/{dst}"
+                os.makedirs(os.path.dirname(full), exist_ok=True)
+                open(full, "wb").write(data)
+                ok += 1
+            else:
+                fail += 1
+                failed.append(src)
+                print(f"  ⚠️  {src}: 拉流失败")
+    print(f"{label} 完成: ok={ok} fail={fail} → {out_dir} (签发串行+拉流并行×10)")
     if failed:
         print(f"失败清单({len(failed)}): {', '.join(failed)}")
 
 def fetch_all():
-    """两端：Exaroton(API) + MCSM({SERVER_NAME} API)。清单 = MCSM 端 API 递归扫描"""
-    files = mcsm_scan_plugin_configs(get_mcsm_local_config())
-    print(f"MCSM 端配置清单（API 递归扫描）: {len(files)} 个插件配置文件\n")
+    """两端：Exaroton(API) + MCSM({SERVER_NAME} API)。清单 = MCSM 端 API 扫描（带缓存）"""
+    files = mcsm_scan_plugin_configs_cached(get_mcsm_local_config())
+    print(f"配置清单: {len(files)} 个插件配置文件\n")
     print("并发: Exaroton + MCSM({SERVER_NAME})\n")
     with ThreadPoolExecutor(max_workers=2) as ex:
         f1 = ex.submit(fetch_exa, files)
