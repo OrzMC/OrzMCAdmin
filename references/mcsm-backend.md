@@ -75,6 +75,26 @@
 
 `-1`=忙碌 / `0`=停止 / `1`=停止中 / `2`=启动中 / `3`=运行中
 
+## 并发下载实例文件 → 500 根因（2026-09-09 实测于本机 Docker 部署，web 10.18.0 / daemon 4.18.0）
+
+**结论：不是"下载并发"上限，而是"签发凭据接口"的硬编码限流。下载链路由两步组成：**
+
+1. **面板签发一次性凭据** `GET/POST /api/files/download`（带 daemonId+uuid+apikey）→ 返回 `{password}`
+2. **客户端凭 password 直连 daemon 流式下载** `GET {daemon}/download/{password}/{文件名}`
+
+- **第 2 步（真正文件流）本身无并发限制**——实测用多个不同 password 并行拉流全部 200 成功。**并发下载的瓶颈不在文件流。**
+- **第 1 步（签发凭据）被硬编码限流** `speedLimit(3)`（面板 app.js，`/download` 路由）：3 秒窗口内**同一账号只放行 1 次**，再次调用直接 **HTTP 500**「此操作冷却中，约 2 秒后可继续操作！」；**仅对非管理员生效**（`if user.permission === ROLE.ADMIN return next()`，管理员完全绕过）。
+
+**两个易混 500**（已分离）：
+- 「此操作冷却中」= 签发接口被限流（真瓶颈）。
+- 「下载出错: Access denied: No task found」= **用被限流拒签的 null/过期 password 去拉流**的连带结果，不是文件流错误。
+
+**⚠️ 不需要特殊配置，也改不了**：`speedLimit(3)` 是写在路由里的常量，无 config 开关；面板设置里的 `maxDownload`（web）与 daemon `maxFileTask`/`fileLock`（默认 2）只守卫**压缩/解压**与**「URL 下载到实例」（download_from_url，daemon maxDownloadFromUrlFileCount=1）**两类任务，**与"下载实例文件到本机"无关，勿改动**。
+
+**解决方向（用户 2026-09-09 决策：走方案 B）**：
+- **方案 B（普通用户 joker，推荐/已采用）**：脚本里**签发凭据串行化或限速 ≥3s/次**（一次下载一个文件就签一次，for 循环串行），拿到全部 password 后**再并行拉流**。核心约束=「签发串行、下载并行」。⚠️ 别用签发失败返回的 password 去拉流（会得到第二个 500 误判）。
+- **方案 A（提升并发）**：用**管理员账号的 apiKey** 调用——管理员跳过 speedLimit，可真正并发签发+并行下载，无需额外配置（需后台给账号升管理员并生成 apiKey）。
+
 ## 地图备份下载部署到本地（2026-08-13 实测流程）
 
 - **备份位置**：`plugins/OrzMC/backup/`（OrzMC 插件自动备份，按日期命名 `YYYYMMDDHHMMSS.zip`，~1.4GB/份）；列目录 `GET /api/files/list?target=/plugins/OrzMC/backup&page=0&page_size=100&file_name=`（file_name 空串可列出全部）
