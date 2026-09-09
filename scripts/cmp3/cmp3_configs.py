@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""三端配置全量对比（本地 vs Exaroton vs MCSM，语义级）
-用法: python3 cmp3_configs.py <exaroton_dir> <mcsm_dir> [local_dir]
-  例: python3 cmp3_configs.py /tmp/exa_configs2 /tmp/mcsm_configs2 /tmp/mcsm_local_configs2
-对比内容: 核心配置文件（server.properties/bukkit/spigot/commands/paper-*）+ 插件配置
+"""两端配置全量对比 v4（2026-09-09 迁移后：本地端退役）
+基准端 = MCSM({SERVER_NAME}, Windows 栈) 拉取目录；对比端 = Exaroton 拉取目录。
+用法: python3 cmp3_configs.py [基准_dir] [对比_dir]
+  例: python3 cmp3_configs.py /tmp/mcsm_configs2 /tmp/exa_configs2
+判定口径: 交集语义——两端共同 key 值同 = 一致；值异 = 差异；单端独有 key 另计。
 排除: 数据文件（userdata/homes/players 等）
 """
 import os, sys
 
-LOCAL = os.path.expanduser(sys.argv[3] if len(sys.argv) > 3
-                           else "/Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/716c2fb712154c36ba5ab0f1480d3f87")
-E = sys.argv[1] if len(sys.argv) > 1 else "/tmp/exa_configs2"
-M = sys.argv[2] if len(sys.argv) > 2 else "/tmp/mcsm_configs2"
+BASE = sys.argv[1] if len(sys.argv) > 1 else "/tmp/mcsm_configs2"
+CMP = sys.argv[2] if len(sys.argv) > 2 else "/tmp/exa_configs2"
 SKIP_DIRS = {"userdata", "homes", "data", "players", "backups", "logs", "cache", "worlds", "messages"}
 SKIP_FILES = {"ops.json", "whitelist.json", "banned-players.json", "banned-ips.json",
               "usercache.json", "permissions.yml", "help.yml"}
+EQ_STYLE = {"server.properties"}
 
 def read(p):
     try:
@@ -37,93 +37,94 @@ def key_lines(lines, eq_style=False):
                 out.append((indent, key.strip(), val))
     return out
 
-def semantic_diff(a_lines, b_lines, eq_style=False):
-    ka, kb = key_lines(a_lines, eq_style), key_lines(b_lines, eq_style)
-    da = {f"{ind}|{k}": v for ind, k, v in ka}
-    db = {f"{ind}|{k}": v for ind, k, v in kb}
+def semantic_map(lines, eq_style=False):
+    return {f"{ind}|{k}": v for ind, k, v in key_lines(lines, eq_style)}
+
+def norm(s):
+    try:
+        return ("num", float(s))
+    except Exception:
+        return ("str", s)
+
+def diff_pair(base_lines, cmp_lines, eq_style=False):
+    """两端语义对比 → (交集差异列表, 单端独有 key 数)"""
+    db = semantic_map(base_lines, eq_style)
+    dc = semantic_map(cmp_lines, eq_style) if cmp_lines else {}
     diffs = []
-    for key in sorted(set(da) & set(db)):
-        va, vb = da[key], db[key]
-        if va == vb:
+    for k in sorted(set(db) & set(dc)):
+        vb, vc = db[k], dc[k]
+        if vb == vc or norm(vb) == norm(vc):
             continue
-        def norm(s):
-            try:
-                return ("num", float(s))
-            except:
-                return ("str", s)
-        if norm(va) == norm(vb):
-            continue
-        diffs.append((key, va, vb))
-    return diffs
-
-def compare_local_file(name, local_path, exa_path, mcsm_path, eq_style=False):
-    """返回 (名称, 状态, Exa差异数, MCSM差异数)"""
-    ll = read(local_path)
-    ee = read(exa_path) if exa_path else None
-    mm = read(mcsm_path) if mcsm_path else None
-    if ll is None:
-        return (name, "本地缺失", 0, 0)
-    d_le = semantic_diff(ll, ee, eq_style) if ee else None
-    d_lm = semantic_diff(ll, mm, eq_style) if mm else None
-    n_le = len(d_le) if d_le else 0
-    n_lm = len(d_lm) if d_lm else 0
-    if n_le == 0 and n_lm == 0:
-        return (name, "一致", 0, 0)
-    return (name, "差异", n_le, n_lm)
+        diffs.append((k, vb, vc))
+    allk = set(db) | set(dc)
+    side = sum(1 for k in allk if (k in db) != (k in dc))
+    return diffs, side
 
 print("=" * 75)
-print(f"三端配置全量对比: {LOCAL} / {E} / {M}")
+print(f"两端配置对比: 基准(MCSM {SERVER_NAME}) {BASE} / 对比(Exaroton) {CMP}")
 print("=" * 75)
 
-# 核心配置
+# 核心配置（平铺：基准目录文件名 == 对比目录文件名）
 print("\n【核心配置】")
-core_files = [
-    ("server.properties", "server.properties", "server.properties"),
-    ("bukkit.yml", "bukkit.yml", "bukkit.yml"),
-    ("spigot.yml", "spigot.yml", "spigot.yml"),
-    ("commands.yml", "commands.yml", "commands.yml"),
-    ("config/paper-global.yml", "config_paper-global.yml", "config_paper-global.yml"),
-    ("config/paper-world-defaults.yml", "config_paper-world-defaults.yml", "config_paper-world-defaults.yml"),
-    ("wepif.yml", "wepif.yml", "wepif.yml"),
-]
-for name, ef, mf in core_files:
-    eq = (name == "server.properties")
-    name2, status, n_le, n_lm = compare_local_file(
-        name, f"{LOCAL}/{name}", f"{E}/{ef}", f"{M}/{mf}", eq_style=eq)
-    if status == "一致":
+core_files = ["server.properties", "bukkit.yml", "spigot.yml", "commands.yml",
+              "config_paper-global.yml", "config_paper-world-defaults.yml", "wepif.yml"]
+core_diff_n = 0
+for name in core_files:
+    bl = read(f"{BASE}/{name}")
+    if bl is None:
+        print(f"  ℹ️  {name}: 基准端缺失")
+        continue
+    cl = read(f"{CMP}/{name}")
+    diffs, side = diff_pair(bl, cl, eq_style=(name in EQ_STYLE))
+    if not diffs and cl is not None:
         print(f"  ✅ {name}")
-    elif status == "本地缺失":
-        print(f"  ℹ️  {name}: 本地缺失")
+    elif cl is None:
+        print(f"  ❌ {name}: 对比端(Exa)缺失"); core_diff_n += 1
     else:
-        print(f"  ❌ {name}: vs Exa {n_le} 处, vs MCSM {n_lm} 处")
+        core_diff_n += 1
+        side_note = f"，另单端独有 key {side} 个" if side else ""
+        print(f"  ❌ {name}: 差异 {len(diffs)} 处{side_note}")
+        for k, vb, vc in diffs[:6]:
+            print(f"      {k.replace('|', '@')}: 基准={vb} Exa={vc}")
 
-# 插件配置
+# 插件配置（遍历基准端 plugins 树）
 print("\n【插件配置】")
+def walk_plugin_configs(base_plugins):
+    out = []
+    if not os.path.isdir(base_plugins):
+        return out
+    for pdir in sorted(os.listdir(base_plugins)):
+        pdir_path = os.path.join(base_plugins, pdir)
+        if not os.path.isdir(pdir_path):
+            continue
+        for root, dirs, files in os.walk(pdir_path):
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+            for fn in sorted(files):
+                if fn.endswith((".yml", ".yaml")) and fn not in SKIP_FILES:
+                    rel = os.path.relpath(os.path.join(root, fn), base_plugins)
+                    out.append((pdir, rel))
+    return out
+
 total = 0
 diff_files = []
-for pdir in sorted(os.listdir(f"{LOCAL}/plugins")):
-    pdir_path = f"{LOCAL}/plugins/{pdir}"
-    if not os.path.isdir(pdir_path):
+for pdir, rel in walk_plugin_configs(f"{BASE}/plugins"):
+    total += 1
+    b_path = f"{BASE}/plugins/{pdir}/{rel}"
+    c_path = f"{CMP}/plugins/{pdir}/{rel}"
+    bl = read(b_path)
+    cl = read(c_path)
+    name = f"{pdir}/{rel}"
+    if bl is None:
+        print(f"  ℹ️  {name}: 基准缺失"); continue
+    if cl is None:
+        diff_files.append((name, "对比端缺失", 0))
         continue
-    for root, dirs, files in os.walk(pdir_path):
-        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-        for fn in sorted(files):
-            if not fn.endswith((".yml", ".yaml")):
-                continue
-            if fn in SKIP_FILES:
-                continue
-            rel = os.path.relpath(os.path.join(root, fn), pdir_path)
-            total += 1
-            local_path = f"{pdir_path}/{rel}"
-            exa_path = f"{E}/plugins/{pdir}/{rel}"
-            mcsm_path = f"{M}/plugins/{pdir}/{rel}"
-            name2, status, n_le, n_lm = compare_local_file(
-                f"{pdir}/{rel}", local_path, exa_path, mcsm_path)
-            if status == "差异":
-                diff_files.append((f"{pdir}/{rel}", n_le, n_lm))
-
+    diffs, side = diff_pair(bl, cl)
+    if diffs:
+        diff_files.append((name, f"{len(diffs)} 处差异", side))
 print(f"  共检查 {total} 个插件配置文件，其中差异 {len(diff_files)} 个：")
-for name, n_le, n_lm in diff_files:
-    print(f"    ❌ {name}: vs Exa {n_le} 处, vs MCSM {n_lm} 处")
+for name, info, side in diff_files:
+    side_note = f"，单端独有 key {side} 个" if side else ""
+    print(f"    ❌ {name}: {info}{side_note}")
 
-print(f"\n总计：核心 7 + 插件 {total} = {7 + total} 个配置文件")
+print(f"\n总计：核心 7 + 插件 {total} = {7 + total} 个配置文件（基准端实际存在为准）")
