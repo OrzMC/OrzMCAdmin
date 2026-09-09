@@ -4,7 +4,7 @@ description: "Minecraft 运维统一技能（唯一入口）：三端服务器�
 version: 2.0.5
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
-platforms: [macos, linux]
+platforms: [macos, linux, windows]
 required_commands: [java, curl, tar]
 ---
 
