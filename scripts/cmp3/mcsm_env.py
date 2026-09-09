@@ -20,7 +20,7 @@ def get_mcsm_config():
     """返回 MCSM 连接配置字典（远程 Win11 面板）"""
     env = _load_env()
     return {
-        "url": env.get("MCSM_URL", ""),
+        "url": env.get("MCSM_URL", "http://{SERVER_HOST}:23333/"),
         "apikey": env.get("MCSM_API_KEY", ""),
         "daemon_id": env.get("MCSM_DAEMON_ID", ""),
         "instance_id": env.get("MCSM_INSTANCE_ID", ""),
@@ -41,7 +41,7 @@ def get_exaroton_config():
     env = _load_env()
     return {
         "api_key": env.get("EXAROTON_API_KEY", ""),
-        "server_id": env.get("EXAROTON_SERVER_ID", ""),
+        "server_id": env.get("EXAROTON_SERVER_ID", "{API_TOKEN}"),
     }
 
 def mcsm_api_post(cfg, path, params, retries=3, timeout=20):

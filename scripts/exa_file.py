@@ -23,7 +23,7 @@ def get_exa_config():
     env = _load_env()
     return {
         "api_key": env.get("EXAROTON_API_KEY", ""),
-        "server_id": env.get("EXAROTON_SERVER_ID", ""),
+        "server_id": env.get("EXAROTON_SERVER_ID", "{API_TOKEN}"),
     }
 
 def exa_headers(api_key):

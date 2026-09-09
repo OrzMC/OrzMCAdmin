@@ -7,7 +7,7 @@ for line in open(os.path.expanduser("~/.hermes/.env")):
     if line.startswith("EXAROTON_API_KEY="):
         API_KEY = line.split("=", 1)[1].strip()
         break
-SID = ""
+SID = "{API_TOKEN}"
 UA = {"User-Agent": "Mozilla/5.0", "Authorization": f"Bearer {API_KEY}"}
 BASE = "https://api.exaroton.com/v1"
 OUT = "/tmp/exa_backup_20260803"

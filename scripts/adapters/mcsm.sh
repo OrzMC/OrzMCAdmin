@@ -9,7 +9,7 @@ if [ -f "$HOME/.hermes/.env" ]; then
   set -a; source "$HOME/.hermes/.env"; set +a
 fi
 
-MCSM_URL="${MCSM_URL:-}"
+MCSM_URL="${MCSM_URL:-http://{SERVER_HOST}:23333/}"
 APIKEY="${MCSM_API_KEY:-}"
 DAEMON="${MCSM_DAEMON_ID:-}"
 INSTANCE="${MCSM_INSTANCE_ID:-}"
