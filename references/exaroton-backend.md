@@ -38,6 +38,10 @@
 - ⚠️ 文件列表用 `files/info/`，**没有** `files/` 裸端点
 - ⚠️ 高频 API 调用会触发 Cloudflare 风控（error 1010，全部端点 403），**冷却 30s+ 自动恢复**；脚本间请求间隔 ≥ 5s
 - ⚠️⚠️ **PUT 写操作会被 Cloudflare managed challenge 拦截（2026-08-30 实测）**：GET 文件正常，但 PUT 返回 403 "Just a moment..." JS 挑战页（curl/urllib/完整浏览器 UA 均过不了——managed challenge 需真实浏览器执行 JS 通过挑战）；触发后**不是冷却能解决的**，需真实浏览器（browser_exec 或面板）或等待数小时风控自然解除；写文件失败先看响应体是不是 `<!DOCTYPE html>...Just a moment`（区分 Cloudflare 拦截 vs API 报错）
+- 🔍 **CF 拦截规则精确定位（2026-09-10 系统性对照实验，重要）**：CF 的 WAF 规则为「**HTTP 方法 = PUT 且请求存在 Authorization 头**」→ 触发 managed challenge。对照证据：① GET + Authorization → 200 ✅ ② POST + Authorization → 200 ✅（但 `files/data` 的 POST 是**假成功**，返回旧内容不写入）③ PUT + Authorization → 403 挑战 ❌ ④ **PUT 不带 Authorization → 请求到达 API**（返回 `{"success":false,"error":"Unauthorized"}` JSON，**无挑战**）✅。
+  **已穷尽且全部失败的绕过尝试**：Content-Type 改 octet-stream / HTTP2 / HTTP1.0 / chunked / 完整浏览器头(Origin/Referer/sec-ch-ua) / header 大小写变形 / `Token` 与裸 token scheme / 双 Authorization 头 / POST+`X-HTTP-Method-Override: PUT` / POST+`?_method=PUT`（Laravel 伪方法，返回 200 但不生效）/ 独立 Chrome 实例内 fetch 同源 PUT（仍被挑战）/ 跨域 fetch（CORS 拦）。
+  **结论**：**纯 HTTP + API key 无法完成写操作**（与客户端、header、IP 无关，是 CF 规则按「方法+认证头组合」拦截）。**官方/社区库（ColinShark/exaroton、java-exaroton-api 等）同样走 Bearer+PUT，预期同样被拦**。
+  **可行路径**：① 面板手动改（最可靠）；② 用**会话 cookie** 替代 Authorization 头发 PUT（不带 Authorization → 不被挑战；cookie 可从浏览器 Cookies DB 提取，macOS 需 Keychain `Chrome Safe Storage` 授权）；③ 等 Exaroton 侧调整 CF 规则
 - ⚠️ **备份无 API**：官方 OpenAPI 全部 29 端点无 backup/snapshot。备份是 Web 面板功能（需链接 Google Drive 等云存储，支持手动/自动备份、恢复、完整性校验）。**自动备份已由用户在面板配置**，脚本不做备份
 - ✅ **插件残留目录可安全删除**（2026-08-03 实测）：卸载插件后 `plugins/{插件名}/` 配置残留（config.yml + 空子目录）可用 `DELETE /files/data/plugins/{名}/` 整目录删除，不影响运行（Chunky 案例）
 - ⚠️ 服务器无玩家在线会自动停止（Exaroton 默认行为，省配额，日志会正常保存世界）

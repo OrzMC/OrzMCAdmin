@@ -69,10 +69,11 @@ TNT/fire **已在默认列表**（无需重复）。效果：`//set sand` 在**�
 |:--|:--|
 | 本地 Paper 实例（716c2fb7）| ✅ 已改 + 重启验证；2026-09-03 随迁移保留生效 |
 | 本地 Folia 实例（8A932DD4）| ✅ 已同步（config.yml 复制，2026-09-03 随迁移生效）|
-| Exaroton | ⏳ 已改好存 `~/backups/we-config/exa_we_config_20260830.yml`，PUT 被 Cloudflare challenge 拦截 → 老板面板手动或风控解除 |
-| MCSM | ⏳ 待面板「API 密钥创建功能」开启后同步（同文件两处改动）|
+| Exaroton | ⏳ **未同步**（2026-09-10 巡检确认：`disallowed-blocks` 仍缺、限额仍 -1）→ 待同步配置 = `templates/worldedit-exa-config-tosync.yml`（2026-09-10 基于巡检拉取的 Exa 现配置**最小改动**重建：改 2 行限额 + 插 6 行方块；保留 Exa 端 `grass` 等版本差异不覆盖）。PUT 曾被 Cloudflare challenge 拦截 → 老板面板手动或风控解除 |
+| MCSM | ✅ **已生效**（2026-09-10 巡检确认：限额 100万/200万 + sand/red_sand/gravel/water/lava 已加固）|
 
-备份：`~/backups/we-config/`（local + exa 修改版 20260830）
+待同步/备份文件：`templates/worldedit-exa-config-tosync.yml`（exa 加固版）
+⚠️ 原 `~/backups/we-config/`（local + exa 修改版）于 2026-09-10 清理备份时删除——**注意「备份目录里的文件不一定是纯备份，可能是待用产物（如待同步配置）」**，清理前须逐项核对用途与文档引用
 
 ## 玩家规范建议（未实施，需群公告）
 
