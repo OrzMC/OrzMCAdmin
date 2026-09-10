@@ -6,7 +6,7 @@
 ## 资产关系（迁移前必读）
 
 - **DATA_ROOT**（Mac `/Users/Shared/orzmc`，Win `E:/orzmc`）：含 `.env`（全部密钥）、mcsmanager 数据+双实例、worlds、easybot 数据、cloudflared 凭据、mariadb 数据、status 配置。**备份=打包 DATA_ROOT**
-- **部署包**（`~/Services/<svc>-deploy-<ver>`，运行时非数据，镜像 digest 锁定 compose 自拉）：orzmc-deploy-0.0.3-dev（orzmc.sh/restore.sh/docs）+ orzmusic-deploy-0.0.7
+- **部署包**（运行时非数据，镜像 digest 锁定 compose 自拉）：**Windows 现落点 `E:/deploy/`**（2026-09-11 由 `E:/migration/` 改名，以反映用途=部署包目录）——orzmc-deploy-**0.0.3**（官方 Release 版；2026-09-11 由 0.0.3-dev 开发临时版切换而来）+ orzmusic-deploy-0.0.7；Mac 侧原路径 `~/Services/<svc>-deploy-<ver>`
 - orzmusic 数据在 **Docker 命名卷**（orzmusic_cas_data/orzmusic_db_data），不在 DATA_ROOT → 单独卷导出
 
 ## 端口架构（关键，防 AI 误解）
@@ -49,7 +49,7 @@ for i in $(seq 1 60); do docker exec orzmc-mariadb mariadb-admin ping >/dev/null
 # 4. 停栈恢复原状 + 可选 quit Docker Desktop（pkill -9 -f /Applications/Docker.app 清残留）
 
 # 5. 组装迁移包：mv 归档 + cp 部署包目录 → 外层 tar 不带顶层目录前缀
-tar -cf ~/Downloads/orzmc-migration-<date>.tar -C ~/orzmc-migration <归档> <tgz...> -C ~/Services orzmc-deploy-0.0.3-dev orzmusic-deploy-0.0.7
+tar -cf ~/Downloads/orzmc-migration-<date>.tar -C ~/orzmc-migration <归档> <tgz...> -C /e/deploy orzmc-deploy-0.0.3 orzmusic-deploy-0.0.7
 ```
 
 ## ⚠️ backup.sh dump 竞态坑（2026-09-08 实测）
@@ -69,9 +69,9 @@ bash restore.sh -d E:/orzmc <orzmc-backup-*.tar.gz> --force   # 自动改 .env D
 ./orzmc.sh -d E:/orzmc validate && ./orzmc.sh -d E:/orzmc up  # Windows 下 daemon 由脚本 win_daemon_run 自动 docker run（ADR-016）
 # 2. orzmusic（Windows 无 bash_history，ADMIN_API_TOKEN 留空 = adminApi disabled，与 Mac 现状一致）
 docker volume create orzmusic_cas_data; docker volume create orzmusic_db_data
-docker run --rm -v orzmusic_cas_data:/d -v /e/migration:/in alpine sh -c "tar xzf /in/orzmusic-cas.tgz -C /d"
-docker run --rm -v orzmusic_db_data:/d  -v /e/migration:/in alpine sh -c "tar xzf /in/orzmusic-db.tgz -C /d"
-cd /e/migration/orzmusic-deploy-0.0.7
+docker run --rm -v orzmusic_cas_data:/d -v /e/deploy:/in alpine sh -c "tar xzf /in/orzmusic-cas.tgz -C /d"
+docker run --rm -v orzmusic_db_data:/d  -v /e/deploy:/in alpine sh -c "tar xzf /in/orzmusic-db.tgz -C /d"
+cd /e/deploy/orzmusic-deploy-0.0.7
 IMAGE_REF="ghcr.io/orzgeeker/orzmusic@sha256:a74ad4d62b4bfb1638fc916281cd1119856d412a6b4fb225fa748a00ae201dd3" \
   docker compose -f docker-compose.yml -f docker-compose.production.yml up -d
 # 3. 验证：8 容器 Up/healthy + 4 端点 200（mcs/easybot/orzmcs/mcs-node.{SERVER_NAME}.cn）+ curl 127.0.0.1:8080/api/health
@@ -82,13 +82,14 @@ IMAGE_REF="ghcr.io/orzgeeker/orzmusic@sha256:a74ad4d62b4bfb1638fc916281cd1119856
 **坑 A：`restore.sh` 在大归档上必崩（SIGPIPE / exit 141）——上面第 1 行别直接跑。**
 `restore.sh` 第 56 行 `top="$(tar tzf "$ARCHIVE" | head -n1)"` 对 >~2G 归档必触发：`tar` 持续写列表、`head -n1` 读一行即退关闭管道 → tar 收 SIGPIPE；配脚本顶部 `set -euo pipefail` → 整脚本退出 141（后台/前台均现）。Mac 小归档不触发、**2.36G 必触发**。未改仓库脚本，改为等价的受控手工还原：
 ```bash
-python -c "import tarfile;print(tarfile.open('E:/migration/<归档>.tar.gz','r:gz').getnames()[0])"  # 看顶层目录(应=orzmc)
-cd /e && tar -xzf E:/migration/<归档>.tar.gz    # 顶层=orzmc → 直接落 E:/orzmc（无 head 管道，不 SIGPIPE）
+python -c "import tarfile;print(tarfile.open('E:/deploy/<归档>.tar.gz','r:gz').getnames()[0])"  # 看顶层目录(应=orzmc)
+cd /e && tar -xzf E:/deploy/<归档>.tar.gz    # 顶层=orzmc → 直接落 E:/orzmc（无 head 管道，不 SIGPIPE）
 cd /e/orzmc && cp .env .env.bak-restore && sed 's#^DATA_ROOT=.*#DATA_ROOT=E:/orzmc#' .env.bak-restore > .env  # 改 DATA_ROOT(留备份)
 grep -E "^(DATA_ROOT|EDGE=)" .env               # 校验: DATA_ROOT=E:/orzmc、EDGE=cloudflare、无 /Users/Shared 残留
-cd /e/migration/orzmc-deploy-0.0.3-dev && ./orzmc.sh -d E:/orzmc validate
+cd /e/deploy/orzmc-deploy-0.0.3 && ./orzmc.sh -d E:/orzmc validate
 ```
 > 建议报上游：OrzMCDeploy `restore.sh` 的 `tar tzf | head -n1` 应改成不 SIGPIPE 的取顶层方式（大归档迁移是 restore.sh 的既定用途）。
+> ✅ **已报并已修（官方 0.0.3 / 2026-09-10，CHANGELOG #5）**：官方包改成 `top="$( { tar tzf "$ARCHIVE" | head -n1; } || true )"`。**用 `E:/deploy/orzmc-deploy-0.0.3/restore.sh` 可直接跑，上面这套手工还原步骤仅在用旧包时保留**。
 
 **坑 B：mariadb 还原冷数据后 healthcheck 报 unhealthy（`Access denied for user 'mysql'` no password）。**
 还原自 Mac 的 `database/mariadb` 冷数据目录**缺镜像首次 init 才创建的 `mysql@localhost` unix_socket 账号**；compose healthcheck `healthcheck.sh --su-mysql` 走 socket 以该用户连 → 失败。**库本身经 TCP 用 root / mc 凭据完全正常，仅 healthcheck 误报**（web 面板/节点不受影响）。修复 = 补该账号（等价镜像 init，不动 compose）：
@@ -96,6 +97,7 @@ cd /e/migration/orzmc-deploy-0.0.3-dev && ./orzmc.sh -d E:/orzmc validate
 docker exec orzmc-mariadb sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -e "CREATE USER IF NOT EXISTS \"mysql\"@\"localhost\" IDENTIFIED VIA unix_socket; GRANT ALL PRIVILEGES ON *.* TO \"mysql\"@\"localhost\" WITH GRANT OPTION; FLUSH PRIVILEGES;"'
 docker inspect --format '{{.Name}} {{.State.Health.Status}}' orzmc-mariadb   # → healthy
 ```
+> ✅ **已报并已修（官方 0.0.3 CHANGELOG #7）**：healthcheck 改 root 经 unix socket + `MARIADB_ROOT_PASSWORD` 做 innodb 就绪查询。本机已手工补过 `mysql@localhost` 账号且现为 healthy，无需回退。
 
 **还原验证结果（Windows 实测）**：8 容器全 Up（orzmc web/daemon/easybot/mariadb/status/cloudflared + orzmusic app/db）全 healthy；4 公网端点 `mcs/easybot/orzmcs/mcs-node.{SERVER_NAME}.cn` 全 200；orzmusic `curl 127.0.0.1:8080/api/health` → `{"status":"ready","database":"healthy","cas":"healthy","adminApi":"disabled",...}`；daemon 加载双实例、世界数据就位、保持停止。
 
@@ -108,8 +110,9 @@ docker inspect --format '{{.Name}} {{.State.Health.Status}}' orzmc-mariadb   # �
 
 ## 当前状态（2026-09-09 迁移完成）
 
-- Mac：源机已停（容器 0 / 引擎停 / 隧道无），迁移包已在 Windows `E:\migration\`（orzmc-backup-*.tar.gz + cas/db tgz + 双部署包）
+- Mac：源机已停（容器 0 / 引擎停 / 隧道无）；迁移归档（orzmc-backup-*.tar.gz + cas/db tgz，~2.9G）**已随 E 盘清理删除**，双部署包现于 `E:/deploy/`
 - Windows `E:/orzmc`：还原完成，8 容器健康运行（orzmc web/daemon/easybot/mariadb/status/cloudflared + orzmusic app/db），4 公网端点 200；容器 easybot 接管 `easybot.{SERVER_NAME}.cn`，隧道由本机 cloudflared **单点**接管
 - orzmusic `adminApi: disabled`（与 Mac 一致）；测试服双实例（papermc-test/folia-test）**保持停止**（世界数据就位于 daemon `InstanceData/`）
-- 遗留：`E:/orzmc/.env.bak-restore`（DATA_ROOT 改写前备份，可留作回退）；旧宿主 easybot 残留 `~/.easybot`（已脱离服务，可删）；`E:/migration` 迁移包 ~2.9G 可删
+- 遗留：`E:/orzmc/.env.bak-restore`（DATA_ROOT 改写前备份，2026-09-11 已删）；旧宿主 easybot 残留 `~/.easybot`（已脱离服务，可删）；`E:/migration` 迁移归档 ~2.9G **已删**，目录已改名为 `E:/deploy`
+- **运维包版本（2026-09-11）**：正式 `orzmc-deploy-0.0.3` 已就位并 `validate` 通过、`status` 正确列出全栈（7 容器 + daemon）；开发临时版 0.0.3-dev 已删。**站点增量（官方 tarball 不含，升级勿丢）：compose.yaml easybot 服务的 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 两行**——本站 EasyBot 跑 QQ+飞书 双 adapter，按 `docs/easybot.md`「按需增加」自行加回，官方包默认没有
 - 隧道单点铁律：源机停 + 目标机 cloudflared 接管 {SERVER_NAME}.cn，**严禁双跑串流量**

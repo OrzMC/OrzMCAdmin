@@ -3,7 +3,7 @@
 > 场景：排查/运维 EasyBot IM 网关（本机 docker，OrzMC 机器人接入）。所有 IM 网关相关问题先查本节。
 
 ## 概述
-EasyBot（`ghcr.io/easyindie/easybot`）是统一 IM 网关：OrzMC 插件通过它接入 QQ/飞书/Telegram/Discord/微信。**2026-09-03 起迁移进 OrzMCDeploy compose 生产栈**（`~/Services/orzmc-deploy-0.0.3-dev/`，DATA_ROOT=`/Users/Shared/orzmc`）：容器 `orzmc-easybot`（EASYBOT_HOME=/var/lib/easybot → `$DATA_ROOT/easybot/data`），QQ+飞书 双 adapter，微信经 `$DATA_ROOT/easybot/data/gateway.local.yaml` 显式禁用；镜像 digest 锁定（≥0.0.35，schema v3 同旧版）。**旧独立容器 `easybot`（9090→8080，卷 easybot-data）已停删**（2026-09-03），其 gateway.db（17MB，api_keys/sessions/messages 9614 条）已迁移进新栈——插件旧 api_key 继续有效。栈管理用 `./orzmc.sh -d /Users/Shared/orzmc up|stop|status`；容器日志 `docker logs orzmc-easybot`。
+EasyBot（`ghcr.io/easyindie/easybot`）是统一 IM 网关：OrzMC 插件通过它接入 QQ/飞书/Telegram/Discord/微信。**2026-09-03 起迁移进 OrzMCDeploy compose 生产栈**（`~/Services/orzmc-deploy-0.0.3-dev/`，DATA_ROOT=`/Users/Shared/orzmc`）：容器 `orzmc-easybot`（EASYBOT_HOME=/var/lib/easybot → `$DATA_ROOT/easybot/data`），QQ+飞书 双 adapter，微信经 `$DATA_ROOT/easybot/data/gateway.local.yaml` 显式禁用；镜像 digest 锁定（≥0.0.35，schema v3 同旧版）。**旧独立容器 `easybot`（9090→8080，卷 easybot-data）已停删**（2026-09-03），其 gateway.db（17MB，api_keys/sessions/messages 9614 条）已迁移进新栈——插件旧 api_key 继续有效。栈管理用 `./orzmc.sh -d /Users/Shared/orzmc up|stop|status`；容器日志 `docker logs orzmc-easybot`。**（现状 2026-09-11：栈已迁本机 Windows，部署包 `/e/deploy/orzmc-deploy-0.0.3`，`./orzmc.sh -d E:/orzmc …`）**
 
 **架构链路（2026-09-03 后）**：
 ```
@@ -30,7 +30,7 @@ grep -E "WebSocket|认证|重连" /Users/Shared/orzmc/mcsmanager/daemon/data/Ins
 ```bash
 open -a Docker                                   # 1. 启动 Docker Desktop
 for i in $(seq 1 6); do docker info >/dev/null 2>&1 && break || sleep 2; done
-cd ~/Services/orzmc-deploy-0.0.3-dev && ./orzmc.sh -d /Users/Shared/orzmc up   # 2. 起整个 orzmc 栈（幂等；容器 restart: unless-stopped 也会自启）
+cd /e/deploy/orzmc-deploy-0.0.3 && ./orzmc.sh -d E:/orzmc up   # 2. 起整个 orzmc 栈（幂等；容器 restart: unless-stopped 也会自启）——Windows 现役路径；旧 Mac: ~/Services/orzmc-deploy-0.0.3-dev + /Users/Shared/orzmc
 docker ps --filter name=orzmc-easybot            # 3. 确认 orzmc-easybot Up
 curl -s https://easybot.{SERVER_NAME}.cn/api/v1/health      # 4. 期望 200 + QQ/飞书 adapter connected
 ```

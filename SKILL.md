@@ -37,6 +37,7 @@ required_commands: [java, curl, tar]
 > | **三端配置差异审计（2026-08-11 三次全量对比；2026-08-12 起每周一 9:15 cron `ab06b886c39f`「三端配置审查」**v2：只审查不重启；**v3（2026-09-03 迁 MCSM 后）：本地端 = 本机 MCSM Paper 实例目录直读 + Exa + 远程 MCSM 三路并发**；脚本 `~/.hermes/scripts/orzmc_config_audit.sh`；保留最近两次报告；⚠️ 远程 MCSM 连续三周「未开启API密钥创建功能」= 远程面板 enableApiKey 未开，待老板远程修复；cmp3 工具链用法）** | `references/three-end-config-drift.md` |
 > | **版本巡检 cron（每日 10:00，job `0b4298821a86`）：脚本 `~/.hermes/scripts/mc_version_check.py` 查核心+19 插件各渠道最新版 vs 本地部署 → 有差异发飞书询问用户** | 本 SKILL.md「版本巡检」段 |
 > | **性能诊断（Spark 五步法、实体审计、Aikar Flags、修复方案）** | `references/performance.md` |
+> | **MCA 级世界工具链（槽位粒度合并 `scripts/merge_worlds.py` / 加速命令方块扫描 `scripts/mca_scan_fast.py` / 区块高度分析 `scripts/mca_height_scan.py`；上游 OrzMCBackup 权威实现对应关系）** | `references/mca-toolchain.md` |
 > | **插件 Bug 排查（本地复现、命令/权限分离、实体事件、版本兼容）** | `references/plugin-debugging.md` |
 > | **测试体系（分层原则、三大通道、Paper 26 陷阱、跨服 transfer；**2026-09-03 迁 MCSM 本机栈后拓扑/五连坑/启停规范见该文头部与「MCSM 本地栈」节**）** | `references/testing.md` |
 > | **LuckPerms 权限体系（API 集成、审计验收、三端同步、Bootstrap）** | `references/permission.md` |
