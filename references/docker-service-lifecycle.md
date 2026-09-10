@@ -105,6 +105,9 @@ curl -s http://127.0.0.1:8080/api/health   # orzmusic：adminApi=disabled 说明
 > ⚠️ orzmusic 的 `ADMIN_API_TOKEN` 在本机**为空**（health 报 `adminApi:disabled`）：官方 `start.sh` 的取值链是 `.env` → Mac 的 `~/.bash_history`，迁到 Windows 后两者都不存在。需要重扫/导入曲库时得先补上该 token（可用 `.env` 放在部署包目录，start.sh 会 source 它）。
 >
 > **2026-09-11 全盘复查（已完成）**：部署包目录里**不存在 `.env`**，全盘（`E:/deploy`、`E:/orzmc`、hermes 目录）也未搜到任何带值的 `ADMIN_API_TOKEN`；应用日志也不会打印它；`docker inspect` 显示 `ADMIN_API_TOKEN=`（空）。→ **token 不可恢复，只能重新生成**（官方方式：`make generate-admin-token`，或 `openssl rand -base64 32`），写入部署包目录的 `.env` 后重启 app 容器。另：`script/docker-install.sh` / `native-common.sh` 都对空 token 报错中止，**只有日常入口 `start.sh` 无校验**（已作为 OrzMusic#3 的补充评论）。
+>
+> ✅ **2026-09-11 已重新生成并启用**：token 写入 `E:/deploy/orzmusic-deploy-0.0.7/.env`（官方机制，未改脚本；`chmod 600`）→ `./start.sh` 重建 app 容器 → `adminApi:enabled`。验证：无令牌 `401`（不再是 `503 admin_api_disabled`）、正确令牌 `200`、错误令牌 `401`。❗两条纪律：① 重建后**必须** `docker update --restart unless-stopped orzmusic-app-1 orzmusic-db-1`（否则官方 compose 默认 `no` 把自愈策略弄丢，即 OrzMusic#2）；② `.env` 在**版本目录内**，换包升级（新版本目录）时需手工拷过去（即 OrzMCDeploy#11 的动机）。
+> 另：`start.sh` 会报 `volume "orzmusic_db_data"/"orzmusic_cas_data" already exists but was not created by Docker Compose` —— 迁移期手工建的卷缺 compose 标签，仅告警、无功能影响，数据仍在（即 `app` 的 `database:healthy` 已证实）。
 
 ## 7. MCSM 双实例拓扑（2026-09-11 实测）
 
@@ -153,3 +156,18 @@ docker compose --env-file "E:/orzmc/.env" \
 四条纪律：① 路径必须用**原生正斜杠 Windows 路径**（MSYS 的 `/e/...` 会让 compose 解析失败）；② `--no-deps` 避免连带重建 mariadb；③ **不要把 `mcsmanager-daemon` 列进去**（Windows 下归 `win_daemon_run` 管，ADR-016）；④ 重建后逐个核对：`docker inspect <c> --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}'`。服务名用 `compose config --services` 取（`mcsmanager-web`/`mariadb`/`status`/`cloudflared`/`easybot`/`mcsmanager-daemon`）。
 
 实测 2026-09-11：5 个 compose 容器全部刷成 `E:\deploy\orzmc-deploy-0.0.3`，重建后四端点仍 200、easybot `healthy` 且 0 条 SQLite 报错、两个 MCSM 实例未被拉起。
+
+## 10. 坑：移动/重命名部署包目录后，旧路径会“复活”为空目录
+
+**现象**：`E:\migration` 被改名成 `E:\deploy` 后，隔一段时间又出现，里面只有空目录树（如 `migration/orzmusic-deploy-0.0.7/keygenmusic`，0 字节、无文件）。
+
+**机制**：Docker **会为 bind mount 自动创建缺失的宿主源目录**。旧容器（改名前的 pack 路径创建的）在容器配置里死死记着旧源路径（Windows 上是 `/run/desktop/mnt/host/e/migration/...`）——只要它被 `docker start` 一次（哪怕只是为了修别的故障），Docker 就把那串旧目录**重新建出来**。orzmusic 的 `app` 服务挂载 `${MUSIC_DIR:-./keygenmusic}`，且包内真有个 `keygenmusic/` 目录 → 正是复活的路径形状。
+
+**判定**：
+```bash
+for c in $(docker ps -a --format '{{.Names}}'); do docker inspect "$c" --format '{{.Name}} {{range .Mounts}}{{.Source}} {{end}}'; done | grep -i 旧路径
+```
+
+**处置**：先把引用旧路径的容器**重建**（让挂载源指向新路径），确认上面这条无输出后，再删旧目录——否则下次启动旧容器它又回来。本例中 `./start.sh` 重建 app 后彻底消失。
+
+**纪律**：移动/重命名任何被容器 bind mount 的目录后，**当次就把相关容器重建**，不要留“以后再对齐”。
