@@ -6,7 +6,7 @@
 ## 资产关系（迁移前必读）
 
 - **DATA_ROOT**（Mac `/Users/Shared/orzmc`，Win `E:/orzmc`）：含 `.env`（全部密钥）、mcsmanager 数据+双实例、worlds、easybot 数据、cloudflared 凭据、mariadb 数据、status 配置。**备份=打包 DATA_ROOT**
-- **部署包**（运行时非数据，镜像 digest 锁定 compose 自拉）：**Windows 现落点 `E:/deploy/`**（2026-09-11 由 `E:/migration/` 改名，以反映用途=部署包目录）——orzmc-deploy-**0.0.3**（官方 Release 版；2026-09-11 由 0.0.3-dev 开发临时版切换而来）+ orzmusic-deploy-0.0.7；Mac 侧原路径 `~/Services/<svc>-deploy-<ver>`
+- **部署包**（运行时非数据，镜像 digest 锁定 compose 自拉）：**Windows 现落点 `E:/deploy/`**（2026-09-11 由 `E:/migration/` 改名，以反映用途=部署包目录）——orzmc-deploy-**0.0.4** + orzmusic-deploy-**0.0.10**（2026-09-11 确认新版无问题、上游 issue 全关后**旧版本目录/包/旧镜像/旧 DB dump 已全部清理**，目录内只留这两个生产包 + `site/` + 问题清单）；Mac 侧原路径 `~/Services/<svc>-deploy-<ver>`
 - orzmusic 数据在 **Docker 命名卷**（orzmusic_cas_data/orzmusic_db_data），不在 DATA_ROOT → 单独卷导出
 
 ## 端口架构（关键，防 AI 误解）
@@ -114,19 +114,20 @@ docker inspect --format '{{.Name}} {{.State.Health.Status}}' orzmc-mariadb   # �
 - Windows `E:/orzmc`：还原完成，8 容器健康运行（orzmc web/daemon/easybot/mariadb/status/cloudflared + orzmusic app/db），4 公网端点 200；容器 easybot 接管 `easybot.{SERVER_NAME}.cn`，隧道由本机 cloudflared **单点**接管
 - orzmusic `adminApi: disabled`（与 Mac 一致）；测试服双实例（papermc-test/folia-test）**保持停止**（世界数据就位于 daemon `InstanceData/`）
 - 遗留：`E:/orzmc/.env.bak-restore`（DATA_ROOT 改写前备份，2026-09-11 已删）；旧宿主 easybot 残留 `~/.easybot`（已脱离服务，可删）；`E:/migration` 迁移归档 ~2.9G **已删**，目录已改名为 `E:/deploy`
-- **运维包版本（2026-09-11）**：正式 `orzmc-deploy-0.0.3` 已就位并 `validate` 通过、`status` 正确列出全栈（7 容器 + daemon）；开发临时版 0.0.3-dev 已删。**站点增量（官方 tarball 不含，升级勿丢）：compose.yaml easybot 服务的 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 两行**——本站 EasyBot 跑 QQ+飞书 双 adapter，按 `docs/easybot.md`「按需增加」自行加回，官方包默认没有
+- **运维包版本（2026-09-11）**：生产包 = `orzmc-deploy-0.0.4`（旧 0.0.3 目录已删；容器标签 `com.docker.compose.project.working_dir` 实测均为 `E:\deploy\orzmc-deploy-0.0.4`）；OrzMusic = `orzmusic-deploy-0.0.10`。**站点增量（官方 tarball 不含，升级勿丢）：`E:/orzmc/compose.site.yaml`**（飞书凭据等，官方 override 挂载点，ADR-022/issue #11）——不再往包内 compose.yaml 写增量
+- **清理记录（2026-09-11）**：删 `orzmc-deploy-0.0.3`、`orzmusic-deploy-0.0.{7,8,9}`、两个旧 `.tar.gz`、`upgrade-20260911/`（含带凭据的 `.bak`）、`site/backups/*.dump`、`site/orzmusic.env`、`/e/orzmc/database/dumps/mariadb-all-20260908-*.sql`、3 个旧 orzmusic 镜像（~3.4GB）。**凭据真源自此=当前生产包内 `.env`**（删 site 版前已哈希比对与包内一致）。注意：Docker 镜像回收只在 VM 内生效，`docker_data.vhdx` 不会自动缩，E 盘可用空间不一定立即变
 - 隧道单点铁律：源机停 + 目标机 cloudflared 接管 {SERVER_NAME}.cn，**严禁双跑串流量**
 
 ## OrzMusic 生产升级（Windows 实操，2026-09-11 起）
 
-站点现状：生产包 `E:/deploy/orzmusic-deploy-<ver>/`；凭据真源 `E:/deploy/site/orzmusic.env`（`ADMIN_API_TOKEN` + `MUSIC_DIR`，**包外**、换包不丢）；DB 备份落点 `E:/deploy/site/backups`（同样包外）。数据在 Docker 命名卷 `orzmusic_cas_data` / `orzmusic_db_data`（`docker-compose.yml` 钉死 `name: orzmusic`，按版本目录切换不新建空库）。
+站点现状（2026-09-11 清理后）：生产包 `E:/deploy/orzmusic-deploy-<ver>/`；**凭据真源 = 当前生产包内的 `.env`**（只有 `ADMIN_API_TOKEN` + `MUSIC_DIR` 两键，新包靠从上一个包目录拷 `.env` 继承；`site/orzmusic.env` 已于 2026-09-11 删除）；DB 备份落点 `E:/deploy/site/backups`（空目录常驻，升级脚本要求 `BACKUP_DIR` 存在）。数据在 Docker 命名卷 `orzmusic_cas_data` / `orzmusic_db_data`（`docker-compose.yml` 钉死 `name: orzmusic`，按版本目录切换不新建空库）。
 
 ```bash
 # 1. 取包（gh 是原生程序：--dir 写不出 MSYS 路径，必须用 E:/… 原生路径）
 gh release download v<ver> --repo OrzGeeker/OrzMusic \
   --pattern 'orzmusic-deploy-<ver>.tar.gz' --dir 'E:/deploy' --clobber
 cd /e/deploy && tar -xzf orzmusic-deploy-<ver>.tar.gz
-cp site/orzmusic.env orzmusic-deploy-<ver>/.env          # 站点增量搬入新包
+cp orzmusic-deploy-<上一个版本>/.env orzmusic-deploy-<ver>/.env   # 凭据从上一生产包搬入（唯一真源）
 
 # 2. 升级（Windows 没有 make，直接调脚本；三变量必须显式传）
 cd orzmusic-deploy-<ver>
@@ -139,6 +140,6 @@ EXPECTED_VERSION=<ver> SERVICE_URL=http://localhost:8080 bash ./script/release-s
 
 ⚠️ **preflight 单独先跑必假 FAIL「Database is not reachable」**：`IMAGE_REF` 未导出时 compose 无法插值，`exec db pg_isready` 直接报错 → 必须带 `IMAGE_REF` 跑（upgrade 内部会自动带上）。
 
-⚠️ **smoke 第 3 节三项假 FAIL（上游 issue #10，未修）**：脚本用 `-o /dev/null`，本机 mingw curl 8.19（`/mingw64/bin/curl`）写 `/dev/null` 报 `curl: (23) client returned ERROR on write` → `||` 判成「读不到响应头」，且 `PASS=false` 后第 4/5 节**静默无输出**。复核改用 `-o NUL` 或 `-I`（实测三项与 formats/search 全部正常）。**不改上游脚本**（用户偏好原版实现），问题进 issue。
+✅ **smoke 第 3 节假 FAIL 已在 0.0.10 修掉**（上游 issue #10 CLOSED）：旧版脚本用 `-o /dev/null`，mingw curl 写 `/dev/null` 报 `curl: (23) client returned ERROR on write` → 被 `||` 判成「读不到响应头」且 `PASS=false` 后第 4/5 节静默无输出。**0.0.10 起按平台选空设备（MSYS 用 `NUL`）、第 4/5 节无条件执行，实测 14/14 PASS / exit 0**。排查时如遇同类「脚本失败但服务正常」，先手工 `-o NUL` / `-I` 复核再下结论；定位到脚本自身问题→不改上游脚本，提 issue（用户偏好原版实现）。
 
 升级后必查：`/api/health` 的 `version` / `adminApi`（`adminApi=disabled` 说明 `ADMIN_API_TOKEN` 没进容器，升完功能静默缺失）+ 容器 `restart=unless-stopped` / `health=healthy`。

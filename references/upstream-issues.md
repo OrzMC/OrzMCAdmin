@@ -12,7 +12,7 @@
 | [OrzGeeker/OrzMusic#4](https://github.com/OrzGeeker/OrzMusic/issues/4) | `db` 5432 暴露宿主 | CLOSED（0.0.8 修） |
 | [OrzGeeker/OrzMusic#7](https://github.com/OrzGeeker/OrzMusic/issues/7) | `release-smoke.sh` 硬依赖 python3 且吞错 → health 假 FAIL | CLOSED（0.0.9 修，实测通过） |
 | [OrzGeeker/OrzMusic#8](https://github.com/OrzGeeker/OrzMusic/issues/8) | MSYS 路径转换毁 db-backup 容器内 /tmp → upgrade 第 3 步中止 | CLOSED（0.0.9 修，备份恢复产出） |
-| [OrzGeeker/OrzMusic#10](https://github.com/OrzGeeker/OrzMusic/issues/10) | `release-smoke.sh` 用 `-o /dev/null` → MSYS curl 退出 23，静态交付三项假 FAIL + 静默跳过 4/5 节 | OPEN |
+| [OrzGeeker/OrzMusic#10](https://github.com/OrzGeeker/OrzMusic/issues/10) | `release-smoke.sh` 用 `-o /dev/null` → MSYS curl 退出 23，静态交付三项假 FAIL + 静默跳过 4/5 节 | CLOSED（0.0.10 修，14/14 PASS） |
 | [OrzMC/OrzMCDeploy#9](https://github.com/OrzMC/OrzMCDeploy/issues/9) | `DAEMON_PORTS` 应自动忽略（#6 后续） | OPEN |
 | [OrzMC/OrzMCDeploy#10](https://github.com/OrzMC/OrzMCDeploy/issues/10) | daemon 512m 上限 vs 8192 堆上限 | OPEN |
 | [OrzMC/OrzMCDeploy#11](https://github.com/OrzMC/OrzMCDeploy/issues/11) | 站点增量挂载点（compose.site.yaml） | OPEN |
@@ -35,7 +35,7 @@
 | OrzMCDeploy | daemon `--memory 512m` vs 镜像 `--max-old-space-size=8192` 不匹配（重负载可能 OOM kill） | 中 | 暂无（实测空闲 51MB/512MB） |
 | orzgeeker/orzmusic | `release-smoke.sh` 硬依赖 `python3` 且 `2>/dev/null || echo ""` 吞错 → 缺解析器时 health 整片假 FAIL（易误读成服务故障） | 中 | ✅ 0.0.9 已修（#7 CLOSED，实测 `JSON parser available: python`）；垫片已撤 |
 | orzgeeker/orzmusic | MSYS 路径转换把 db-backup 容器内 `/tmp/x.dump` 改写成宿主路径 → `release-upgrade` 第 3 步安全中止 | 中 | ✅ 0.0.9 已修（#8 CLOSED，实测备份 612K 产出）；不需再 `MSYS_NO_PATHCONV` |
-| orzgeeker/orzmusic | `release-smoke.sh` 三处 `-o /dev/null` 在 MSYS/mingw curl 上退出 23 → 静态交付 3 项假 FAIL，且 `PASS=false` 后第 4/5 节静默无输出 | 中 | 已提 issue **#10**（OPEN）；本机不改脚本，改为手工 curl `-o NUL`/`-I` 复核 |
+| orzgeeker/orzmusic | `release-smoke.sh` 三处 `-o /dev/null` 在 MSYS/mingw curl 上退出 23 → 静态交付 3 项假 FAIL，且 `PASS=false` 后第 4/5 节静默无输出 | 中 | ✅ 0.0.10 已修（#10 CLOSED，实测 14/14 PASS、exit 0）；`native-up/native-status` 同类问题一并修 |
 | OrzMCDeploy | 站点增量（FEISHU 凭据）无官方 override 挂载点，换包即丢 | 中 | 手工补 compose.yaml |
 | MCSManager | 实例配置由 daemon 内存持有，运行中改文件被回写覆盖 | 中 | 停 daemon→改→起 |
 | MCSManager | `autoStart`/`autoRestart` 语义与状态持久化无文档 | 中 | 实测摸清（见 docker-service-lifecycle.md §7） |
