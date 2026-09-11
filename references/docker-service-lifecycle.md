@@ -75,6 +75,11 @@ sleep 120 && docker ps -a --format '{{.Names}}' | grep MCSM- || echo '实例未�
 
 ## 5. easybot SQLite 降级坑（属主不对 → 内存库 → 报错风暴）
 
+> **上游已修（2026-09-11）**：EasyBot #121 的 [PR #122](https://github.com/EasyIndie/EasyBot/pull/122)（chmod 失败只 warn、不再中止）与 [PR #123](https://github.com/EasyIndie/EasyBot/pull/123)（内存回退不再静默：`/ready` 报 `message_storage: ephemeral` + 503）均已合入并发布到 `:latest`。
+> **验证方法（可复现）**：隔离临时目录 + `--user 0` 造一个 root 属主 `gateway.db`，用新旧镜像各起一个一次性容器对比——旧镜像复现 `EPERM` → 内存库 → `no such table`；新镜像只记一条 warn 即正常迁移建库。
+> **处置**：生产仍钉旧 digest → `chown` 绕过**必须保留**；升级到含修复的镜像后才能撤除（撤除后本节的验尸/修复步骤仅作历史参考）。
+> **运维信号**：存储降级只在 `/api/v1/ready` 暴露（`message_storage: ephemeral` + HTTP 503），`/api/v1/health` 的 body **没有**该字段；容器内**无 `wget`**，探针用 `curl`。
+
 **症状**：`docker logs orzmc-easybot` 每 250ms 刷 `ERROR ... no such table: outbound_deliveries`（累计可到 20 万+），兼 `no such table: messages`。
 
 **根因**：easybot 容器以 uid 10001 跑，启动时要“secure”已有 DB（改权限），而 `gateway.db` 及 `-wal`/`-shm` 若是 **root:root 777**（被以 root 跑过/还原过程写入过就是），非属主 chmod → `Operation not permitted`：
