@@ -8,7 +8,11 @@
 > **「哪些逻辑可以用单元测试和集成测试保证的，优先使用单元测试和集成测试；其他情况必须要真实验收的，再使用机器人做端到端真实测试。」**
 
 > **⚠️ 当前测试服拓扑（2026-09-03 起全部迁 MCSM 本机栈）**：双 Docker 实例 **`papermc-test`**（uuid 716c2fb7，LoginSecurity）与 **`folia-test`**（uuid 8A932DD4）由本机 MCSM 面板 **mcs.{SERVER_NAME}.cn** 管理（节点 orzmc-local），启停走面板（实例配置/数据在宿主 `/Users/Shared/orzmc/mcsmanager/daemon/data/`，目录 `InstanceData/<uuid>/` 含 server.properties/plugins/ 完整服务端）。旧裸跑目录 `~/minecraft-server`/`~/folia-test` 与 start.sh/screen 启动**已废弃删除**。详见下文「MCSM 本地栈 Docker 实例」节（2026-09-03 迁移实测 + 五连坑）。
-> **⚠️⚠️ 共享 world、严禁同跑**：物理地图一份（`/Users/Shared/orzmc/worlds/test`，extraVolumes 挂载两实例容器 `/server/world`，2026-08-20 优化裁剪后 ~2.1G），玩家存档/建筑/level.dat 全部共享。**两实例绝不能同时运行**（同抢 25565 + world 双写毁档；daemon 软关闭会跳过 docker 实例不自动停）。切换规则：面板先停另一台 → 再启目标实例（docker ps 确认无 MCSM 容器残留后启动）。
+> **✅ 地图已拆分，可同时运行（2026-09-11 更正）**：容器化后两实例**不再共享 world** —— 各自挂载 `InstanceData/<uuid>/` 到容器 `/server`（`docker inspect` 可验，无共享 world 卷），两边 `world` 目录 inode 不同、各 ~2.1G（Paper 侧 = 测试服验证图，Folia 侧 = `[Folia] OrzMC Test`）。实测两实例同时在线：Paper Java `25565` + 基岩 `19132`、Folia Java `25566` + 基岩 `19133`（Folia 的 UDP 宿主映射见 `references/instance-ports.md`，方案 B：`19133:19132/udp`）。
+>
+> 仍然成立的约束：**宿主端口必须错开**（同宿主多实例不能重复发布同一个 UDP/TCP 端口）；实例启停一律走面板（daemon 软关闭不自动停 docker 实例）。
+>
+> （历史）此前 `worlds/test` + extraVolumes 共享地图的“严禁同跑”规则已废止。
 > **E2E 套件 = 插件仓库 `plugin/e2e/`**（2026-08-19 建立）：`bash e2e/run-all.sh [-c NN] [-r]` 一键跑；**双核心支持**：`ORZMC_CORE=folia|paper` 显式指定 + 测试服目录/日志/备份路径环境变量注入（run-all.sh 不再自动检测核心——Docker 实例 java 进程在容器内，宿主 ps 不可见；MCSM 对接层由技能 wrapper 脚本 `scripts/e2e-mcsm-wrapper.sh` 负责：确认实例状态 + 注入全部环境变量 + 调仓库 run-all.sh，2026-09-03 起）——**05-groupmsg.js 群消息场景**（2026-08-19 加入，PR #201）：whitelist_block 拦截/player_join 上线/player_digest 双 bot 下线聚合/player_quit 单发/ip_blacklist_block——**日志断言**（Notifier.routeEvent 统一 `[群消息:<key>]` 日志 + ⏎ 转义换行，JUL→log4j 只输出首行）+ 占位符残留检查（防 {online_list} 类模板回归）；Folia 11/11 + Paper 11/11 双绿；**06-permission-msg.js 权限/审核消息**（2026-08-19 加入，PR #202）：review_submitted 申请发起 / review_approved 审核通过（含审核人）/ rank_promoted 晋升（🎉「建造者」中文显示名）/ review_rejected 拒绝 / review_cancelled 撤回——**关键坑**：LP 设组须**先建后设**（parent set 对不存在用户创建的虚拟用户会被首登覆盖：先进服建用户→quit→parent+group set→重进）；**登录节流 20s**（login_rate_limit 5/min + LoginSecurity 冷却 13s+，Folia SimpleLogin 无此坑）；/review 仅玩家可用 + isOp/orzmc.admin（自建 op 审核人 RCON op+deop 还原）；异常路径 try/finally quit（防残留 bot 触发 per-IP 限流）；Folia 19/19 + Paper 19/19 双绿；`lib/rcon.js`（Promise RCON + waitLog tail 3000 防刷屏挤出）+ `lib/bot.js`（spawnBot 自适应 SimpleLogin/LoginSecurity 登录：probeLogin 先发 /login 探测、未注册转 /register；⚠️ 成功判定只认「登录成功/注册成功」，勿匹配「Welcome! just joined」首登广播否则过早 resolve 命令被拦）；用例自包含（专用账号自动注册+清理白名单）。测试账号密码：SimpleLogin 版 E2E 专用 E2EPass123（旧 LoginSecurity 版 TestNewbie/NewbiePass123 已不适用）。
 > **BUG-E2E-001（✅ 已修复并双核心验证 2026-08-19）**：`$w` 白名单分页在 Folia 上抛 `IllegalArgumentException: Delay ticks may not be <= 0`——Paginator.paginatePages L71 `i * delayTicks` 在 i=0 时 delay=0，Paper BukkitScheduler 允许 0 tick、**Folia FoliaGlobalRegionScheduler.runDelayed 要求 ≥1**（`delayTicks<=0?5L` 保护只覆盖配置值不覆盖 i=0 首页）→ $w 分页 Folia 完全不可用。**修复**：Paginator 两处 `Math.max(1L, (long) i * ...)` + ServerFacade.runLater 钳位 ≥1 + PaginatorTest 回归护栏（首页 delay≥1）。验证：Folia `$w` 输出 123 人 ✅、Paper 01 用例 8/8 ✅。记录：`plugin/e2e/buglog.md`。
 > **BUG-E2E-002（✅ 已修复并端到端验证 2026-08-19，backup-core v0.2.2 = PR #46+#47）**：大世界（Paper 服 317 万 chunk）`$b` 备份极慢+失败误报——**不是新压缩格式**！三层坑：①compression byte 非法（如 49）②**长度字段荒谬但 compression 合法**（如 0x789c=ZLIB 但长度 20 亿 → dataBytes 读 20 亿字节卡死）③**offset 越过文件末尾 → BufferedRafAccess readFully avail<=0 死循环（CPU 100% 无进度）**。修复：McaEntry `UNKNOWN` 枚举 + 长度 >8MB 短路 + readFully EOF 保护 + pattern 异常安全保留。插件侧 errorHandler 聚合（Pattern/Write-损坏不报失败，Done 汇总）。**验证：Paper 服 $b 14分21秒完成 + zip 2.03GB + 「264 个损坏区块已安全保留」**。E2E 04 备份断言用「阶段进度 + .zip 落盘」（大世界全量备份 ~15min）。
@@ -55,7 +59,7 @@
 - **⚠️ 登录风暴：冷区块首登崩、热世界不崩**（2026-08-13 实测）：冷启动后首轮登录加载全冷 chunk → 10 bot 就 TPS 4.2；预热后（同轮测试后半程）40 bot 登录风暴 TPS 最低 16.1 稳定 18+，0 次 Can't keep up → **活动当天必须预热 spawn 区域**（提前登录/加载），登录风暴本身不是杀手，冷 chunk 生成才是
 - **LP check true ≠ 命令可用（子权限陷阱）**：`/mail send` 需 `essentials.mail.send`、`/warp` 需 `essentials.warp.list`、`/time set` 需 `essentials.time.set`——最终验收必须 bot 实测命令
 - **RCON 发 LP 命令偶发丢失 + mtime 验证不可靠（2026-08-30 沉淀）**：LP 命令经 RCON 偶发不生效；且**文件 mtime 变化 ≠ 命令成功**（插件后台定时保存/玩家数据写入也会写库写盘，mtime 被刷新是假阳性）——验证必须以 bot 实测（权限/命令真值）为准，必要时重复执行命令
-- **测试服启停规范（2026-09-03 MCSM 版，替代裸跑流程）**：实例启停一律走面板（docker 实例 daemon 软关闭不自动停——共享 world 严禁同跑，切换前手动停另一台）；启动成功判定 = 日志 `Done (` + 端口监听（`docker ps --filter name=MCSM-` 确认容器名）+ **jar mtime 变化**（换 jar 升级后）；重启/切换前检查共享 world `session.lock` 残留（异常崩溃遗留锁会拒启，需清）。⚠️ 裸跑期流程（RCON stop → kill -0 → 删锁）已废弃，仅适用于旧裸跑/进程模式实例
+- **测试服启停规范（2026-09-03 MCSM 版，替代裸跑流程）**：实例启停一律走面板（docker 实例 daemon 软关闭不自动停，停服/重启仍要手动操作面板）；启动成功判定 = 日志 `Done (` + 端口监听（`docker ps --filter name=MCSM-` 确认容器名）+ **jar mtime 变化**（换 jar 升级后）；重启/切换前检查共享 world `session.lock` 残留（异常崩溃遗留锁会拒启，需清）。⚠️ 裸跑期流程（RCON stop → kill -0 → 删锁）已废弃，仅适用于旧裸跑/进程模式实例
 
 ## 跨服/双服测试（transfer）
 
@@ -65,7 +69,7 @@ cd /Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/<源实例uuid> && ta
 # ⚠️ 必改：server.properties（server-port=25566、rcon.port=25576、motd）；第二服 world 须独立（勿指向共享 world）
 ```
 - **✅ 测完即删（2026-08-15 老板决策）**：双服测试是临时动作，完成后必须清理防占磁盘（先确认无进程、无 cron 引用）
-- 坑：两服严禁同跑共享 world（session.lock/数据双写）；第二服复制 Geyser 配置会端口冲突（无害）；easybot 连同一网关 409（无害）
+- 坑：~~两服严禁同跑共享 world~~（2026-09-11 起各自独立地图，可同时跑，但**宿主端口必须错开**）；第二服复制 Geyser 配置会端口冲突（无害）；easybot 连同一网关 409（无害）
 - ⚠️ **MCSM 环境推荐克隆实例法**：双服测试目标服用「手工克隆实例」（见「MCSM 本地栈」节坑 5：uuidgen → rsync InstanceData → cp 实例 JSON 改 nickname/端口/独立 world 目录 → 重启 daemon），比目录复制 + 裸跑更贴合当前栈
 
 ### transfer 机制（核心认知）
@@ -91,7 +95,7 @@ y=68 obsidian（顶梁）/ y=65-67 nether_portal / y=64 obsidian（底梁）/ y=
 
 ## MCSM 本地栈 Docker 实例（2026-09-03 迁移实测，五连坑）
 
-本地测试服（Paper/Folia）已迁入本机 MCSM 栈（mcs.{SERVER_NAME}.cn）管理，**双 Docker 实例共享 world**：
+本地测试服（Paper/Folia）已迁入本机 MCSM 栈（mcs.{SERVER_NAME}.cn）管理，**双 Docker 实例（2026-09-11 起各自独立地图，可同时运行）**：
 - 实例 `papermc-test`（uuid 716c2fb7）/ `folia-test`（uuid 8A932DD4），共享 world `/Users/Shared/orzmc/worlds/test`（extraVolumes 挂两实例容器 `/server/world`），**严禁同跑**（同 25565 + world 双写毁档；daemon 软关闭 skip docker 实例——切实例前必须面板手动停另一台）
 - 面板 UI 建实例默认**进程模式**（模板误导）；改 Docker 走 InstanceConfig JSON：停实例 → 改 `daemon/data/InstanceConfig/<uuid>.json` → 重启 daemon 容器 → 面板启动
 - **五连坑**：

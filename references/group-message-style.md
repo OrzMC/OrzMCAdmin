@@ -65,4 +65,4 @@ node exec-cmds.js StyleAdm "/review approve TestNewbie"  # 申请通过（StyleA
 - ⚠️ **重复 `screen -dmS folia ./start.sh` 会叠加多实例**：同端口第二个实例 bind 失败但仍占 screen/资源——启动前先 `ps aux | grep folia-26` 确认无残留 + `screen -wipe`
 - ⚠️ **cp 覆盖运行中 jar 不生效**（旧类已加载），且重新打包后必须核对 sha256（Gradle 增量可能跳过 shadowJar → 用 `--rerun-tasks` 强制）
 - 测试服 = MCSM 实例 `folia-test`（uuid 8A932DD4，Folia 26.2，端口 25565/25575），配置在实例目录 `plugins/OrzMC/`（宿主 `/Users/Shared/orzmc/mcsmanager/daemon/data/InstanceData/8A932DD47F4D42AAAD6A6A9A5FAD2A91/`）
-- 干净启动流程（2026-09-03 迁 MCSM 后）：面板停止实例 → 清共享 world `session.lock` 残留 → 面板启动 folia-test → 等端口监听 + 日志 `Done (.*)! For help`
+- 干净启动流程（2026-09-03 迁 MCSM 后；2026-09-11 起两实例地图已独立、可同时跑）：面板停止实例 →（若上次异常崩溃）清**该实例自己** `world/session.lock` 残留 → 面板启动 folia-test → 等端口监听 + 日志 `Done (.*)! For help`
