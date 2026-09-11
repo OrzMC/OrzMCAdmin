@@ -116,3 +116,29 @@ docker inspect --format '{{.Name}} {{.State.Health.Status}}' orzmc-mariadb   # �
 - 遗留：`E:/orzmc/.env.bak-restore`（DATA_ROOT 改写前备份，2026-09-11 已删）；旧宿主 easybot 残留 `~/.easybot`（已脱离服务，可删）；`E:/migration` 迁移归档 ~2.9G **已删**，目录已改名为 `E:/deploy`
 - **运维包版本（2026-09-11）**：正式 `orzmc-deploy-0.0.3` 已就位并 `validate` 通过、`status` 正确列出全栈（7 容器 + daemon）；开发临时版 0.0.3-dev 已删。**站点增量（官方 tarball 不含，升级勿丢）：compose.yaml easybot 服务的 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 两行**——本站 EasyBot 跑 QQ+飞书 双 adapter，按 `docs/easybot.md`「按需增加」自行加回，官方包默认没有
 - 隧道单点铁律：源机停 + 目标机 cloudflared 接管 {SERVER_NAME}.cn，**严禁双跑串流量**
+
+## OrzMusic 生产升级（Windows 实操，2026-09-11 起）
+
+站点现状：生产包 `E:/deploy/orzmusic-deploy-<ver>/`；凭据真源 `E:/deploy/site/orzmusic.env`（`ADMIN_API_TOKEN` + `MUSIC_DIR`，**包外**、换包不丢）；DB 备份落点 `E:/deploy/site/backups`（同样包外）。数据在 Docker 命名卷 `orzmusic_cas_data` / `orzmusic_db_data`（`docker-compose.yml` 钉死 `name: orzmusic`，按版本目录切换不新建空库）。
+
+```bash
+# 1. 取包（gh 是原生程序：--dir 写不出 MSYS 路径，必须用 E:/… 原生路径）
+gh release download v<ver> --repo OrzGeeker/OrzMusic \
+  --pattern 'orzmusic-deploy-<ver>.tar.gz' --dir 'E:/deploy' --clobber
+cd /e/deploy && tar -xzf orzmusic-deploy-<ver>.tar.gz
+cp site/orzmusic.env orzmusic-deploy-<ver>/.env          # 站点增量搬入新包
+
+# 2. 升级（Windows 没有 make，直接调脚本；三变量必须显式传）
+cd orzmusic-deploy-<ver>
+set -a && . ./.env && set +a                              # 拿到 ADMIN_API_TOKEN（避免手抄密钥）
+export IMAGE_REF='ghcr.io/orzgeeker/orzmusic@sha256:<digest>'
+export BACKUP_DIR='E:/deploy/site/backups'
+bash ./script/release-upgrade.sh                           # preflight→pull→backup→stop→migrate→start
+EXPECTED_VERSION=<ver> SERVICE_URL=http://localhost:8080 bash ./script/release-smoke.sh
+```
+
+⚠️ **preflight 单独先跑必假 FAIL「Database is not reachable」**：`IMAGE_REF` 未导出时 compose 无法插值，`exec db pg_isready` 直接报错 → 必须带 `IMAGE_REF` 跑（upgrade 内部会自动带上）。
+
+⚠️ **smoke 第 3 节三项假 FAIL（上游 issue #10，未修）**：脚本用 `-o /dev/null`，本机 mingw curl 8.19（`/mingw64/bin/curl`）写 `/dev/null` 报 `curl: (23) client returned ERROR on write` → `||` 判成「读不到响应头」，且 `PASS=false` 后第 4/5 节**静默无输出**。复核改用 `-o NUL` 或 `-I`（实测三项与 formats/search 全部正常）。**不改上游脚本**（用户偏好原版实现），问题进 issue。
+
+升级后必查：`/api/health` 的 `version` / `adminApi`（`adminApi=disabled` 说明 `ADMIN_API_TOKEN` 没进容器，升完功能静默缺失）+ 容器 `restart=unless-stopped` / `health=healthy`。
