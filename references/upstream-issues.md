@@ -26,10 +26,12 @@
 |---|---|---|---|
 | easyindie/easybot | DB 初始化失败即静默降级内存库：无告警、无速率限制、**health 仍报 healthy**，导致数据不落盘 + 日志风暴 | 高 | 手工 `chown 10001:10001` |
 | easyindie/easybot | `secure existing DB` 只 chmod 不纠属主，报错无指引 | 中 | 同上 |
-| orzgeeker/orzmusic | 官方 compose 所有服务 `restart` 默认 `no` → 重启不自愈（实测静默宕机 12h） | 高 | `site/orzmusic.restart.yml` + `docker update` |
+| orzgeeker/orzmusic | 官方 compose 所有服务 `restart` 默认 `no` → 重启不自愈（实测静默宕机 12h） | 高 | ✅ 0.0.8 已修（#2 CLOSED，已贴自愈实测：restarts 0→1）；本地 `restart.yml` + `docker update` 补丁已撤 |
 | orzgeeker/orzmusic | `ADMIN_API_TOKEN` 取值链含 macOS `~/.bash_history` → 跨平台静默取空 | 中 | 未补（待用户提供） |
 | OrzMCDeploy | `DAEMON_PORTS` 与 docker 型实例冲突，0.0.3 仅告警不自动跳过 | 中 | `.env` 置空 |
 | OrzMCDeploy | daemon `--memory 512m` vs 镜像 `--max-old-space-size=8192` 不匹配（重负载可能 OOM kill） | 中 | 暂无（实测空闲 51MB/512MB） |
+| orzgeeker/orzmusic | `release-smoke.sh` 硬依赖 `python3` 且 `2>/dev/null || echo ""` 吞错 → 缺解析器时 health 整片假 FAIL（易误读成服务故障） | 中 | 已提 issue **#7**；本机用 `%TEMP%\shim\python3.exe` 垫片绕过 |
+| orzgeeker/orzmusic | MSYS 路径转换把 db-backup 容器内 `/tmp/x.dump` 改写成宿主路径 → `release-upgrade` 第 3 步安全中止 | 中 | 已提 issue **#8**；跑脚本前 `MSYS_NO_PATHCONV=1` + 显式 `BACKUP_DIR` |
 | OrzMCDeploy | 站点增量（FEISHU 凭据）无官方 override 挂载点，换包即丢 | 中 | 手工补 compose.yaml |
 | MCSManager | 实例配置由 daemon 内存持有，运行中改文件被回写覆盖 | 中 | 停 daemon→改→起 |
 | MCSManager | `autoStart`/`autoRestart` 语义与状态持久化无文档 | 中 | 实测摸清（见 docker-service-lifecycle.md §7） |

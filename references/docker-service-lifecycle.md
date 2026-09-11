@@ -30,12 +30,17 @@
 ```bash
 # ① 已存在容器：即刻生效
 docker update --restart unless-stopped orzmusic-app-1 orzmusic-db-1
-# ② 将来重建容器时生效：站点覆盖文件 E:/deploy/site/orzmusic.restart.yml
-cd /e/deploy/orzmusic-deploy-0.0.7
-IMAGE_REF=<digest> ADMIN_API_TOKEN=<token> docker compose \
-  -f docker-compose.yml -f docker-compose.production.yml -f ../site/orzmusic.restart.yml up -d
+# ② 将来重建容器时生效：站点覆盖文件（放版本目录之外，如 E:/deploy/site/xxx.restart.yml）
+cd /e/deploy/<包目录>
+IMAGE_REF=<digest> docker compose \
+  -f docker-compose.yml -f docker-compose.production.yml -f ../site/xxx.restart.yml up -d
 ```
 站点覆盖文件放 `E:/deploy/site/`（版本目录外），升版本不会被冲掉。
+
+> **当前状态（2026-09-11）**：orzmusic 自 v0.0.8 起**官方 compose 自带 `restart: unless-stopped`**（app/db），
+> 上文的 `site/orzmusic.restart.yml` 与 `docker update --restart` 两处补丁已**全部删除/撤下**。
+> 这套覆盖手法只当“上游又漏 restart”时的备用手段；验证 compose 是否真的自带时，
+> **只带两个官方文件**跑 `docker compose … config`（带上自己的覆盖文件会自欺）。
 
 ## 3. MCSM 实例「手动启停」：**必须停 daemon 后再改文件**
 
