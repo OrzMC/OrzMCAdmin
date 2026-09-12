@@ -25,6 +25,31 @@ git diff main...HEAD | pi -p "审查这个改动：... 只报真实问题，无�
 
 ⚠️ **仍要自己验收**：编码智能体自报不可信（2026-09-12 实测：claude 报「完成」，Py/单测一跑就红——本机 ffmpeg 无 drawtext 导致封面必挂）。委派后必须由 Hermes 亲自跑测试/编译/端到端。
 
+## pi 委派标准流程（2026-09-12 两次实战定型）
+
+```
+① write_file 任务书  →  ② write_file runner.sh  →  ③ terminal(background=true,
+   notify_on_complete=true) bash runner.sh  →  ④ process wait/poll  →  ⑤ Hermes 亲自复验
+```
+
+**① 任务书要素**（缺一项 pi 就容易跑偏）：目标一句话 ／ 精确文件清单（只改这些）／新增或修改的**路径优先级链** ／ 硬性要求（不引入依赖、不碰真实 HOME、不重构其他脚本）／ **必须跑的测试命令与当前基线** ／ 期望输出格式（文件清单 + 测试结果原文 + 真实 dry-run 证据）。
+
+**② runner 模板**（`/tmp/run_pi_<topic>.sh`）：
+```bash
+#!/bin/bash
+cd /path/to/repo || exit 1
+SID=$(uuidgen | tr 'A-Z' 'a-z')            # 固定 id 才可续跑
+echo "$SID" > /tmp/pi_session_<topic>.txt  # 存 id 供后续 --session-id 续跑
+/usr/local/bin/pi -p --session-id "$SID" "$(cat /tmp/brief_pi_<topic>.md)"
+```
+⚠️ **必须经 `.sh` 文件启动**：裸内联 `pi -p "$(cat brief.md)"` 会把巨型 payload＋`$( )` 一起塞进
+terminal → 踩 Hermes 解析门禁（见 `macos-bash-scripting/references/hermes-command-execution-pitfalls.md` §1）。
+
+**③④ 观察到的正常现象**：首跑打印 `Warning: No project session found with id '<uuid>'; creating a new session with that id.` —— **不是错误**，是固定 id 建会话。单任务耗时约 **1.5–3 分钟**（本机 deepseek-v4-flash），用 `notify_on_complete` 别轮询。
+
+**⑤ 复验纪律（本会话重复两次都抓到差距点）**：pi 的自报会附它自己跑的测试输出，但**仍必须 Hermes 亲自**：
+`python3 -m unittest discover -s scripts/tests -t .`（对比基线条数）+ 真实环境 dry-run + **读改动的源码**（删除/安全类脚本逐行看门禁）+ 部署副本 `md5` 同源。见 `hermes-cron-ops/references/no-agent-job-authoring.md` §五「验收演练 recipe」。
+
 ## PR 合并流程（老板定，2026-08-29）
 
 开发阶段只 commit 本地分支（不 push、不 review）→ 老板决定合并后：
