@@ -10,7 +10,7 @@ required_commands: [java, curl, tar]
 
 # OrzMC Minecraft 运维（统一技能）
 
-> **技能治理（2026-08-11 用户决策，已合并）**：与 MC 运维强相关的技能一律**合并进本技能**维护迭代（references + scripts），不再单独立技能；新增强相关知识直接落这里。已合并：easybot-gateway-ops（→ references/easybot-gateway.md）、deployment-config-sync（→ references/config-sync.md）、git-submodule-sync（→ references/git-submodule-sync.md，OrzMC monorepo 子模块同步）、java-test-pitfalls（→ references/java-test-pitfalls.md，插件单测编译坑）、**ai-coding-agents（→ references/coding-agents.md，2026-08-29：编程交给 Claude Code 编排工作流 + 合并前一次 review 时机 + acceptEdits 坑）**；模组托管（minecraft-modpack-server）已清理，与原生 PaperMC 场景无关。
+> **技能治理（2026-08-11 用户决策，已合并）**：与 MC 运维强相关的技能一律**合并进本技能**维护迭代（references + scripts），不再单独立技能；新增强相关知识直接落这里。已合并：easybot-gateway-ops（→ references/easybot-gateway.md）、deployment-config-sync（→ references/config-sync.md）、git-submodule-sync（→ references/git-submodule-sync.md，OrzMC monorepo 子模块同步）、java-test-pitfalls（→ references/java-test-pitfalls.md，插件单测编译坑）、**ai-coding-agents（→ references/coding-agents.md，2026-08-29：编程交给 Claude Code 编排工作流 + 合并前一次 review 时机 + acceptEdits 坑）**、**grimac-config-tuning（→ references/grimac-tuning.md，2026-09-12：GrimAC 配置语义/官方文档获取/误报源对照/工具坑）**、**bukkit-plugin-testing（→ references/java-test-pitfalls.md，2026-09-12：Mockito 运行时陷阱/Bukkit mock 限制/Jacoco 覆盖率工作流）**、**paper-26-plugin-dev（→ references/plugin-build.md + references/papermc-tabcomplete-testing.md，2026-09-12：Brigadier 命令注册/迁移 8 坑/deprecation 清零）**；模组托管（minecraft-modpack-server）已清理，与原生 PaperMC 场景无关。
 
 > **知识分类索引**：本 SKILL.md 只留决策路径；详细知识在 `references/`（后端 API 表 / Spark / 实体统计 / 机器人）：
 >
@@ -22,7 +22,7 @@ required_commands: [java, curl, tar]
 > | **EasyBot IM 网关运维（docker 容器/健康检查/QQ token/投递诊断 API 版 `scripts/easybot_deliveries.py`；0.0.33 起投递记录在 messages 表；原 easybot-gateway-ops 技能合并）** | `references/easybot-gateway.md` |
 > | **部署配置同步（config drift 判定/fallback 判断/补键同步；原 deployment-config-sync 技能合并）** | `references/config-sync.md` |
 > | **Git 子模块全量同步（OrzMC monorepo 15 子模块；默认分支探测/发布后指针/分支清理/独立 clone 去重；原 git-submodule-sync 技能合并）** | `references/git-submodule-sync.md` |
-> | **Java 测试编译陷阱（Mockito 泛型捕获/SuppressWarnings 位置/CI warnings 清零；原 java-test-pitfalls 技能合并）** | `references/java-test-pitfalls.md` |
+> | **Java 测试编译陷阱 + 单测运行时陷阱（Mockito 泛型捕获/SuppressWarnings 位置/CI warnings 清零；**2026-09-12 并入 bukkit-plugin-testing**：Mockito UnfinishedStubbing/Stub 顺序/argThat null/异步进行中模拟、Bukkit API mock 限制（Material.isSolid 依赖注册表、Vector.clone 返回 null）、Jacoco 覆盖率缺口定位工作流）** | `references/java-test-pitfalls.md` |
 > | **AI 编码智能体协作（编程交给 Claude Code + Hermes 编排；三模式/acceptEdits 坑/合并前一次 review；原 ai-coding-agents 技能合并）** | `references/coding-agents.md` |
 > | Spark 性能分析（命令/JSON/判断/踩坑） | `references/spark-analysis.md` |
 > | 快速实体统计（paper entity list / Spark / 计分板） | `references/entity-statistics.md` |
@@ -31,7 +31,8 @@ required_commands: [java, curl, tar]
 > | Geyser 基岩支持（当前 offline 直连模式；floodgate 已回退 2026-08-05） | `references/geyser-floodgate.md` |
 > | **实例端口模型与审计（docker 实例必须逐条发布 `宿主:容器/协议`；端口以实例实际配置为准而非默认 25565/19132；多实例共享宿主时 UDP 错开 19132/19133；宿主≠容器 时 `clone-remote-port` 必须 false；Cloudflare Tunnel 不支持 UDP；脚本 `scripts/port-audit.py` 核对期望端口 vs 已发布 + 真实协议探测）** | `references/instance-ports.md` |
 > | **公网入口排障（域名+路由器映射+防火墙都"配好了"外网仍连不上）：根因常是本机 Clash TUN 抢默认路由 → 入站应答源地址被定成 198.18.0.1/钻进隧道；修法 = WSL 内加通用策略路由 `ip rule add from <LAN IP> table 100`（任意端口零维护，脚本 `scripts/orzmc-mc-reply-route.sh` + Windows 计划任务 OrzMC-MC-Reply-Route 每 10min 自愈）；⚠️ 老板坚持防火墙/路由器逐端口配置，勿再提 DMZ/端口段；含「ICMP 通但 TCP 全超时」判定法与外部节点验证法（勿在本机测）** | `references/public-ingress-clash-tun.md` |
-> | **插件源码构建/开发（构建工具选择、Gradle/Maven 坑、PR 流程、发布规范）** | `references/plugin-build.md` |
+> | **插件源码构建/开发（构建工具选择、Gradle/Maven 坑、PR 流程、发布规范；**2026-09-12 并入 paper-26-plugin-dev**：Paper 26.x Brigadier 命令注册（LifecycleEvents.COMMANDS）、幽灵命令/greedyString 参数类型等迁移 8 坑、deprecation 零警告清理）** | `references/plugin-build.md` |
+> | **GrimAC 反作弊配置调优（配置三层体系/config.yml 官方模板零漂移/punishments 阈值=300s 窗口违规次数非 VL/per-check 豁免三兄弟/官方 mods 兼容表/误报源与工具坑；**2026-09-12 并入 grimac-config-tuning**；部署现状与决策史见本 SKILL.md 的 GrimAC 段）** | `references/grimac-tuning.md` |
 > | **插件升级与配置迁移（三端范式、Exaroton/MCSM API 坑、EzShops 存储、Geyser 排查）** | `references/plugin-mgmt.md` |
 > | **商店经济防刷（EzShops 实例：纯禁卖方案/漏洞分类学/审计脚本/bot 验收/结算取价机制/交易记录三层根因链；原 minecraft-shop-economy-hardening 技能 2026-08-30 合并）** | `references/shop-economy.md` + `scripts/shop_arbitrage_check.py` |
 > | **WorldEdit 防崩服（Litematica 投影调研/崩服机制/限额+物理方块禁用方案 A+B/验证方法/三端同步状态）** | `references/worldedit-safety.md` |

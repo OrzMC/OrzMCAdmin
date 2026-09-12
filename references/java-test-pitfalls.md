@@ -73,3 +73,66 @@ gh run view <id> --log | grep -c "##\[warning\]"   # 期望 0
 
 - **删配置/删代码时 grep 全引用面**：record 字段、解析器、测试构造器、健康检查（类型校验 + 建议校验常分两处）都要同步删，漏一处编译即挂
 - **patch YAML 删段后必须回读结构**：误把相邻段键名改掉的 patch 事故，`grep -n "^\s\s\w*:"` 验证段结构
+
+---
+
+# 以下由独立技能 bukkit-plugin-testing 合并入（2026-09-12）
+
+> 来源：2026-08-19 OrzMC 插件补测实战（maintenance/paging/ws/review/teleport 五模块 34%→59%~97%，总覆盖 82.2%→85.4%）。
+
+## 分层测试原则（本类任务）
+
+1. **分层测试**：业务状态机/纯逻辑 → 单测（mock 端口）；平台行为（Bukkit 事件、LP 授权、网络链路）→ MockBukkit 集成测试或真实服 E2E。单测测不了的（依赖 Bukkit 注册表）明确留给上层，别硬 mock。
+2. **覆盖率缺口定位**：`build/reports/jacoco/test/jacocoTestReport.xml` 按 package→class 解析 INSTRUCTION 计数，找低覆盖类的具体方法再补测（避免边际浪费）。
+3. **补测后必须重跑 jacoco 验证提升**，并保持全量 `./gradlew test` 绿。
+
+## Mockito 运行时陷阱（编译能过但运行报错）
+
+### UnfinishedStubbingException
+- `doAnswer(inv -> null).when(mock).runAsync(any())`（void 方法返回 null 的 lambda）→ 报 UnfinishedStubbing → **void 方法用 `doNothing()`**
+- `when(mockA.method()).thenReturn(mockB.other())` —— stubbing 进行中调用另一 mock 方法 → 同错 → **先存变量**：`X v = mockB.other(); when(mockA.method()).thenReturn(v);`
+
+### Stub 匹配顺序（后声明优先）
+- `when(m.get(a,b,c)).thenReturn(A)`（anyInt 兜底）+ 后声明的精确 `when(m.get(10,64,20)).thenReturn(B)` → 精确参数命中 B ✓；**顺序反了精确 stub 被兜底覆盖**。兜底先声明、精确后声明。
+
+### argThat 可能收到 null
+- `when(m.get(argThat(l -> l.getX()==1)))` 的 lambda 会收到 null 参数 → NPE → 必须 `argThat(l -> l != null && ...)`。
+
+### 模拟「异步进行中」状态（互斥/并发测试）
+- 立即执行 mock（`doAnswer(inv -> { run(inv.getArgument(0)); return null; })`）会让异步任务同步跑完 → 无法断言「进行中」。**模拟进行中 = runAsync 配 `doNothing()`（不执行）**；断言用计数器（`AtomicInteger` 在 stub 里递增）而非 verify 精确次数（业务内部可能多次调用同一方法）。
+
+## Bukkit API mock 限制（注册表依赖）
+
+| API | 纯 JUnit 行为 | 对策 |
+|:--|:--|:--|
+| `Material.isSolid()`（及 Sound 枚举静态初始化） | 依赖 Bukkit 注册表，未初始化返回 false/抛错 | 成功路径断言留 E2E/集成测试；单测只测不依赖注册表的分支 |
+| `Material.isAir()` / `DANGEROUS.contains(...)`（EnumSet） | 不依赖注册表，可测 | 用 DANGEROUS 方块（LAVA/FIRE）测拦截分支 |
+| `Block.isAir()` | **不存在**（isAir 是 Material 的方法） | 编译错误时检查是不是 mock 错了对象 |
+| mock `Vector` | `clone()` 返回 null（mock 不执行真实方法）→ NPE | **用真实 `new Vector(x,y,z)`**（clone/normalize/dot 全真实工作） |
+| `Location.getBlock()` | 实现可能走 `World.getBlockAt(Location)` 重载（非 int 重载） | 两种重载都 stub；或 `thenAnswer` 按 `l.getBlockX/Y/Z()` 坐标分发 |
+
+## Jacoco 覆盖率提升工作流
+
+```bash
+# 1. 定位缺口
+python3 -c "
+import xml.etree.ElementTree as ET
+t = ET.parse('build/reports/jacoco/test/jacocoTestReport.xml')
+for p in t.getroot().findall('package'):
+    if '目标模块' in p.attrib['name']:
+        for c in p.findall('class'):
+            m=cv=0
+            for ctr in c.findall('counter'):
+                if ctr.attrib['type']=='INSTRUCTION':
+                    m,cv=int(ctr.attrib['missed']),int(ctr.attrib['covered'])
+            if m+cv: print(f'{cv/(m+cv)*100:6.1f}%  {c.attrib[\"name\"].split(\"/\")[-1]}')"
+# 2. 补测 → 3. ./gradlew test jacocoTestReport 验证 → 4. 全量 test 回归
+```
+
+## Bukkit 单测额外 Pitfalls（本轮实战）
+
+- **测试断言别用 `String.includes(正则对象)`**：waitMessage 类工具若用 `includes()` 接收正则会被 toString 成 `/.../` 字符串永不匹配 —— 断言工具要显式支持正则（`typeof === 'string' ? includes : test`）。
+- **单页分页也会调度 runLater**：断言「N 次延迟任务」前先读源码确认行为，别凭直觉写。
+- **后台任务（gradle 构建/长扫描）用 background=true 并行**，用 wait/poll 交错推进多线工作。
+- **测试源码里 `\u` 序列会触发 javac Unicode 转义（注释里也一样炸）**：javac 词法阶段处理 `\uXXXX`，注释写 `\uZZZZ` 或 `\\uXXXX`（连续反斜杠第二个 `\`+u 仍构成转义）都报「非法的 Unicode 逃逸」。构造含反斜杠的测试夹具字符串用拼接：`String b = "\\"; ("level-name=" + b + "uZZZZ\n")`；注释就写「非法 Unicode 转义」避开字样。实例：OrzMC #217 测试写非法 server.properties 触发 `Properties.load` 的 IllegalArgumentException。
+- 补测后 spotlessApply 可能改格式，提交前跑一次。
