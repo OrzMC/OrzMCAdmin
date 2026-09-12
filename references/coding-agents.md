@@ -1,7 +1,29 @@
 # AI 编码智能体协作（Claude Code）
 
-> **工作流决策（2026-08-29 老板定）**：编程/改代码/改配置**直接交给本地 Claude Code**（专用编码智能体，DeepSeek anthropic 端点），Hermes 只做**编排**（任务拆分/规划/验收/测试/部署/git 推送/跨工具调度）。Hermes 不直接写业务代码。
-> **Review 时机**：PR 仅在**最终决定合并前**做一次 code review（`git diff main...HEAD | claude -p '...'`），开发过程中不做（避免过多 review 消耗 token）。
+> **工作流决策（2026-08-29 定，2026-09-12 更新）**：编程/改代码/改配置**直接交给本地编码智能体——首选 `pi`（Pi Coding Agent；老板定：**比 claude 更省 token**）**，claude CLI 作为回退。Hermes 只做**编排**（任务拆分/规划/验收/测试/部署/git 推送/跨工具调度）。Hermes 不直接写业务代码。
+> **Review 时机**：PR 仅在**最终决定合并前**做一次 code review（`git diff main...HEAD | pi -p '...'`），开发过程中不做（避免过多 review 消耗 token）。
+
+## pi 用法（首选编码智能体，2026-09-12 启用）
+
+| 事实 | 值 |
+|:--|:--|
+| 二进制 | `/usr/local/bin/pi`（npm 全局 `@earendil-works/pi-coding-agent`，v0.85.1） |
+| 默认模型 | `~/.pi/agent/settings.json` → `deepseek` / `deepseek-v4-flash`（thinking=high；1M 上下文，384K 输出） |
+| 非交互 | `pi -p "$(cat /tmp/brief.md)"`（冒烟实测 2.4s 返回 PONG） |
+| 会话 | 存 `~/.pi/agent/sessions`；续跑 `pi -c -p "继续"`、`pi --session-id <id>`、`pi -r` 选会话 |
+| 权限 | `-a/--approve` 信任项目本地文件（AGENTS.md 等）；`--mode json` 结构化输出；`-t <tools>` 工具白名单 |
+| 任务书写法 | **与 claude 相同**：prompt 写文件 + `"$(cat file)"` 传参（避免反引号被 shell 求值），任务书要素见「编排要点」 |
+
+```bash
+# 一次性委派（推荐）
+pi -p "$(cat /tmp/brief.md)"          # 复杂任务可加 --thinking high / -a
+# 续跑同一会话
+pi -c -p "继续完成剩余部分"
+# 代码审查（合并前一次）
+git diff main...HEAD | pi -p "审查这个改动：... 只报真实问题，无问题明确说通过"
+```
+
+⚠️ **仍要自己验收**：编码智能体自报不可信（2026-09-12 实测：claude 报「完成」，Py/单测一跑就红——本机 ffmpeg 无 drawtext 导致封面必挂）。委派后必须由 Hermes 亲自跑测试/编译/端到端。
 
 ## PR 合并流程（老板定，2026-08-29）
 
@@ -16,11 +38,11 @@
 
 ## 三种协作模式
 
-| 模式 | 命令 | 适用 |
+| 模式 | 命令（首选 pi） | 适用 |
 |:--|:--|:--|
-| 一次性委派 | `claude -p '任务' --max-turns N --permission-mode acceptEdits` | 有界单次任务（改配置/改代码）|
-| 交互式会话 | terminal background + pty=true，process submit/poll | 多轮迭代 |
-| 代码审查 | `git diff main...HEAD | claude -p 'review...'` | 合并前审查 |
+| 一次性委派 | `pi -p "$(cat /tmp/brief.md)"`（claude 回退：`claude -p '...' --max-turns N --permission-mode acceptEdits`） | 有界单次任务（改配置/改代码）|
+| 交互式会话 | terminal background + pty=true，process submit/poll（**pty 提交后需再 write `\r`**） | 多轮迭代 |
+| 代码审查 | `git diff main...HEAD \| pi -p 'review...'` | 合并前审查 |
 
 ## 编排要点
 
