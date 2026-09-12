@@ -15,6 +15,13 @@
 | paper 特有点 | `im.yml` = `backend: builtin`（含 QQ/飞书凭据）；`i18n.default_lang: en-US` |
 | folia 特有点 | `im.yml` = `backend: easybot`（默认值）；`i18n.default_lang: zh-CN` |
 
+> ⚠️ **双实例差异是刻意设计（老板 2026-09-12 明确确认，勿"统一修复"）**：
+> - **paper = 英文语言包 + builtin 直连**（专用于验证 i18n 英文包与内置直连通道）；其群消息会以**英文**推送，`default_lang: en-US` 属预期，**不要改回 zh-CN**。
+> - **folia = easybot 网关 + zh-CN**（验证网关通道）。
+> - 两条 IM 通道**并行保留**（A/B 覆盖），不要合并成单通道。
+> - 副作用须知：两实例的飞书通知目标**指向同一个群**（paper `player_group` == folia `admin_group` = `oc_00eb…`），因此该群会同时收到两台服消息（paper 侧英文）；如需降噪应改目标群而非改语言/通道。
+> - `default_lang` 作用面（源码实证 `I18nService`）：`langFor(Player)` **跟随客户端 locale**（玩家游戏内文案不受影响）；`default_lang` 只管**群事件通知 / 控制台广播 / 维护文案 / Bot 交互兜底**。
+
 ## 1. 升级流程（六步）
 
 ```
