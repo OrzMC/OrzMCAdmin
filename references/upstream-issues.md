@@ -36,6 +36,24 @@
 | EasyBot | ~~`secure existing DB` 只 chmod 不纠属主，报错无指引~~ | ✅ 同 #122/#123 一并修 |
 | MCSManager | 见 #2346 / #2347 | 停 daemon→改文件→起 daemon |
 
+## 26.3 协议生态缺口（2026-09-20 实测，非我方 bug）
+
+**现象**：26.3 客户端进服后，GrimAC 抛 `java.lang.IllegalStateException: Unknown entity metadata type id: 105 version V_26_2`（栈顶在 `grimac-bukkit-2.3.74.jar//ac.grim.grimac.shaded…packetevents.wrapper.PacketWrapper.readEntityMetadata`），随后 GrimAC 状态被污染 → **误报 BadPacketsN 并踢人**（本地测试服实测踢掉 joker）。
+
+**归因链（实测数据）**：
+- 26.3 是**今天（09-20）刚出的新 MC 版本**；26.3 新增了实体元数据类型（packetevents PR #1582「26.3 support」里 `EntityDataTypes.java +7`）。
+- **packetevents**：26.3 支持 **2026-09-19 才合入 main**（PR #1582，`Bump dependencies to 26.3` 09-18），**尚未发版**（最新 release 仍 v2.13.0 / 06-22）→ Modrinth `packetevents` 只标到 26.2。
+- **GrimAC**：最新 alpha `2.3.74-8eb5f28`（09-10，Modrinth）game_versions 仍只到 **26.2**；主分支最后提交 09-10；依赖 **GrimAPI v1.6.0.12（09-03）**早于 packetevents 的 26.3 合并 → **GrimAC 目前必然读不懂 26.3**。
+- **GrimAC 用的是 shaded+relocated 的 packetevents**（`ac.grim.grimac.shaded.io.github.retrooper.packetevents`）→ **换外部 packetevents 插件无效**，必须等 GrimAC 自己 bump 依赖。
+- Via 侧反而领先：ViaBackwards **5.12.0（09-18 发布）已支持 26.3** → 正是它让 26.3 客户端能进服，从而**暴露**了 GrimAC 的缺口（升级前 26.3 客户端因无 Via 支持**根本进不来**）。
+
+**标准处置（本地已定方案，待老板拍板）**：
+1. **干净拒绝**：`ViaVersion/config.yml` → `block-versions: ["26.3"]`（或 `block-protocols: [<26.3 协议号>]`）+ `block-disconnect-msg: "<自定义提示：请用 26.2 客户端>"`；改后 `/viaversion reload`。⚠️ Via 配置键位置：`block-versions` / `block-protocols` / `block-disconnect-msg`（在全局段，jar 内 `assets/viaversion/config.yml` 可查默认值）。
+2. **不要**在生产照抄「升级 Via 三件套」：升级会让 26.3 客户端从「被干净拒绝」变成「进来后被 GrimAC 误踢」（体验更差）。要升就连同 ①的 block 配置一起上。
+3. 上游适配后（packetevents 发版 + GrimAC/GrimAPI bump）→ 升级 GrimAC 即可解禁。
+
+**盯梢点**：packetevents release（v2.13.1+/2.14）、GrimAPI tag（>1.6.0.12）、GrimAC Modrinth alpha 是否含 `26.3`。
+
 ## 明确不提
 
 - Docker Desktop：`docker system df` 把在用镜像算可回收（技能里已标"别信"）；json-file 无默认上限（已用全局 `log-opts` 兜底）。价值有限，不上报。
