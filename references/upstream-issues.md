@@ -7,7 +7,8 @@
 
 - 两个自研仓（OrzGeeker/OrzMusic、OrzMC/OrzMCDeploy）**全部 issue 已 CLOSED/COMPLETED**，本机在 0.0.10 / 0.0.4 上实测无回归。
 - 第三方：MCSManager 新提 2 条（#2346/#2347）；EasyBot 根因由我们定位后上游**已修并合入**（[PR #122](https://github.com/EasyIndie/EasyBot/pull/122) + [PR #123](https://github.com/EasyIndie/EasyBot/pull/123) 均 MERGED，#121 已 CLOSED/COMPLETED），镜像已发 `:latest`（`sha256:1c02c337…`，含 #122+#123；`/api/v1/ready` 已出现 `message_storage` 字段且未就绪返 503）；本机 A/B 实测验证通过。
-- 本机当前**无待上报**问题；**待落地**：EasyBot 修复需等 OrzMCDeploy 下一版包 bump digest（[#14](https://github.com/OrzMC/OrzMCDeploy/issues/14)）。
+- 本机当前**待落地**：EasyBot 修复需等 OrzMCDeploy 下一版包 bump digest（[#14](https://github.com/OrzMC/OrzMCDeploy/issues/14)）。
+- **2026-09-28 新提两条**（EasyBot 内存上限 OOM）：[EasyBot#139](https://github.com/EasyIndie/EasyBot/issues/139)（OPEN）+ [OrzMCDeploy#16](https://github.com/OrzMC/OrzMCDeploy/issues/16)（OPEN），已双向交叉引用。**EasyBot 版本现状：本机 0.0.38（`cd0b4e44`），最新 release v0.0.40（09-04，镜像 `5a310e30`），`:latest` = `1c02c337`（含 0.0.40 之后的 #122/#123，无正式 release）→ 落后 2 个 release。** 0.0.39 修 h2 空 DATA 帧内存放大（RUSTSEC-2026-0258）、0.0.40 修 openssl `CVE-2026-14456`（同为无界内存 DoS）→ **本机 0.0.38 镜像仍带该 CVE**。
 
 ## 已提交 issue
 
@@ -27,6 +28,25 @@
 | [MCSManager#2346](https://github.com/MCSManager/MCSManager/issues/2346) | 运行中改 `InstanceConfig/*.json` 被内存回写覆盖（静默丢改动） | OPEN（本机：停 daemon→改→起） |
 | [MCSManager#2347](https://github.com/MCSManager/MCSManager/issues/2347) | `autoStart`/`autoRestart` 语义与状态持久化无文档、两次重启行为不一致 | OPEN（实测摸清，见 docker-service-lifecycle.md §7） |
 | [OrzMCDeploy#14](https://github.com/OrzMC/OrzMCDeploy/issues/14) | easybot digest bump 到含 #121 修复的构建（`cd0b4e44` → `1c02c337`） | OPEN（等下一版包） |
+| [EasyBot#139](https://github.com/EasyIndie/EasyBot/issues/139) | 近乎空载下 anon 内存（506MB）涨到容器上限 512MiB、被 cgroup OOM kill（dmesg 14 次、`RestartCount=76`） | OPEN |
+| [OrzMCDeploy#16](https://github.com/OrzMC/OrzMCDeploy/issues/16) | easybot 512M 上限过紧；建议提到 1G + 文档化各服务最小内存值 | OPEN |
+
+### EasyBot 内存上限 OOM 取证法（2026-09-28，可复用）
+
+```bash
+docker inspect orzmc-easybot --format 'restarts={{.RestartCount}} up_since={{.State.StartedAt}}'
+docker exec orzmc-easybot /bin/busybox sh -c \
+  'cat /sys/fs/cgroup/memory.max; cat /sys/fs/cgroup/memory.current; \
+   cat /sys/fs/cgroup/memory.peak; grep -E "^(anon|file) " /sys/fs/cgroup/memory.stat; \
+   cat /sys/fs/cgroup/memory.events'
+wsl -d docker-desktop -e dmesg | grep -c 'Killed process.*easybot'
+```
+
+- 镜像里**没有 `/bin/sh`**，读 cgroup 必须走 `/bin/busybox sh -c`。
+- dmesg 的 `oom_memcg=/docker/<id>` 中 `<id>` **就是容器 ID**（`docker inspect -f '{{.Id}}'` 比对）→ 这是确认「谁被 OOM 杀」的硬证据。
+- ⚠️ **容器重启会回收重建 cgroup → `memory.events` 的 `oom_kill` 归零**，别据此判断「没被杀过」；要看 dmesg + `RestartCount`。
+- `memory.peak == memory.max` 且 `anon` ≫ `file` = 真实匿名内存顶到上限（非 page cache 假象）；`memory.events` 的 `max` 计数持续上涨 = 持续贴上限运行。
+- 本机 512MiB 是**部署侧保险丝**（`compose.yaml` 的 memory 上限，可调项只有 daemon 的 `DAEMON_MEMORY_LIMIT`）——报上游时务必说明这一点，否则会被当成 EasyBot 默认值。
 
 ## 仍待上游（本机为临时绕过，换包/重建会复发）
 
