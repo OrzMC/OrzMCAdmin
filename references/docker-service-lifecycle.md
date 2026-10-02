@@ -77,7 +77,10 @@ sleep 120 && docker ps -a --format '{{.Names}}' | grep MCSM- || echo '实例未�
 
 > **上游已修（2026-09-11）**：EasyBot #121 的 [PR #122](https://github.com/EasyIndie/EasyBot/pull/122)（chmod 失败只 warn、不再中止）与 [PR #123](https://github.com/EasyIndie/EasyBot/pull/123)（内存回退不再静默：`/ready` 报 `message_storage: ephemeral` + 503）均已合入并发布到 `:latest`。
 > **验证方法（可复现）**：隔离临时目录 + `--user 0` 造一个 root 属主 `gateway.db`，用新旧镜像各起一个一次性容器对比——旧镜像复现 `EPERM` → 内存库 → `no such table`；新镜像只记一条 warn 即正常迁移建库。
-> **处置**：生产仍钉旧 digest → `chown` 绕过**必须保留**；升级到含修复的镜像后才能撤除（撤除后本节的验尸/修复步骤仅作历史参考）。
+> **处置**：生产已于 **2026-10-02** 升级到含修复的镜像（OrzMCDeploy 0.0.6 = EasyBot v0.0.41）→ `chown` 绕过**已正式退场**：
+> 0.0.38 时代遗留的 `root:root 777` 侧车文件（`auth.db-shm`/`auth.db-wal`）已用
+> `docker exec -u 0 orzmc-easybot /bin/busybox sh -c 'chown -R 10001:10001 /var/lib/easybot/data && chmod 600 /var/lib/easybot/data/*'`
+> 归位（现全为 `easybot:easybot 600`）；冷启动无 EPERM/降级告警，`/ready` 仍 `adapters_connected=2`。本节下面的验尸/修复步骤仅作历史参考。
 > **运维信号**：存储降级只在 `/api/v1/ready` 暴露（`message_storage: ephemeral` + HTTP 503），`/api/v1/health` 的 body **没有**该字段；容器内**无 `wget`**，探针用 `curl`。
 
 **症状**：`docker logs orzmc-easybot` 每 250ms 刷 `ERROR ... no such table: outbound_deliveries`（累计可到 20 万+），兼 `no such table: messages`。
@@ -155,15 +158,22 @@ docker run --rm -v /var/lib/docker:/hd alpine sh -c 'f=$(ls /hd/containers/<id>*
 `orzmc.sh` 没有 force-recreate 子命令；compose 又只在**服务配置哈希变化**时重建容器，所以换包后多数容器的 `com.docker.compose.project.working_dir` label 仍指着旧目录（如 `E:\migration\orzmc-deploy-0.0.3-dev`）。手动拼一次即可（与 `compose_cmd()` 同构）：
 
 ```bash
-cd /e/deploy/orzmc-deploy-<ver>
+cd E:/deploy/orzmc-deploy-<ver>
 docker compose --env-file "E:/orzmc/.env" \
   -f "E:/deploy/orzmc-deploy-<ver>/compose.yaml" \
   -f "E:/deploy/orzmc-deploy-<ver>/compose.edge.cloudflare.yaml" \
+  -f "E:/orzmc/compose.site.yaml" \
   --profile easybot --profile mariadb --profile status \
-  up -d --no-deps --force-recreate mcsmanager-web status cloudflared easybot
+  up -d --no-deps --force-recreate mcsmanager-web status cloudflared easybot mariadb
 ```
 
-四条纪律：① 路径必须用**原生正斜杠 Windows 路径**（MSYS 的 `/e/...` 会让 compose 解析失败）；② `--no-deps` 避免连带重建 mariadb；③ **不要把 `mcsmanager-daemon` 列进去**（Windows 下归 `win_daemon_run` 管，ADR-016）；④ 重建后逐个核对：`docker inspect <c> --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}'`。服务名用 `compose config --services` 取（`mcsmanager-web`/`mariadb`/`status`/`cloudflared`/`easybot`/`mcsmanager-daemon`）。
+❗❗ **必须带上 `-f "$DATA_ROOT/compose.site.yaml"`**（2026-10-02 踩中）：`--env-file` 一旦显式给出，compose 就**不再自动加载**
+默认 `.env`；而飞书凭据（`FEISHU_APP_ID/SECRET`）只在**站点增量文件**里注入 easybot 的 `environment`。漏掉它的后果是
+容器能正常起来、`/ready` 也 200，但日志只显示 `Started adapters: ["qq"]` + `Skipping adapter 'feishu' — credentials not set`
+——就是 compose.site.yaml 里写的那个「升级后机器人不工作了」。**判据：`/api/v1/ready` 的 `adapters_connected` 必须等于 2（qq+feishu）**，只看状态码会漏。
+`orzmc.sh up` 不存在此问题（`compose_cmd()` 会自动 `collect_site_override_files` 追加）。
+
+四条纪律：① 路径必须用**原生正斜杠 Windows 路径**（MSYS 的 `/e/...` 会让 compose 解析失败）；② `--no-deps` 避免连带重建 mariadb（要对齐 mariadb 就把服务名显式列上）；③ **不要把 `mcsmanager-daemon` 列进去**（Windows 下归 `win_daemon_run` 管，ADR-016；它是 `docker run` 容器，**本来就没有 compose 标签**，无需对齐）；④ 重建后逐个核对 label，并回查 `adapters_connected`。服务名用 `compose config --services` 取。
 
 实测 2026-09-11：5 个 compose 容器全部刷成 `E:\deploy\orzmc-deploy-0.0.3`，重建后四端点仍 200、easybot `healthy` 且 0 条 SQLite 报错、两个 MCSM 实例未被拉起。
 

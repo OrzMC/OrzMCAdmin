@@ -135,6 +135,10 @@ cd E:/deploy/orzmc-deploy-0.0.6
 - [x] Gatus 平台层 5 项全 OK（PaperMC 实例 FAIL 属设计如此，实例手动启停）
 - [x] `gateway.db` 的 `outbound_deliveries` 三个 v4 索引齐备（`idx_outbound_deliveries_outbox/_actor/_session`）
 - [x] 回滚可用：旧镜像 `cd0b4e44`(0.0.38) 与 `1c02c337` 仍在本地 `docker images`
+- [x] **标签对齐（B 方案）**：`docker compose … --force-recreate` 把 web/status/cloudflared/mariadb 的
+  `project.working_dir` 全部刷到 `E:\deploy\orzmc-deploy-0.0.6`（easybot 已是），之后才删旧包——**先对齐再删目录**，
+  否则触发「旧路径复活为空目录」（docker-service-lifecycle.md §10）。⚠️ 拼这条命令**必须带** `-f $DATA_ROOT/compose.site.yaml`，
+  否则飞书凭据丢失、只剩 QQ 适配器（见 §9 的 ❗❗）。
 
 **手建索引与上游迁移共存**：升级前若已手工建过 v4 索引（本机 2026-09-30 为验证修复做过），
 上游迁移是 `CREATE INDEX IF NOT EXISTS` → 幂等，**无需先撤**。
