@@ -1,4 +1,8 @@
-# OrzMCDeploy 版本升级规程（实战：0.0.3 → 0.0.4）
+# OrzMCDeploy 版本升级规程（实战：0.0.3 → 0.0.4，0.0.4 → 0.0.6）
+
+> **升级前先做包间 diff 定范围**：`diff -u 旧包/compose.yaml 新包/compose.yaml`。若只有 easybot 段变化（镜像
+> digest / 内存参数）→ 其他服务不会重建、**站点增量无需迁移、daemon 也无需手动重建**（铁律 3 只在
+> daemon 定义本身变了时才适用）；这种升级全程只需 `validate` → `up` → 验收，实测 0.0.4 → 0.0.6 就是这一档。
 
 ## 铁律
 
@@ -11,9 +15,10 @@
      或 `.env` 的 `COMPOSE_FILE_EXTRA`。
    典型丢失场景：EasyBot 的 `FEISHU_APP_ID/FEISHU_APP_SECRET`——旧版是**手工改包内 `compose.yaml`** 加的，
    换包即丢 → 表现为「升级后机器人不工作了」。
-3. **daemon 必须手工重建**：Windows 下 daemon 由 `win_daemon_run` 用 `docker run` 创建（ADR-016），函数
-   **幂等**——容器已存在就跳过。因此升级后必须 `docker rm -f orzmc-mcsmanager-daemon` 再 `up`，否则新增的
-   `--memory` / `--max-old-space-size` / healthcheck 全部不生效。
+3. **daemon 只在自身定义变更时手工重建**：Windows 下 daemon 由 `win_daemon_run` 用 `docker run` 创建（ADR-016），
+   函数**幂等**——容器已存在就跳过。所以只有本次升级改了 `DAEMON_PORTS` / `DAEMON_MEMORY_LIMIT` /
+   `DAEMON_NODE_HEAP_MB` / healthcheck 时，才必须 `docker rm -f orzmc-mcsmanager-daemon` 再 `up`；
+   仅改其他服务时 `up` 会打印「daemon 已存在，跳过创建（补别名）」，属正常。
 4. **label 对齐需 `--force-recreate`**，且注意两点：服务名是 `mcsmanager-web`（**不是** `web`，写错 compose
    直接 abort，什么都不重建）；合并后配置**等价时 compose 不会重建**（站点增量把 env 补回来后 easybot 配置与
    旧容器一致 → 不重建，属正确行为）。
@@ -91,6 +96,48 @@ DATA_ROOT="$T" bash -c 'source lib/common.sh; win_effective_daemon_ports "$DATA_
 | #12 | `docs/usage.md` §6.5 改为「停 daemon → 改 JSON → 启 daemon」+ `autoStart/autoRestart` 语义 | ✓ 文档已含该节及排错表 |
 
 升级后未发现新的上游问题（唯一故障是本站自己把服务名写成 `web`，compose 报 `no such service` 后 abort）。
+
+## 本机 Windows 审批/命令坑（0.0.4 → 0.0.6 实测）
+
+- **别用 `rm -rf` 清目录**：会触发审批拦截（未响应 = `BLOCKED`，白等十分钟）。铺包一律 `mkdir -p 新目录 && cp -a 解包目录/. 新目录/`，不要在解包前先删。
+- `docker run --rm --network orzmc_default curlimages/curl …` 这类探测也会被审批系统**误判为递归删除**（命中一次已批准）；优先用已在运行的 `orzmc-mcsmanager-daemon` 做外部探测，它一定能出网：
+  `docker exec orzmc-mcsmanager-daemon sh -c 'curl -s -o /dev/null -w "%{http_code}" --max-time 12 https://<host>/'`。
+- 备份用 `cp -a` 到 `E:/deploy/backups/pre-upgrade-<版本>-<时间>/`（easybot DB 約 20MB），升级无风险后再清。
+
+## v0.0.4 → v0.0.6（2026-10-02）实战与验收
+
+范围（`diff -rq` + `compose.yaml` diff 定的）：与 0.0.4 相比只有 easybot 两处功能变化 —— 镜像 digest
+`cd0b4e44`(0.0.38) → `23a6eace`(**v0.0.41**)，内存上限硬编码 `512M` → `"${EASYBOT_MEMORY_LIMIT:-512M}"`；
+其余 4 个镜像 digest、`compose.edge.*.yaml`、全部脚本**未变**（只有 docs/CHANGELOG/templates/env.* 变）。
+0.0.5 曾把缺省调到 1G，0.0.6 又回调 512M（ADR-024：上限保持紧，让未来的内存回归由 OOM 尽快暴露，
+而不是被余量掩盖）——**升级 0.0.5+ 时不要自作主张把上限放大**。
+
+```bash
+gh release download v0.0.6 -R OrzMC/OrzMCDeploy -p 'orzmc-0.0.6.tar.gz*' -D <临时目录>
+sha256sum -c orzmc-0.0.6.tar.gz.sha256          # 必须 OK
+mkdir -p E:/deploy/orzmc-deploy-0.0.6 && tar xzf orzmc-0.0.6.tar.gz -C <解包目录>
+cp -a <解包目录>/. E:/deploy/orzmc-deploy-0.0.6/ && chmod +x E:/deploy/orzmc-deploy-0.0.6/*.sh
+cd E:/deploy/orzmc-deploy-0.0.6
+./orzmc.sh -d E:/orzmc validate                 # ✓ 必需变量齐全，compose config 解析正常
+./orzmc.sh -d E:/orzmc templates --diff         # 只看是否与 .env 漂移（模板占位符差异属正常）
+./orzmc.sh -d E:/orzmc up                       # 只 recreate easybot，其余显示 Running
+```
+
+实测输出：`Container orzmc-easybot Recreated/Started`，其余 4 个 `Running`；中断约 25 秒。
+
+验收（全通过）：
+
+- [x] `docker inspect orzmc-easybot`：`image=…@sha256:23a6eace…`、`mem=536870912`(512M)、`restarts=0`、`oomkilled=false`
+- [x] 启动日志出现 `v4: Cover outbound_deliveries ORDER BY queries to avoid per-tick temp B-trees` + `SQLite storage initialized`（**无** EPERM/降级告警 → 旧 `chown 10001:10001` 绕过已可弃）
+- [x] `docker logs` 无 warn/error；`Started adapters: ["qq", "feishu"]`、`飞书适配器已连接`、`QQ adapter connected`
+- [x] `/api/v1/live` → `version=0.0.41`；`/api/v1/ready` → `ready`、`auth_schema_version=4`、`message_storage=ready`、`unpublished_delivery_events=0`、`adapters_connected=2`
+- [x] 内网 `easybot:8080` live/ready 200；公网 4 域名全 200（mcs / mcs-node / easybot / orzmcs）
+- [x] Gatus 平台层 5 项全 OK（PaperMC 实例 FAIL 属设计如此，实例手动启停）
+- [x] `gateway.db` 的 `outbound_deliveries` 三个 v4 索引齐备（`idx_outbound_deliveries_outbox/_actor/_session`）
+- [x] 回滚可用：旧镜像 `cd0b4e44`(0.0.38) 与 `1c02c337` 仍在本地 `docker images`
+
+**手建索引与上游迁移共存**：升级前若已手工建过 v4 索引（本机 2026-09-30 为验证修复做过），
+上游迁移是 `CREATE INDEX IF NOT EXISTS` → 幂等，**无需先撤**。
 
 ---
 
