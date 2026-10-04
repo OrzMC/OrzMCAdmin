@@ -39,32 +39,52 @@ eth0  Out IP 192.168.0.33.25565 > <外网IP>: Flags [S.]    ← 应答从 TUN(et
 原理：让应答包在**第一次查路**时就用 LAN 出口 + LAN 源地址，完全不依赖 NAT。
 
 ```bash
-ip route replace default via 192.168.0.1 dev eth4 src 192.168.0.33 table 100
-ip route replace 192.168.0.0/24 dev eth4 src 192.168.0.33 table 100
-ip rule add from 192.168.0.33 table 100 pref 85          # 通用：任意端口
-ip rule add ipproto tcp sport 25565 table 100 pref 90    # 兜底：已知端口
-ip rule add ipproto udp sport 19132 table 100 pref 90
+ip route replace default via 192.168.0.1 dev eth4 src 192.168.0.33 table 101
+ip route replace 192.168.0.0/24 dev eth4 src 192.168.0.33 table 101
+ip rule add from 192.168.0.33 table 101 pref 85          # 通用：任意端口
+ip rule add ipproto tcp sport 25565 table 101 pref 90    # 兜底：已知端口
+ip rule add ipproto udp sport 19132 table 101 pref 90
 ```
+
+⚠️ **不要用 table 100**：WSL mirrored 栈自带 `100: from all fwmark 0x9 lookup 100`（非本脚本添加），该表归 WSL/HNS 管。用**私有表 101**（`ORZMC_TABLE` 可改）。
 
 `from <LAN IP>` 的语义 = **所有监听在 LAN IP 上的服务（容器发布端口、宿主服务，任意端口）**的应答都走 Wi-Fi 正门；Clash 代理流量源地址是 `198.18.x` → 不受影响（实测：加规则后出站出口 IP 仍为 Clash 出口，代理未破坏）。**→ 以后新增任何自定义端口都不需要再改这一层。**
 
-验证路由决策（不需要外部客户端）：`ip route get 1.1.1.1 from 192.168.0.33 ipproto tcp sport 40000` → 应 `via 192.168.0.1 dev eth4 table 100`。
+验证路由决策（不需要外部客户端）：`ip route get 1.1.1.1 from 192.168.0.33 ipproto tcp sport 40000` → 应 `via 192.168.0.1 dev eth4 table 101`。
 
 ⚠️ 区分：`from` 规则管的是**源地址**（服务应答），因此对 Windows 宿主服务同样适用（mirrored 共享网络栈）；而 `iptables -j MARK` 方案只能改出口、**改不了已被 TUN 定死的源地址**，UDP 会因此失效。
 
 脚本（幂等、自带 `--check` 自愈）: `scripts/orzmc-mc-reply-route.sh`
 部署位置（本机）: `/usr/local/bin/orzmc-mc-reply-route.sh`（WSL Ubuntu 内）+ 规范副本 `E:/orzmc/scripts/orzmc-mc-reply-route.sh`
-持久化: Windows 计划任务 **OrzMC-MC-Reply-Route**（`wsl -d Ubuntu -u root -- bash /usr/local/bin/orzmc-mc-reply-route.sh`）——`wsl --shutdown`/重启后规则会丢，靠它自愈。**2026-10-04 起重复间隔 10min → 3min**（`schtasks /change /tn OrzMC-MC-Reply-Route /RI 3 /DU 24:00`，改完 `Get-ScheduledTask` 确认 `LogonType=Interactive` 未被改动），脚本日志 `/var/log/orzmc-mc-reply-route.log`。
+持久化（v4，2026-10-04 重做）: **主力 = WSL 内事件驱动自愈守护** `orzmc-mc-reply-route-watch.sh`（`ip monitor route rule addr link` → 发现路由缺失立即调主脚本修复，**亚秒级**，见 3b/3e）；**兜底 = Windows 计划任务 OrzMC-MC-Reply-Route**（每分钟 `wsl -d Ubuntu -u root -- bash /usr/local/bin/orzmc-mc-reply-route.sh`，作用退化为「WSL 重启后把守护拉起来 + 一次性校验」；主脚本每次 apply 都会 `ensure_daemon`）。systemd 单元 `orzmc-mc-reply-route.service` 已备在 `scripts/`（写 /etc 需审批，故当前用 `setsid nohup` 常驻）。日志 `/var/log/orzmc-mc-reply-route.log` + `/var/log/orzmc-mc-reply-route-watch.log`。
 
-### ⚠️ 3b. 自愈会「静默失效」：ip rule 活着、table 100 路由没了（2026-10-04 实测复发）
+### ⚠️ 3b. 自愈会「静默失效」：ip rule 活着、策略路由被清掉（2026-10-04 三次复发，机制已定位）
 
 **症状**：内网直连 25565/19132 正常，外网 Java/Bedrock 全部超时；计划任务 `LastTaskResult=0`（看起来一直在成功自愈）。
 
 **根因**：`ip rule`（from/sport 规则）与 table 100 的路由**生命周期不同**——路由会丢、规则不会。旧脚本 `need_apply()` 虽能发现路由缺失，但**应用后不校验**：`ip route replace` 失败（网卡/命名空间瞬态异常）时 `ip rule add` 照样成功，脚本照旧 `exit 0` → 计划任务永远显示成功，自愈通道静默死亡。已用 `ORZMC_IFACE=eth9` 伪造场景复现出完全相同的「有规则、无路由」残局。
 
-**一条命令判定**：`ip rule show | grep 'from <LAN IP> lookup 100'`（有）但 `ip route show table 100`（空）→ 就是这个。
+**一条命令判定**：`ip rule show | grep 'from <LAN IP> lookup 101'`（有）但 `ip route show table 101`（空）→ 就是这个。**再看守护日志 `tail -5 /var/log/orzmc-mc-reply-route-watch.log`：正常应能看到 `HEAL …校验通过`（每次抖动一条），若长时间空白说明守护没在跑。**
 
-**为何会丢**：table 100 **不是本方案专属**——WSL mirrored 网络栈存在自带规则 `100: from all fwmark 0x9 lookup 100`（非本脚本添加），该表可能被 WSL/HNS 网络事件重写。实测排除项：Docker 容器起停（`docker run -p` / `rm -f`）**不会**清表；`wsl` 发行版 uptime 连续 24 天未重启也复现过，故不是 WSL 重启导致。
+**根因（2026-10-04 v4 机制级定位，带时间戳 netlink 实证）**：宿主 **Hyper-V VmSwitch 在周期性重建 WSL 的虚拟网卡**（Windows 事件源 `Microsoft-Windows-Hyper-V-VmSwitch` 事件 ID 291，时间戳与每次抖动逐次对齐；由 Docker/HNS 端口活动驱动），客机 `eth4` 的地址被「删除 → 约 1 秒后重加」：
+
+```
+14:06:16  Deleted 7: eth4    inet 192.168.0.33/24 brd 192.168.0.255 scope global noprefixroute eth4
+14:06:17  7: eth4    inet 192.168.0.33/24 ...                 ← 1 秒后重加
+14:06:29  Deleted 7: eth4    inet 192.168.0.33/24 ...          ← 12 秒后第二次抖动
+14:06:30  7: eth4    inet 192.168.0.33/24 ...
+```
+
+内核在地址被删时**连带清除所有引用该地址/网卡的策略路由**（实测 table 100 与 101 表现完全相同、**带不带 `src` 都照样死**），而 `ip rule` 不引用网卡 → 规则留存。抖动间隔 12 秒~2 分钟随机，**不可阻止**（WSL mirrored 的网卡同步是宿主驱动的）。→ **改表号、去掉 src、换网卡名都救不了；每分钟轮询也必然留下最长 60 秒的洞。**
+
+**v4 修法：事件驱动自愈守护（亚秒级）**
+- `scripts/orzmc-mc-reply-route-watch.sh`：`ip monitor route rule addr link | while read` → 每个 netlink 事件先跑 `--check`，缺了才修；修完 2 秒静默期防「修复动作自激」；启动即修一次；日志只记 `DETECT / APPLIED / HEAL / FAIL`（`/var/log/orzmc-mc-reply-route-watch.log`）。
+- 部署：`E:/orzmc/scripts/*.sh` 三副本同步（E 盘源 → WSL `/usr/local/bin`（`cp`+`chmod +x`）→ Hermes 技能 `scripts/`）；启动 `setsid nohup /usr/local/bin/orzmc-mc-reply-route-watch.sh &`；主脚本 apply 路径 `ensure_daemon` 会自动拉起（`ORZMC_NO_DAEMON=1` 可禁用）。
+  ⚠️ **存活判定必须用 pidfile + `kill -0`，不要用 `pgrep -f <脚本名>`**：任何命令行里含该字符串的进程都会被匹配（实测 `pkill -f` 会把自己的排查 shell 一起杀掉；`pgrep -cf` 会虚报 6 个"实例"）。watcher 用 `flock` 保证单实例，pidfile `/run/orzmc-mc-reply-route-watch.pid`（/run 随 distro 重启清空，天然避免陈旧 pid）。
+  ⚠️ **`ensure_daemon` 必须排在「已就位就 `exit 0`」之前**：否则路由正常、守护已死时任务直接退出，永远拉不起来。
+- 自检与排障工具（全在 `scripts/`）：`test-daemon-chain.sh`（四条链路验证：--check 不误启 / apply 拉起 / 不重复实例 / 清表后秒级修回）、`status-check.sh`（守护存活+HEAL 计数+表+规则一屏速查）、`cleanup-probe.sh`（清一次性探针进程）、`route-survive-probe.sh`、`netmon-arm.sh`。
+- 实测效果（2026-10-04）：抖动于 14:06:16 / 14:06:29 两次，守护分别 **14:06:18 / 14:06:31** 修复（≤1 秒）；随后 14:10:55 / 14:11:41 / 14:12:35 外部探测 Java+Bedrock 连续 `online:true`。
+- 复现/排查工具（**下次先看日志，别从零取证**）：`scripts/route-survive-probe.sh`（每 5 秒快照 表内容/eth4 地址/main metric → `/tmp/route-survive.log`）+ `scripts/netmon-arm.sh`（**带时间戳**武装 netlink → `/tmp/netmon2.log`）。
 
 **v2 脚本修复（已部署 E:/orzmc/scripts → WSL /usr/local/bin 与 Hermes 技能副本，三处 md5 一致）**：
 - 应用后**自校验**（table 100 含 `src <LAN IP>` + from 规则 + 每条 sport 规则），最多重试 3 次；失败 `exit 1` + 日志，计划任务 `LastTaskResult≠0` 可见。
@@ -75,7 +95,7 @@ ip rule add ipproto udp sport 19132 table 100 pref 90
 ### 3c. 排障顺序（2026-10-04 定稿，照这个走 10 分钟出结论）
 
 1. **服务在不在**：`wsl -d Ubuntu -u root -- ss -lntup | grep -E '25565|19132'`（宿主 Windows `netstat` 在 mirrored 模式下**看不到**容器发布端口 → 别据此判「没监听」）。
-2. **路由层有没有坏**：`ip rule show | grep 100` vs `ip route show table 100`（见 3b）。
+2. **路由层有没有坏**：`ip rule show | grep 101` vs `ip route show table 101`；守护在不在：`pgrep -af orzmc-mc-reply-route-watch` + `tail -5 /var/log/orzmc-mc-reply-route-watch.log`（见 3b）。
 3. **入站到没到**：WSL 内 `nohup timeout 60 tcpdump -n -i eth4 -l 'tcp port 25565 or udp port 19132' > /tmp/cap.txt &`，再从外部触发探测；看 `eth4 In` 有没有包、应答源地址是不是 `192.168.0.33` 且从 eth4 出。**入站有 + 应答正常 = 本机没问题**。
 4. **外部多节点**：`check-host.net/check-tcp?host=域名:端口`（Node 命名空间直接看结果）+ `api.mcstatus.io`。
 5. **DDNS/公网 IP**：`dev.{SERVER_NAME}.cn → CNAME home.{SERVER_NAME}.cn → CNAME wangzhizhou.kmdns.net → A <公网IP>`；用 DoH 取真实 IP（`223.5.5.5/resolve?name=dev.{SERVER_NAME}.cn&type=A`），本机 `ping/nslookup` 只会给 Clash 假 IP `198.18.x.x`。抓到入站包即证明 DDNS/路由器映射都正常。

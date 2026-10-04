@@ -29,9 +29,21 @@
 #   同时：Windows 计划任务的"重复间隔"会失效（`NextRun` 为空 → 再也不会触发，
 #   任务却仍是 Ready/上次 Result=0）→ 必须定期核对 `Get-ScheduledTaskInfo.NextRunTime`。
 #
-# 幂等；供开机/登录自愈（Windows 计划任务 OrzMC-MC-Reply-Route 每分钟调一次）。
+# ⚠️ v4（2026-10-04 第三次复发，机制级定位）教训：**表号不是问题，网卡地址抖动才是**。
+#   带时间戳的 netlink 实测: 宿主 Hyper-V VmSwitch 周期性重建 WSL 虚拟网卡
+#   （Windows 事件源 Microsoft-Windows-Hyper-V-VmSwitch，由 Docker/HNS 端口活动驱动），
+#   客机 eth4 地址被「删除 → 1 秒后重加」，内核随即清掉**所有引用 dev eth4 的路由**
+#   （table 100/101 完全相同，带不带 src 也完全相同），而 ip rule 不引用网卡 → 规则留存。
+#   现象即「规则在、路由丢」，抖动间隔 12 秒~2 分钟不等，**无法阻止**。
+#   → v4 起不再依赖"每分钟轮询"，改为**事件驱动自愈守护**（亚秒级）：
+#     orzmc-mc-reply-route-watch.sh 监听 netlink(route/rule/addr/link)，
+#     发现路由缺失立刻调本脚本修复；本脚本每次 apply 也会确保守护存活。
+#
+# 幂等；供开机/登录自愈（Windows 计划任务 OrzMC-MC-Reply-Route 每分钟调一次，
+# 现在它主要是"WSL 重启后把守护拉起来"的兜底，实时修复由守护负责）。
 # 用法: orzmc-mc-reply-route.sh [--check|--force]
 # 环境变量: ORZMC_IFACE / ORZMC_GW / ORZMC_SIP / ORZMC_TCP_PORTS / ORZMC_UDP_PORTS / ORZMC_TABLE
+#           ORZMC_NO_DAEMON=1 可禁用守护自启（仅调试用）
 # 退出码: 0=正常（已就位或应用并验证通过） / 1=校验失败或缺失(--check)
 
 set -u
@@ -89,6 +101,30 @@ verify() {
   for p in $UDP_PORTS; do rule_sport_ok udp "$p" || { echo "缺 udp sport $p 规则"; return 1; }; done
   return 0
 }
+
+# ── 事件驱动自愈守护（v4）：确保 watcher 常驻（亚秒级修复）──
+WATCHER="${ORZMC_WATCHER:-/usr/local/bin/orzmc-mc-reply-route-watch.sh}"
+WATCH_PIDFILE="${ORZMC_WATCH_PIDFILE:-/run/orzmc-mc-reply-route-watch.pid}"
+daemon_alive() {
+  local p
+  [ -f "$WATCH_PIDFILE" ] || return 1
+  p="$(cat "$WATCH_PIDFILE" 2>/dev/null)"
+  [ -n "$p" ] && kill -0 "$p" 2>/dev/null
+}
+ensure_daemon() {
+  [ "${ORZMC_NO_DAEMON:-0}" = "1" ] && return 0
+  [ -x "$WATCHER" ] || return 0
+  daemon_alive && return 0
+  setsid nohup "$WATCHER" >/dev/null 2>&1 </dev/null &
+  sleep 1
+  if daemon_alive; then
+    log "DAEMON 已拉起 $WATCHER (pid $(cat "$WATCH_PIDFILE" 2>/dev/null))"
+  else
+    log "WARN 守护拉起失败（$WATCHER 不存在/不可执行/锁被占）"
+  fi
+}
+# ⚠️ 必须放在「已就位就 exit 0」之前：路由正常但守护已死时，任务不能直接退出。
+[ "$MODE" = "--check" ] || ensure_daemon
 
 if [ "$MODE" = "--check" ]; then
   if out="$(verify)"; then echo "OK"; exit 0; else echo "MISSING: $out"; exit 1; fi
