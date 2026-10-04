@@ -54,7 +54,34 @@ ip rule add ipproto udp sport 19132 table 100 pref 90
 
 脚本（幂等、自带 `--check` 自愈）: `scripts/orzmc-mc-reply-route.sh`
 部署位置（本机）: `/usr/local/bin/orzmc-mc-reply-route.sh`（WSL Ubuntu 内）+ 规范副本 `E:/orzmc/scripts/orzmc-mc-reply-route.sh`
-持久化: Windows 计划任务 **OrzMC-MC-Reply-Route**（每 10 分钟 `wsl -d Ubuntu -u root -- bash /usr/local/bin/orzmc-mc-reply-route.sh`）——`wsl --shutdown`/重启后规则会丢，靠它自愈（删除规则→任务→自动恢复，实测 `LastTaskResult=0`）。
+持久化: Windows 计划任务 **OrzMC-MC-Reply-Route**（`wsl -d Ubuntu -u root -- bash /usr/local/bin/orzmc-mc-reply-route.sh`）——`wsl --shutdown`/重启后规则会丢，靠它自愈。**2026-10-04 起重复间隔 10min → 3min**（`schtasks /change /tn OrzMC-MC-Reply-Route /RI 3 /DU 24:00`，改完 `Get-ScheduledTask` 确认 `LogonType=Interactive` 未被改动），脚本日志 `/var/log/orzmc-mc-reply-route.log`。
+
+### ⚠️ 3b. 自愈会「静默失效」：ip rule 活着、table 100 路由没了（2026-10-04 实测复发）
+
+**症状**：内网直连 25565/19132 正常，外网 Java/Bedrock 全部超时；计划任务 `LastTaskResult=0`（看起来一直在成功自愈）。
+
+**根因**：`ip rule`（from/sport 规则）与 table 100 的路由**生命周期不同**——路由会丢、规则不会。旧脚本 `need_apply()` 虽能发现路由缺失，但**应用后不校验**：`ip route replace` 失败（网卡/命名空间瞬态异常）时 `ip rule add` 照样成功，脚本照旧 `exit 0` → 计划任务永远显示成功，自愈通道静默死亡。已用 `ORZMC_IFACE=eth9` 伪造场景复现出完全相同的「有规则、无路由」残局。
+
+**一条命令判定**：`ip rule show | grep 'from <LAN IP> lookup 100'`（有）但 `ip route show table 100`（空）→ 就是这个。
+
+**为何会丢**：table 100 **不是本方案专属**——WSL mirrored 网络栈存在自带规则 `100: from all fwmark 0x9 lookup 100`（非本脚本添加），该表可能被 WSL/HNS 网络事件重写。实测排除项：Docker 容器起停（`docker run -p` / `rm -f`）**不会**清表；`wsl` 发行版 uptime 连续 24 天未重启也复现过，故不是 WSL 重启导致。
+
+**v2 脚本修复（已部署 E:/orzmc/scripts → WSL /usr/local/bin 与 Hermes 技能副本，三处 md5 一致）**：
+- 应用后**自校验**（table 100 含 `src <LAN IP>` + from 规则 + 每条 sport 规则），最多重试 3 次；失败 `exit 1` + 日志，计划任务 `LastTaskResult≠0` 可见。
+- **自动探测** LAN 网卡/网关/本机 IP（从 main 表里排除 `198.18.0.0/15` 的默认路由取），不再硬编码 `eth4`/`192.168.0.33`——换 Wi-Fi/换网段/换机不再需要改脚本；`ORZMC_IFACE/ORZMC_GW/ORZMC_SIP` 仍可覆盖。
+- 日志 `/var/log/orzmc-mc-reply-route.log`（`OK 已就位` / `DETECT 需要修复` / `APPLIED … 校验通过` / `FAIL …`）。
+- 自测方法：`ip route flush table 100` → 跑脚本应打印 `DETECT`+`APPLIED …校验通过`；`--check` 此时应输出 `MISSING:` 并 `exit 1`。
+
+### 3c. 排障顺序（2026-10-04 定稿，照这个走 10 分钟出结论）
+
+1. **服务在不在**：`wsl -d Ubuntu -u root -- ss -lntup | grep -E '25565|19132'`（宿主 Windows `netstat` 在 mirrored 模式下**看不到**容器发布端口 → 别据此判「没监听」）。
+2. **路由层有没有坏**：`ip rule show | grep 100` vs `ip route show table 100`（见 3b）。
+3. **入站到没到**：WSL 内 `nohup timeout 60 tcpdump -n -i eth4 -l 'tcp port 25565 or udp port 19132' > /tmp/cap.txt &`，再从外部触发探测；看 `eth4 In` 有没有包、应答源地址是不是 `192.168.0.33` 且从 eth4 出。**入站有 + 应答正常 = 本机没问题**。
+4. **外部多节点**：`check-host.net/check-tcp?host=域名:端口`（Node 命名空间直接看结果）+ `api.mcstatus.io`。
+5. **DDNS/公网 IP**：`dev.{SERVER_NAME}.cn → CNAME home.{SERVER_NAME}.cn → CNAME wangzhizhou.kmdns.net → A <公网IP>`；用 DoH 取真实 IP（`223.5.5.5/resolve?name=dev.{SERVER_NAME}.cn&type=A`），本机 `ping/nslookup` 只会给 Clash 假 IP `198.18.x.x`。抓到入站包即证明 DDNS/路由器映射都正常。
+
+### 3d. 防火墙三条规则已存在（核对用，别重复加）
+`OrzMC Java 25565 TCP` / `Bedrock Geyser 19132 UDP`（另 25566/19133）均为 `Allow / Any`，`Get-NetFirewallRule -Direction Inbound -Enabled True` 可查。
 
 ## 4. 走过的弯路（别重复）
 
@@ -76,6 +103,8 @@ curl -s 'https://api.mcstatus.io/v2/status/bedrock/<域名>:19132'
 wsl -d Ubuntu -u root -- bash -c "tcpdump -n -i any 'tcp port 25565'"
 ```
 ⚠️ mcsrvstat 有缓存（30min 级）与偶发解析抖动：同一端口可能「域名形式 False / 裸 IP 形式 True」→ **至少两源交叉验证**（mcsrvstat 裸 IP + mcstatus.io）再下结论。
+
+⚠️⚠️ **2026-10-04 实测：mcsrvstat.us 会误报 False，不能当首选判据**——同一时刻 `api.mcstatus.io` 双通道 `online:true`、`check-host.net` 6 个全球节点 TCP 全部 OK，而 mcsrvstat 的 java/bedrock 都报 False；同时在 WSL 抓包（`tcpdump -i eth4 'tcp port 25565 or udp port 19132'`）**看不到 mcsrvstat 的探测包到达**（只看到 mcstatus.io 的 RakNet ping/33B 与 SYN 到达，且我们的应答确实从 `192.168.0.33` 经 eth4 发出）。→ 结论：该源自身探测链路/缓存有问题。**判据优先级：本机抓包（入站+应答源地址）= 决定性的；其次 check-host.net TCP/ping 多节点 + mcstatus.io（Java/Bedrock 双协议）；mcsrvstat 仅作参考。**
 
 ## 6. 与端口映射的关系
 
