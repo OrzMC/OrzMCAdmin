@@ -90,12 +90,16 @@ fi
 
 LAN="$(echo "$SIP" | cut -d. -f1-3).0/24"
 
-route_ok() { ip route show table "$TABLE" 2>/dev/null | grep -q "src $SIP"; }
+route_def_ok() { ip route show table "$TABLE" 2>/dev/null | grep -qE "^default via ${GW//./\\.}( |$)"; }
+route_lan_ok() { ip route show table "$TABLE" 2>/dev/null | grep -qE "^${LAN//./\\.}( |$)"; }
 rule_from_ok() { ip rule show | grep -q "from $SIP lookup $TABLE"; }
 rule_sport_ok() { ip rule show | grep -q "ipproto $1 sport $2 lookup $TABLE"; }
 
 verify() {
-  route_ok || { echo "route table $TABLE 缺 src $SIP"; return 1; }
+  # ⚠️ 两条路由必须分别校验：早先只 grep "src $SIP"，任一存在即通过，
+  #    实测出现「default 在、/24 丢」（或反之）却报 OK 的漏检。
+  route_def_ok || { echo "route table $TABLE 缺 default via $GW（src $SIP）"; return 1; }
+  route_lan_ok || { echo "route table $TABLE 缺 $LAN（src $SIP）"; return 1; }
   rule_from_ok || { echo "缺 ip rule 'from $SIP lookup $TABLE'"; return 1; }
   for p in $TCP_PORTS; do rule_sport_ok tcp "$p" || { echo "缺 tcp sport $p 规则"; return 1; }; done
   for p in $UDP_PORTS; do rule_sport_ok udp "$p" || { echo "缺 udp sport $p 规则"; return 1; }; done
