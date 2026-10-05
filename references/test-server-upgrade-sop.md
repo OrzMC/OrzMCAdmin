@@ -115,7 +115,8 @@ req(inst,"DELETE","/api/files/",{"targets":["/upgrade-bak-YYYYMMDD", "/plugins/O
 - AxGraves 1.32.1 已最新（巡检脚本报「查询失败」属误报）
 - 交付：**全部走 `download_from_url`**，7 文件 sha256 回读 7/7 一致；`plugins/update` 启动后被消费（total=0）
 - OrzMC 升级触发配置迁移 `config.yml schema 14 → 15`（新增 `tnt` / `exploit_hardening`，`entity_teleport_whitelist` 16→17 项），自动留 `config.yml.bak`
-- 核心改名后验证：`logs/start-script.log` = `2026-10-05 04:07:00 [start.sh] 使用核心: paper-26.2-129.jar`；`latest.log` = `Paper 26.2-129` / `Folia 26.2-7`
+- 核心改名后验证：`latest.log` = `Paper 26.2-129` / `Folia 26.2-7`，根目录只剩 `paper-26.2-129.jar` / `folia-26.2-7.jar`
+  （当日曾短暂使用带 `logs/start-script.log` 审计行的加强版脚本，当日即按老板要求精简为 4 行版 → 见 §2c；如需审计行可自行加回）
 - **启动日志异常（新发现，勿重复排查）**：
   - 🔴 paper `[Essentials] You are running an unsupported server version!` —— EssentialsX 最新正式版 2.22.0（2026-05-31）**未适配 26.x**，main 分支已有 26.2/26.3 修复（26-08-05 起）但**未发版**。老板决策：**不上 dev 构建，等正式版**
   - 🟠 folia `[SimpleLogin] ProtocolLib not found → /login /register 明文写控制台`。**ProtocolLib 不可装**：Folia 相关 issue 全被关成 **not_planned**、最新 release 5.4.0 早于 26.x、26.2 仍有 open bug（#3660）、26.3 修复仅在 dev 提交。SimpleLogin 配置里**无隐藏开关**（已核对 config.yml）。替代只有迁 AuthMe（Modrinth `authmereloaded` loaders 含 folia）。老板决策：**保持现状**
@@ -132,33 +133,25 @@ req(inst,"DELETE","/api/files/",{"targets":["/upgrade-bak-YYYYMMDD", "/plugins/O
 **现状（已落地）**：
 - 启动命令（老板在面板改的，普通 apikey 改不了 → 见下方坑）：**`sh /server/start.sh`**
 - 实例根目录核心：`paper-26.2-129.jar` / `folia-26.2-7.jar`（**真实版本名**）
-- `/start.sh` 自动识别：优先 `{paper,folia}-*.jar`（`sort -V` 取版本最高，多份时告警），否则回退固定名
+- `/start.sh` 自动识别：优先 `{paper,folia}-*.jar`（`sort -V` 取版本最高），否则回退固定名
 
 **每次核心升级的新流程**：投递 `paper-<新版本>.jar`（`download_from_url`）→ 删旧 jar → 重启；删旧前先 `copy` 到 `/upgrade-bak-YYYYMMDD/`
 
-**脚本全文（实例根目录 `/start.sh`，两实例仅 prefix 与内存不同）**：
+**脚本全文（2026-10-05 老板要求精简后的最终版，实例根目录 `/start.sh`，两实例仅 prefix 与内存不同）**：
 ```sh
 #!/bin/sh
-# 用法：MCSM 实例「启动命令」=  sh /server/start.sh
-# ⚠️ 必须用 exec 启动 java —— MCSM 的 stop 往进程 stdin 写 "stop"，
-#    不 exec 时 shell 会截住 stdin，导致停服失效
-cd /server 2>/dev/null || cd "$(dirname "$0")"
-
-JARS=$(ls -1 paper-*.jar 2>/dev/null | sort -V 2>/dev/null || ls -1 paper-*.jar 2>/dev/null | sort)
-COUNT=$(echo "$JARS" | grep -c . 2>/dev/null || echo 0)
-JAR=""
-for f in $JARS; do JAR="$f"; done          # 取排序最后一个（版本最高）
-if [ -z "$JAR" ] && [ -f paper.jar ]; then JAR="paper.jar"; fi
-if [ -z "$JAR" ]; then echo "[start.sh] 错误：未找到核心 jar（paper-*.jar / paper.jar）"; exit 1; fi
-if [ "$COUNT" -gt 1 ]; then echo "[start.sh] 警告：检测到 $COUNT 个核心 jar，已选版本最高的 $JAR（建议清理旧核心）"; fi
-echo "[start.sh] 使用核心: $JAR"
-mkdir -p logs 2>/dev/null
-echo "$(date '+%Y-%m-%d %H:%M:%S') [start.sh] 使用核心: $JAR" >> logs/start-script.log
-exec java -XX:+UseG1GC -XX:MaxGCPauseMillis=100 \
-  -Dlog4j2.configurationFile=/server/config/log4j2.xml \
-  -Xms4G -Xmx4G -jar "$JAR" nogui
+# MCSM 启动命令 = sh /server/start.sh ｜ 自动选版本化核心（版本最高），回退 paper.jar
+J=$(ls -1 paper-*.jar 2>/dev/null | sort -V | tail -1)
+exec java -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -Dlog4j2.configurationFile=/server/config/log4j2.xml -Xms4G -Xmx4G -jar "${J:-paper.jar}" nogui
 ```
 （folia 实例：`paper` → `folia`、`-Xms4G -Xmx4G` → `-Xms2G -Xmx2G`）
+
+**精简取舍（4 行版 vs 初版 32 行，逐条已验证）**：
+- ❌ 删 `cd /server`：MCSM docker 实例 cwd 本来就是 `/server`（原固定名命令直接跑通、日志里 `file:/server/libraries/...` 可证），无需 cd
+- ❌ 删多 jar 计数/告警、找不到 jar 的显式报错、`[start.sh]` console echo：`sort -V | tail -1` 已保证取最高版本；echo 会被 MCSM 滚动缓冲吃掉，无实际价值
+- ❌ 删 `logs/start-script.log` 审计落盘：核心版本以 `logs/latest.log` 的 `This server is running ...` + 根目录 jar 名双重核对即可
+- ✅ **必须保留**：`sort -V | tail -1` 选版本化核心、`${J:-paper.jar}` 固定名回退、**`exec`**（不加 exec → MCSM 的 stop（stdin 注入 `stop`）失效，只能强杀）
+- ✅ 精简版实测（4 场景 + 真实重启）：版本化 jar→选中；双版本→取最高；仅固定名→回退；都无→回退 `paper.jar`；两实例重启后 `latest.log` = `Paper 26.2-129` / `Folia 26.2-7`，零 start.sh 相关错误
 
 **坑与验证要点**：
 1. ⚠️ **`PUT /api/instance` 改实例配置对普通 apikey 是 403「密钥不正确」** → 启动命令变更**必须老板在面板做**（或换管理员 apikey）。文件类 API（touch/PUT/DELETE/move/list/download_from_url）普通 apikey 全可用。
