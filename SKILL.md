@@ -39,7 +39,7 @@ required_commands: [java, curl, tar]
 > | **插件权限/指令清单（21 插件按组分组：指令全量+权限全量+组分配标注；脚本 `scripts/plugin_inventory.py` 可重复生成+定时更新；JSON 全量在 `~/.hermes/state/plugin_inventory.json`）** | `references/plugin-inventory.md` |
 > | **三端配置差异审计（2026-08-11 三次全量对比；2026-08-12 起每周一 9:15 cron `ab06b886c39f`「三端配置审查」**v2：只审查不重启；**v3（2026-09-03 迁 MCSM 后）：本地端 = 本机 MCSM Paper 实例目录直读 + Exa + 远程 MCSM 三路并发**；脚本 `~/.hermes/scripts/orzmc_config_audit.sh`；保留最近两次报告；⚠️ 远程 MCSM 连续三周「未开启API密钥创建功能」= 远程面板 enableApiKey 未开，待老板远程修复；cmp3 工具链用法）** | `references/three-end-config-drift.md` |
 > | **版本巡检 cron（每日 10:00，job `0b4298821a86`）：脚本 `~/.hermes/scripts/mc_version_check.py` 查核心+19 插件各渠道最新版 vs 本地部署 → 有差异发飞书询问用户** | 本 SKILL.md「版本巡检」段 |
-> | **测试服 jar 升级 + 配置迁移 SOP（2026-09-12 实测沉淀）：双实例 MCSM API 全流程——内容寻址直链换核心 / `plugins/update` 换插件 / 插件 schema 自动迁移后按新版定义补键（`scripts/config_merge_defaults.py`，注释保留）/ jar sha256 回读验收 / 备份与 .bak 残留清理；含「Windows 栈 + Mac 副本」「easybot.yml 遗留键勿补」等坑** | `references/test-server-upgrade-sop.md` |
+> | **测试服 jar 升级 + 配置迁移 SOP（2026-09-12 实测沉淀）：双实例 MCSM API 全流程——内容寻址直链换核心 / `plugins/update` 换插件 / 插件 schema 自动迁移后按新版定义补键（`scripts/config_merge_defaults.py`，注释保留）/ jar sha256 回读验收 / 备份与 .bak 残留清理；含「Windows 栈 + Mac 副本」「easybot.yml 遗留键勿补」等坑；**2026-10-05 增补：投递统一走 `download_from_url`（upload 通道 403）、核心版本化命名 + `/start.sh` 自动识别（须 `exec java`；启动命令变更需老板面板操作）** | `references/test-server-upgrade-sop.md` |
 > | **Docker 服务清单 / 重启自愈 / MCSM 实例手动启停（autoStart 回写坑、自动登录断点）** | `references/docker-service-lifecycle.md` |
 > | **交上游的问题清单（已修/待修索引）** | `references/upstream-issues.md` |
 > | **性能诊断（Spark 五步法、实体审计、Aikar Flags、修复方案）** | `references/performance.md` |

@@ -119,6 +119,8 @@ EOF
 
 ## 插件更新（MCSM 端）
 
-- ✅ **plugins/update 实测可用**（2026-08-03）：`POST /api/files/upload?upload_dir=/plugins/update` multipart 上传 → restart → Paper 自动替换并清空 update/。**文件操作期间服务器运行中无碍**（jar 上传不触发锁定，仅读取被运行中 jar 锁定会 500）
+- ⚠️⚠️ **2026-10-05 更新：`/upload/{pwd}` 通道已不可用** —— `POST /api/files/upload` 取证后向 `{addr}/upload/{password}` multipart 推送**全线 403 Forbidden / Broken pipe**（addr 现为 `wss://mcs-node.{SERVER_NAME}.cn:443` 形态）。**统一改用 `POST /api/files/download_from_url`** body `{"url":官方直链,"file_name":"/plugins/update/<名>.jar"}`（2026-10-05 实测 7 文件含 47MB Geyser 全部一次成功）+ 投递后 sha256 回读验收。详见 `references/test-server-upgrade-sop.md` §1③
+- ✅ **plugins/update 实测可用**（2026-08-03）：上传 jar 到 `/plugins/update` → restart → Paper 自动替换并清空 update/。**文件操作期间服务器运行中无碍**（jar 上传不触发锁定，仅读取被运行中 jar 锁定会 500）
+- ⚠️ **`PUT /api/instance`（改实例配置/启动命令）对普通 apikey 返回 403「密钥不正确」** → 启动命令等实例配置**只能老板在面板改**；文件类 API（list/download/touch/PUT 文件/DELETE/move/mkdir/copy/download_from_url）普通 apikey 均可用
 - ✅ **删除插件/文件用 `scripts/cmp3/mcsm_delete.py`**（2026-08-06 起标准方案）：`python3 mcsm_delete.py /plugins/xxx.jar` → DELETE /api/files/ + 自动删后验证（真实 GET 确认）。**旧方案「上传 0B 占位覆盖」已废弃**（Paper 会对无效 jar 报 `Directory 'plugins\xxx.jar' failed to update!` 启动 ERROR，不如直接删干净）
 - 上传插件脚本：`scripts/cmp3/mcsm_upload_update.py deathchest.jar GriefPrevention.jar` + `mcsm_verify_update.py`

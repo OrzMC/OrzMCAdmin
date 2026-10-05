@@ -48,8 +48,11 @@ req(inst,"POST","/api/files/copy",{"targets":[["/plugins/X.jar","/upgrade-bak-YY
 ### ③ 投递
 - **核心 jar**：`POST /api/files/download_from_url {"url":<fill-data直链>,"file_name":"/paper.jar"}` ——
   ⚠️ **实测可覆盖已存在文件**（先写 0 字节文件再投递同名 URL → 覆盖成功），所以旧 jar 必须先 copy 到备份目录。
-- **插件 jar**：`POST /api/files/upload?upload_dir=/plugins/update` 取凭据 → `POST {addr}/upload/{password}` multipart。
-  ⚠️ 凭据返回的 `addr` 可能是 **`wss://mcs-node.{SERVER_NAME}.cn:443`**（不是 localhost:24444）→ 拼 `https://host/upload/<pwd>`。
+- **插件 jar — ⚠️⚠️ 2026-10-05 起：上传通道不可用，统一走 daemon 直传**
+  - ❌ `POST /api/files/upload?upload_dir=/plugins/update` 取证 → `POST {addr}/upload/{password}` multipart **实测全线失败**：凭据 `addr` 现为 **`wss://mcs-node.{SERVER_NAME}.cn:443`**（不是 localhost:24444），https 化后仍 **403 Forbidden**，部分文件报 `Broken pipe`。**别再在这条路上浪费重试**
+  - ✅ **标准做法 = `POST /api/files/download_from_url`** body `{"url":官方直链,"file_name":"/plugins/update/<文件名>.jar"}` —— 2026-10-05 实测 **7 个文件（含 47MB Geyser）全部 200 一次成功**；小件同样适用，比 upload 更稳
+  - ✅ 投递后 **sha256 回读验收**（`POST /api/files/download` 签发 → `GET {addr}/download/{pwd}/{文件名}`，`wss://` 换 `https://`，`localhost` 换面板主机名）——本次 7/7 与本地一致。同账号签发限流 3s/次，**串行 + sleep 3.2~3.6s**
+  - 📌 老版本 upload 通道的「addr 拼 https://host/upload/<pwd>」写法保留在此仅作历史参考，勿再使用
 - 投递后**立即回读校验**（`mcsm_download` 拉回 + sha256 比对本地）：本次 paper 4 个 + folia 8 个插件全部 OK。
 - ⚠️ **回读要赶在服务器启动前**——启动后 `plugins/update/` 会被消费（文件移走），回读报「回读失败」是假故障。
 
@@ -101,6 +104,70 @@ req(inst,"DELETE","/api/files/",{"targets":["/upgrade-bak-YYYYMMDD", "/plugins/O
 - 保持不升（已最新/既有决策）：EssentialsX 2.22.0、WorldEdit 7.4.5、WorldGuard 7.0.18、packetevents 2.13.0、**Via 系列 5.11.0（稳定版不升 SNAPSHOT）**、GriefPrevention 16.18.7、SkinsRestorer 15.12.5、F3F4Perms 1.3.0、GrimAC 2.3.74（比 GitHub release 新）、VaultUnlocked 2.20.2、SimpleLogin 1.16.7、本地打包的 EzShops 2.5.9/LoginSecurity 3.3.2/DeathChest 3.0.1/GetMeHome 3.0.2。
 - 配置：paper 已 schema 14（无迁移，仅补 `im.yml` 平台段）；folia 由 legacy(2)→14（13 键补齐 + 5 项旧默认翻转 + templates 正文迁语言包），自定义 `entity_teleport_whitelist`(16 项) 与其 QQ 群号 `1082305302` 完整保留；两实例 `update.channel` 均 = **beta**。
 - 待老板决策的观察项：paper `i18n.default_lang: en-US`（folia 是 zh-CN）→ paper 群消息/游戏文案走英文语言包。
+
+## 2b. 2026-10-05 实录（第二轮升级 + 核心版本化落地）
+
+| 实例 | 升级项 | 启动 |
+|:--|:--|:--|
+| papermc-test（Paper 26.2-129） | Geyser 1247→**1248**、LuckPerms 5.5.85→**5.5.87**、SkinsRestorer 15.12.5→**15.12.6**、OrzMC 1.0.28-dev.425→**1.0.29-dev.427** | Done 179s |
+| folia-test（Folia 26.2-7） | Geyser 1247→**1248**、LuckPerms→**5.5.87**、SkinsRestorer→**15.12.6**、ExecutableEvents 3.26.10.2→**3.26.10.4**、SCore 5.26.10.2→**5.26.10.4** | Done 116s |
+
+- AxGraves 1.32.1 已最新（巡检脚本报「查询失败」属误报）
+- 交付：**全部走 `download_from_url`**，7 文件 sha256 回读 7/7 一致；`plugins/update` 启动后被消费（total=0）
+- OrzMC 升级触发配置迁移 `config.yml schema 14 → 15`（新增 `tnt` / `exploit_hardening`，`entity_teleport_whitelist` 16→17 项），自动留 `config.yml.bak`
+- 核心改名后验证：`logs/start-script.log` = `2026-10-05 04:07:00 [start.sh] 使用核心: paper-26.2-129.jar`；`latest.log` = `Paper 26.2-129` / `Folia 26.2-7`
+- **启动日志异常（新发现，勿重复排查）**：
+  - 🔴 paper `[Essentials] You are running an unsupported server version!` —— EssentialsX 最新正式版 2.22.0（2026-05-31）**未适配 26.x**，main 分支已有 26.2/26.3 修复（26-08-05 起）但**未发版**。老板决策：**不上 dev 构建，等正式版**
+  - 🟠 folia `[SimpleLogin] ProtocolLib not found → /login /register 明文写控制台`。**ProtocolLib 不可装**：Folia 相关 issue 全被关成 **not_planned**、最新 release 5.4.0 早于 26.x、26.2 仍有 open bug（#3660）、26.3 修复仅在 dev 提交。SimpleLogin 配置里**无隐藏开关**（已核对 config.yml）。替代只有迁 AuthMe（Modrinth `authmereloaded` loaders 含 folia）。老板决策：**保持现状**
+  - 🟡 folia `duplicate keys found: chiseled_sandstone / chiseled_red_sandstone` —— **40+ 插件 yml 全扫未命中**，疑似 jar 内置资源；影响可忽略
+  - 🟡 folia Geyser 报 `ViaVersion 过旧`（5.12.0 已是最新正式版，只 SNAPSHOT 更新 → 按纪律不动）
+  - ⚪ 既有噪音：offline mode / root 用户 / spark 统计超时 / EzShops 菜单 `slot -1` 越界 / GrimAC+ViaBackwards 组合提示
+- **依赖插件核查结论**：packetevents 2.14.0 ✅、Vault/VaultUnlocked ✅、Via 三件套 ✅、SCore↔ExecutableEvents ✅、WorldEdit↔WorldGuard ✅；**唯一真缺口 = ProtocolLib**（见上）、唯一上游未适配 = EssentialsX
+- 备份清理：删除陈旧 `/upgrade-bak-20260919`（paper 90.5MB + folia 36.9MB），保留 `/upgrade-bak-20261001`（paper 57.4MB + folia 60.4MB）
+
+## 2c. 核心 jar 版本化命名 + `/start.sh`（2026-10-05 落地，两实例已生效）
+
+**动机**：核心曾固定叫 `paper.jar` / `folia.jar`，文件名不含版本/构建号 → 无法判断跑的是哪个构建，版本巡检只能靠启动日志反推。
+
+**现状（已落地）**：
+- 启动命令（老板在面板改的，普通 apikey 改不了 → 见下方坑）：**`sh /server/start.sh`**
+- 实例根目录核心：`paper-26.2-129.jar` / `folia-26.2-7.jar`（**真实版本名**）
+- `/start.sh` 自动识别：优先 `{paper,folia}-*.jar`（`sort -V` 取版本最高，多份时告警），否则回退固定名
+
+**每次核心升级的新流程**：投递 `paper-<新版本>.jar`（`download_from_url`）→ 删旧 jar → 重启；删旧前先 `copy` 到 `/upgrade-bak-YYYYMMDD/`
+
+**脚本全文（实例根目录 `/start.sh`，两实例仅 prefix 与内存不同）**：
+```sh
+#!/bin/sh
+# 用法：MCSM 实例「启动命令」=  sh /server/start.sh
+# ⚠️ 必须用 exec 启动 java —— MCSM 的 stop 往进程 stdin 写 "stop"，
+#    不 exec 时 shell 会截住 stdin，导致停服失效
+cd /server 2>/dev/null || cd "$(dirname "$0")"
+
+JARS=$(ls -1 paper-*.jar 2>/dev/null | sort -V 2>/dev/null || ls -1 paper-*.jar 2>/dev/null | sort)
+COUNT=$(echo "$JARS" | grep -c . 2>/dev/null || echo 0)
+JAR=""
+for f in $JARS; do JAR="$f"; done          # 取排序最后一个（版本最高）
+if [ -z "$JAR" ] && [ -f paper.jar ]; then JAR="paper.jar"; fi
+if [ -z "$JAR" ]; then echo "[start.sh] 错误：未找到核心 jar（paper-*.jar / paper.jar）"; exit 1; fi
+if [ "$COUNT" -gt 1 ]; then echo "[start.sh] 警告：检测到 $COUNT 个核心 jar，已选版本最高的 $JAR（建议清理旧核心）"; fi
+echo "[start.sh] 使用核心: $JAR"
+mkdir -p logs 2>/dev/null
+echo "$(date '+%Y-%m-%d %H:%M:%S') [start.sh] 使用核心: $JAR" >> logs/start-script.log
+exec java -XX:+UseG1GC -XX:MaxGCPauseMillis=100 \
+  -Dlog4j2.configurationFile=/server/config/log4j2.xml \
+  -Xms4G -Xmx4G -jar "$JAR" nogui
+```
+（folia 实例：`paper` → `folia`、`-Xms4G -Xmx4G` → `-Xms2G -Xmx2G`）
+
+**坑与验证要点**：
+1. ⚠️ **`PUT /api/instance` 改实例配置对普通 apikey 是 403「密钥不正确」** → 启动命令变更**必须老板在面板做**（或换管理员 apikey）。文件类 API（touch/PUT/DELETE/move/list/download_from_url）普通 apikey 全可用。
+2. 新建脚本文件：`POST /api/files/touch` `{"target":"/start.sh"}` → `PUT /api/files/` `{"target":"/start.sh","text":"<全文>"}`（PUT 只能写已存在文件；body 字段 `text`）→ 回读校验。
+3. **切换顺序**：先让老板把启动命令改为 `sh /server/start.sh`（脚本含固定名回退，此时照跑 `paper.jar`）→ 再停服改名 → 启动验证。顺序颠倒会让现启动命令找不到 jar。
+4. **`exec` 不能省**：不加 exec → MCSM 的 stop（stdin 注入 `stop`）失效，只能强杀。
+5. ⚠️ **MCSM 的 `outputlog` 是滚动缓冲**（重启后可能只剩几十行）→ **`[start.sh]` 的 echo 会滚掉**，因此脚本额外落盘 `logs/start-script.log`（审计用）；核心版本以 `logs/latest.log` 的 `This server is running ...` 为准（`outputlog` 里可能已看不到该行）。
+6. 验证清单：`logs/start-script.log` 出现 `使用核心: paper-26.2-129.jar`；`latest.log` 的版本行与 jar 名一致；根目录只剩一个核心 jar；`sh -n` + 4 场景（单版本化 / 双版本化取最新 / 仅固定名 / 都没有报错退出 1）。
+7. 附带收益：`mc_version_check.py` 可**直接读文件名**判定已部署核心版本（此前 folia 只能靠日志反推）。
 
 ## 3. 机制与坑
 
