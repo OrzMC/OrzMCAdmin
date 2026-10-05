@@ -1,6 +1,18 @@
-# 巡检日期：2026-09-14（周一 9:00 周巡检，脚本 cmp3 自动生成，基准端 = MCSM {SERVER_NAME}）
+# 巡检日期：2026-10-05（周一 9:00 周巡检，脚本 cmp3 自动生成，基准端 = MCSM {SERVER_NAME}）
 
-> 本周与上一份 20260909 相比：新增纳入 `Geyser-Spigot/config.yml`（两端 ✅ 一致）；OrzMC `guide_book.yml` 新增引号风格差异（MCSM `"腐竹"` vs Exa `腐竹`，9-12 升级重序列化所致，功能无影响）；OrzMC `im.yml` 原 `enabled` 差异已消失，仅剩注释行差异。其余 25 项差异与 0909 完全一致（测试服 vs 生产服的既有环境差异）。
+> **本周状态：✅ SUCCESS** —— 面板已从上周（09-28）的 Cloudflare 隧道故障中恢复，两端配置对比正常完成。
+> **结论：无新增人工配置漂移。** 本次结果与上一次成功审查（2026-09-21）**完全一致**（同为 27 项差异，
+> key/值逐一对应）——全部为「测试服（MCSM papermc-test，smp/测试参数）vs 生产服（Exaroton 海外服）」
+> 的既有环境差异，无需要处理的新漂移。
+>
+> 口径：交集语义（两端共同 key 值同=完全一致；单端独有 key 另计）。⚠️ 本脚本口径仅覆盖「MCSM 配置 vs Exa 配置」，
+> **不含两端插件 jar 版本比对**（生产端 Exa 版本落后需人工另查，见第 3 部分版本巡检）。
+>
+> 执行环境回显：`MCSM({SERVER_NAME} Windows 栈): ⏹️ 停止 | 玩家 0/0`；`Exa: 0(OFFLINE)`（两端均处于停止/离线态，
+> 审查为只读拉取，**未做任何重启或改动**）。拉取：Exa=52 / MCSM=66 个文件（并发）。
+>
+> 与 09-14 / 09-21 历史对比：09-21 相对 09-14 曾新增 1 项（Geyser `config-version` MCSM=8 vs Exa=7，属 Exa 端
+> Geyser 插件版本落后，非人工改配置）；该项本周仍存在、与 09-21 一致。
 
 ---
 
@@ -19,6 +31,7 @@
 判定口径：**交集语义**（两端共同 key 值同=完全一致；单端独有 key 另计）
 
 ---
+
 ## 一、核心配置（服务端）
 
 ### ✅ bukkit.yml — 两端完全一致
@@ -42,7 +55,7 @@
 | 0@management-server-enabled | false | true |
 | 0@management-server-host | localhost | 0.0.0.0 |
 | 0@management-server-port | 0 | 9900 |
-| 0@management-server-secret | 89GCEpIcbJw16Q8WlJe8UbNP4Owfma4rdzOg6mB3 | xvD28NJ1m7OuXAWRNdcBDeMgNxMGjNtvzIyhnOy8 |
+| 0@management-server-secret | 89GCEpIcbJw16Q8WlJe8UbNP4Owfma4rdzOg6mB3 | PEw7KPCVdxUXN92LUi0Z79XZUiBDR7g2fuePHfti |
 | 0@management-server-tls-enabled | true | false |
 | 0@max-players | 150 | 20 |
 | 0@max-tick-time | 60000 | 600000 |
@@ -60,6 +73,7 @@
 ### ✅ wepif.yml — 两端完全一致
 
 ---
+
 ## 二、插件配置（按插件分组）
 
 ### ✅ BackOnDeath（1 个：0 一致 / 0 差异 / 1 数据）
@@ -108,9 +122,10 @@
 - ❌ `limit.yml` 差异 1 处：
   - `2@limit`：MCSM=`30` Exa=`10`
 
-### ✅ Geyser-Spigot（1 个：1 一致 / 0 差异 / 0 数据）
+### ❌ Geyser-Spigot（1 个：0 一致 / 1 差异 / 0 数据）
 
-- ✅ `config.yml` 两端完全一致
+- ❌ `config.yml` 差异 1 处：
+  - `0@config-version`：MCSM=`8` Exa=`7`
 
 ### ✅ GriefPreventionData（2 个：2 一致 / 0 差异 / 0 数据）
 
@@ -216,22 +231,17 @@
   - `0@serverUuid`：MCSM=`60e5974b-c66c-4c8b-931b-9384a86c271f` Exa=`02c94a29-7bc2-4ace-ae32-a071decbe58f`
 
 ---
+
 ## 三、汇总
 
 | 状态 | 核心 | 插件 | 合计 |
 |:--|:--|:--|:--|
-| ✅ 两端完全一致 | 5 | 28 | 33 |
-| ❌ 配置差异 | 2 | 24 | 26 |
+| ✅ 两端完全一致 | 5 | 27 | 32 |
+| ❌ 配置差异 | 2 | 25 | 27 |
 | ℹ️ 运行时数据差异（正常） | 0 | 8 | 8 |
 | **合计** | **7** | **60** | **67** |
 
 > 注：运行时数据文件 = 玩家家/死亡点/交易记录/审批记录等随玩家变化的内容，两端独立属预期，不算配置漂移。
 
 ---
-
-## 附：Exaroton 生产端插件清单快照（2026-09-14 巡检时读 files/info/plugins/，只读）
-
-- **未部署 GrimAC**（plugins/ 无 GrimAC jar、plugins/GrimAC/ 目录不存在）→ 解释本报告 GrimAC 10 项「Exa 端缺失」为**生产端根本没有该插件**，非配置漂移；CustomWorldHeight config 残留属 MCSM 侧历史遗留（该插件两端已移除）。
-- 版本落后项：OrzMC **1.0.24**（Hangar Release 最新 1.0.27）、Geyser-Spigot **build 1230**（最新 1235）、LuckPerms **5.5.77**（最新 5.5.84）、GetMeHome 3.0.0-4。
-- 已含：F3F4Perms 1.3.0、packetevents 2.13.0、worldedit 7.4.5、worldguard 7.0.18、Via* 5.11.0/4.1.3 等。
-- ⚠️ mc_version_check.py 的口径是「MCSM({SERVER_NAME}) 部署 vs 渠道最新」，**不含 Exaroton**；生产端版本落后需另行人工比对（本次为人工读取结果）。
+*本文件由「orzmc MC 每周巡检」cron 生成（只读巡检 + 落盘报告，未做任何改动）。*
