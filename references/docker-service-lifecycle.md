@@ -177,6 +177,35 @@ docker compose --env-file "E:/orzmc/.env" \
 
 实测 2026-09-11：5 个 compose 容器全部刷成 `E:\deploy\orzmc-deploy-0.0.3`，重建后四端点仍 200、easybot `healthy` 且 0 条 SQLite 报错、两个 MCSM 实例未被拉起。
 
+## 9b. ❗ cloudflared 隧道静默宕机：Clash TUN 劫持 UDP → QUIC 连不上边缘（2026-10-09 实测）
+
+**症状**：`docker ps` 里 9 个容器全 `Up`、health 全绿，但 `https://mcs.{SERVER_NAME}.cn` / `easybot.` / `orzmcs.` 全部不可达（curl 000 / 浏览器 530）。
+**判据**：`docker logs orzmc-cloudflared | grep -E 'Registered tunnel connection|ERR'` ——若最后一条 `Registered` 是几天前、之后每小时几十条
+`Failed to dial a quic connection error="failed to dial to edge with quic: timeout: no recent network activity"` + `no free edge addresses left`，就是本故障。
+容器自身看不出异常（`restart=unless-stopped`、进程活着、只是重连循环）。
+
+**根因**：本机 Clash TUN（`fake-ip` + UDP 劫持，见 `bedrock-raknet-diagnosis` 技能）让**所有公网 UDP 出站收不到回包**。
+cloudflared 默认走 **QUIC(UDP:7844)** → 控制连接超时；而 **TCP 出站正常**（容器内 `nc -z region1.v2.argotunnel.com 7844` OK，plain http 经代理 204）。
+注意 compose 里的 `dns: [223.5.5.5, 1.1.1.1]` 覆盖**挡不住** TUN 的 `dns-hijack`——日志里边缘 IP 仍是 `198.18.x.x` 假 IP，这是正常现象，别据此判断 DNS 配置失效。
+
+**修法（已落地）**：强制隧道走 TCP。写站点增量 `$DATA_ROOT/compose.site.yaml`（不改包内文件）：
+```yaml
+services:
+  cloudflared:
+    environment:
+      TUNNEL_TRANSPORT_PROTOCOL: "http2"
+```
+→ `./orzmc.sh -d E:/orzmc validate && ./orzmc.sh -d E:/orzmc up`（只会 `Recreate` cloudflared，其余容器不动）
+→ 日志出现 `Initial protocol http2` + `Registered tunnel connection … protocol=http2` 即恢复。
+**隔离验证法**（不动生产）：同配置另起一个一次性容器 `docker run -d --name cf-http2-test --network orzmc_default \
+ -e TUNNEL_TRANSPORT_PROTOCOL=http2 -v E:/orzmc/cloudflared:/etc/cloudflared:ro <同一 digest> tunnel --config … run` ——
+同一 tunnel 允许两个连接，起来即等于临时恢复公网入口，验证完 `docker rm -f`。
+
+**验证纪律**：① Windows 宿主 `curl https://<域名>` 会因 schannel `CRYPT_E_REVOCATION_OFFLINE` 假失败（本地证书吊销检查出不去），
+用 `curl --ssl-no-revoke` 或 `docker run --rm alpine wget -S https://<域名>/` 复核；
+② 隧道恢复后要回查 MCSM 节点：`docker logs orzmc-mcsmanager-web` 出现 `远程节点 … 密钥验证通过`；
+③ `orzmusic.{SERVER_NAME}.cn` 返回 **404** 属正常——该域名不在本隧道 ingress（只有 mcs/easybot/mcs-node/orzmcs 四条），ccatch-all `http_status:404` 兜底。
+
 ## 10. 坑：移动/重命名部署包目录后，旧路径会“复活”为空目录
 
 **现象**：`E:\migration` 被改名成 `E:\deploy` 后，隔一段时间又出现，里面只有空目录树（如 `migration/orzmusic-deploy-0.0.7/keygenmusic`，0 字节、无文件）。
