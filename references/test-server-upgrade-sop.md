@@ -185,6 +185,54 @@ exec java -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -Dlog4j2.configurationFile=/serv
 5. **Modrinth 侧 jar 文件名可能不含版本号**（如 `GriefPrevention3D.jar`）→ 投递时改名为 `<名>-<版本>.jar`，维持「文件名含版本」惯例（否则 `mc_version_check.py` 又要靠 fallback 表）。
 6. **`mc_version_check.py` 未识别 jar 会导致漏报升级项**：本轮 `GriefPrevention3D-18.4.8.jar` 因 PREFIX_NAME 缺该前缀被报「未识别」→ 其 **18.4.8→18.4.12** 的升级项在周报里根本没出现（已修映射表，见 SKILL.md）。
 
+## 2e. 2026-10-12 Paper **26.3 升级兼容性实测**（真机两轮，结论：可升但插件需同步）
+
+> 触发：老板问「测试服确认核心能否升 26.3、插件是否支持/是否要一起升」。做法：真机把 papermc-test 核心换成 `paper-26.3-177.jar`（STABLE）实测，两轮日志取证。
+
+**第一轮（原插件集）→ ❌ 服务器崩溃**
+- 核心启动 OK：`Paper version 26.3-177-main@fbec96a`（Java 25 满足）
+- **WorldEdit 7.4.5 启用失败** → `Error occurred while enabling WorldEdit` 栈：`java.lang.ExceptionInInitializerError` ← `java.lang.IllegalArgumentException: Couldn't find asBukkitCopy or asCraftMirror method on CraftItemStack`（`WorldEditPlugin.initializeRegistries`）
+- 连带 **WorldGuard 7.0.19 disable 报错** → 随后 **整服 crash**：crash-report `Description: Exception in server tick loop` / `com.sk89q.worldedit.extension.platform.NoCapablePlatformException: No platform was found supporting CONFIGURATION`（`SimpleHelpMap.initializeCommands` → `MinecraftServer.initPostWorld`）
+- 取证：`/server/crash-reports/crash-2026-10-12_19.29.43-server.txt`；本地副本 `/tmp/orzmc_263_check/crash.txt`
+
+**第二轮（WorldEdit → 7.4.6-beta-02）→ ✅ 启动全绿**
+- `Done (74.273s)!`，**21 插件全部 Enabling 成功**，WorldGuard 正常加载三世界 region，**无 crash**
+- 唯一新问题：**Geyser-Spigot 1251 启用失败**（同一个反射根因：其 shaded `org.incendo.cloud` 的 `CraftBukkitReflection.firstNonNullOrThrow` → `Couldn't find asBukkitCopy or asCraftMirror method on CraftItemStack`）→ Geyser 自我 disable = **基岩通道不可用**
+- Essentials 仍报 `unsupported server version`（既有）
+
+**结论表（Paper 26.3 升级所需）**
+
+| 组件 | 现状 | 26.3 是否可用 | 处置 |
+|:--|:--|:--|:--|
+| Paper 核心 | 26.3-177 **STABLE** | ✅ 可跑 | 可升（测试服已验证） |
+| **WorldEdit** | 7.4.5（release） | ❌ 启用失败并**拖垮整服** | **必须升 `7.4.6-beta-02`**（Modrinth beta，09-24 起支持 26.3） |
+| **Geyser-Spigot** | 1251（最新） | ❌ 启用失败（基岩不可用） | **暂无兼容版**（上游无相关修复提交）→ 等 Geyser 发版 |
+| WorldGuard | 7.0.19 | ✅（依赖 WE 7.4.6+） | 无需动 |
+| GrimAC | 2.3.74-abb95b6（alpha） | ✅ 实测其 shaded packetevents = `2.14.1-SNAPSHOT`，日志有 `Loading block mappings for V_26_3` → **26.3 支持已在手** | 无需动（原「无解」结论已被推翻） |
+| ViaVersion/ViaBackwards 5.12.1、ViaRewind 4.2.0、packetevents 2.14.0、OrzMC 1.0.29、LuckPerms 5.5.87、Vault、SkinsRestorer 15.12.6、GriefPrevention 16.18.7、voicechat 2.6.24、LoginSecurity、EzShops、DeathChest、BackOnDeath、GetMeHome、F3F4Perms 1.3.0 | — | ✅ 均正常启用（**F3F4Perms 元数据虽只标到 26.2，实测可用**） | 无需动 |
+| **Folia 端** | Folia 26.2-7 | — | **Folia 无 26.3 版本线**（fill API 只有 26.2）→ folia-test **无法升 26.3** |
+
+**共同根因**：Paper 26.3 改了 `CraftItemStack` 的 `asBukkitCopy`/`asCraftMirror` 反射面 → 所有走 **incendo-cloud `CraftBukkitReflection`** 的插件会在启用时炸（WE、Geyser 中招；WE 已在 7.4.6-beta 修好，Geyser 未修）。
+
+**回滚/切换（一键）**：
+- 回 26.2：删根目录 `paper-26.3-*.jar`（133 仍在，`start.sh` 自动选最高版本回落）；WE 回 7.4.5 从 `/upgrade-bak-20261012-263/worldedit-bukkit-7.4.5.jar` 复制回 `/plugins/`
+- 再切 26.3：产物已缓存 `/tmp/orzmc_263_check/paper-26.3-177.jar` + `worldedit-bukkit-7.4.6-beta-02.jar`
+- ⚠️ Via 在测试服 `block-versions: []` **未阻断 26.3 客户端** → 可以直接用 26.3 客户端实测
+
+### 🔒 老板决策（2026-10-12）· 26.3 升级挂起
+
+> 原话：「**测试服先保持现状，等插件都正式支持 26.3 后，再进行升级**」
+
+- **测试服现状 = 保持 26.3 实验态**：`papermc-test` = **Paper 26.3-177 + WorldEdit 7.4.6-beta-02**（Geyser 因无兼容版**未启用**）；`folia-test` = Folia 26.2-7（Folia 无 26.3）
+- **正式升级（含生产端）门槛 = 「所有插件都正式支持 26.3」** → 就绪判据（全部满足才算就绪）：
+  1. **WorldEdit**：出**正式版**（release ≥ 7.4.6，非 beta）且 `game_versions` 含 26.3
+  2. **Geyser-Spigot**：新 build（>1251）**在 26.3 上能成功 Enabling**（修掉 `asBukkitCopy/asCraftMirror` 反射问题）
+  3. **EssentialsX**：正式版声明支持 26.x（当前 2.22.0 报 `unsupported server version`）
+  4. **GrimAC**：正式 release 含 26.3（当前 alpha `abb95b6` 实测已可用）
+  5. **F3F4Perms**：元数据标 26.3（实测已可用，属"口径"项）
+  6. **SimpleLogin**：元数据标 26.3（folia 用）
+- 就绪前**不动生产端（Exaroton）**；就绪后再按「MCSM 测试服 → Exaroton 生产」顺序推进
+
 ## 3. 机制与坑
 
 1. **MCSM 面板/API stop 会置 `eventTask.ignore=true` 并落盘** → `autoRestart` 名存实亡（下次 daemon 重启内存复位，但磁盘仍 true）。测试实例本就手动启停，影响可控；如需恢复须改 Windows 侧 `InstanceConfig/<uuid>.json`。
