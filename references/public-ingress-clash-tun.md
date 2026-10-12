@@ -56,7 +56,11 @@ ip rule add ipproto udp sport 19132 table 101 pref 90
 
 脚本（幂等、自带 `--check` 自愈）: `scripts/orzmc-mc-reply-route.sh`
 部署位置（本机）: `/usr/local/bin/orzmc-mc-reply-route.sh`（WSL Ubuntu 内）+ 规范副本 `E:/orzmc/scripts/orzmc-mc-reply-route.sh`
-持久化（v4，2026-10-04 重做）: **主力 = WSL 内事件驱动自愈守护** `orzmc-mc-reply-route-watch.sh`（`ip monitor route rule addr link` → 发现路由缺失立即调主脚本修复，**亚秒级**，见 3b/3e）；**兜底 = Windows 计划任务 OrzMC-MC-Reply-Route**（每分钟 `wsl -d Ubuntu -u root -- bash /usr/local/bin/orzmc-mc-reply-route.sh`，作用退化为「WSL 重启后把守护拉起来 + 一次性校验」；主脚本每次 apply 都会 `ensure_daemon`）。systemd 单元 `orzmc-mc-reply-route.service` 已备在 `scripts/`（写 /etc 需审批，故当前用 `setsid nohup` 常驻）。日志 `/var/log/orzmc-mc-reply-route.log` + `/var/log/orzmc-mc-reply-route-watch.log`。
+持久化（v4，2026-10-04 重做）: **主力 = WSL 内事件驱动自愈守护** `orzmc-mc-reply-route-watch.sh`（`ip monitor route rule addr link` → 发现路由缺失立即调主脚本修复，**亚秒级**，见 3b/3e）；**兜底 = Hermes cron job `orzmc-route-guard`**（`every 10m`、`no_agent`，脚本 `%LOCALAPPDATA%\hermes\scripts\orzmc_route_guard.py`，以 `CREATE_NO_WINDOW` 调 `wsl -d Ubuntu -u root -- bash /usr/local/bin/orzmc-mc-reply-route.sh`；成功静默、失败投递飞书），作用退化为「WSL 重启后把守护拉起来 + 低频校验」（主脚本每次 apply 都会 `ensure_daemon`）。
+
+> ⚠️ **原 Windows 计划任务 `OrzMC-MC-Reply-Route` 已停用（Disabled，定义保留未删，动作已还原为直接 wsl.exe）**：它以 `InteractiveToken` 直接启动 `wsl.exe`（`repeat=PT1M`），**每分钟在桌面弹一个黑色控制台窗口约 1 秒**（wsl.exe 启动到 bash 跑完 ≈1.3s，与用户描述完全吻合）。
+> 改法试过 wscript + `WScript.Shell.Run(cmd,0,False)` 隐藏包装：wscript **挂在 Run 上不退出**，任务卡 RUNNING（`LastTaskResult=267009`）+ `MultipleInstancesPolicy=IgnoreNew` → 后续触发全被忽略，**自愈静默失效**（比闪窗更糟）。
+> 最终修法 = 把兜底搬进 Hermes cron（走 `CREATE_NO_WINDOW`，无窗口）+ 停用原任务。完整排查套路见技能 `hermes-windows-background-service` 的「桌面周期性闪现控制台窗口」一节。systemd 单元 `orzmc-mc-reply-route.service` 已备在 `scripts/`（写 /etc 需审批，故当前用 `setsid nohup` 常驻）。日志 `/var/log/orzmc-mc-reply-route.log` + `/var/log/orzmc-mc-reply-route-watch.log`。
 
 ### ⚠️ 3b. 自愈会「静默失效」：ip rule 活着、策略路由被清掉（2026-10-04 三次复发，机制已定位）
 
