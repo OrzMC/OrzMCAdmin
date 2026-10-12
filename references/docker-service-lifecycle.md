@@ -206,6 +206,47 @@ services:
 ② 隧道恢复后要回查 MCSM 节点：`docker logs orzmc-mcsmanager-web` 出现 `远程节点 … 密钥验证通过`；
 ③ `orzmusic.{SERVER_NAME}.cn` 返回 **404** 属正常——该域名不在本隧道 ingress（只有 mcs/easybot/mcs-node/orzmcs 四条），ccatch-all `http_status:404` 兜底。
 
+## 9c. ❗ cloudflared 长跑僵死：容器 Up、边缘网络实测全通、隧道却持续重连（2026-10-12 实测）
+
+**症状**：`mcs.{SERVER_NAME}.cn` / `easybot.{SERVER_NAME}.cn` / `orzmcs.{SERVER_NAME}.cn` 全部 **530**，
+但 `docker ps` 里 9 个容器全 `Up`、health 全绿（与 §9b 表现一模一样，但根因不同）。
+
+**判据**：`docker logs orzmc-cloudflared | grep -E 'Registered|ERR' | tail` —— 最后一条
+`Registered tunnel connection` 停在几天前，之后是**持续重连循环**，错误形态会随时间演变：
+`DialContext error: dial tcp <fake-ip>:7844: i/o timeout` → `TLS handshake with edge error: EOF`
+→ `there are no free edge addresses left to resolve to`。
+
+**必须先排除网络（否则会误改 Clash/防火墙）**：
+```bash
+# ① 宿主直测边缘（含 ALPN h2 与后量子曲线）——全 CONNECTED 即 TCP+TLS 通
+S=region1.v2.argotunnel.com
+for opt in "" "-alpn h2" "-groups X25519MLKEM768 -alpn h2"; do
+  echo | timeout 20 openssl s_client -connect $S:7844 -servername $S $opt 2>&1 | grep -E "CONNECTED|error" ; done
+# ② 容器内 TLS——报 certificate verify failed 就说明握手已经成功（Origin CA 不在信任库而已）
+docker exec orzmc-easybot sh -c 'nc -z -w 6 region1.v2.argotunnel.com 7844 && echo TCP OK; wget -q -T 12 -O /dev/null https://region1.v2.argotunnel.com:7844/'
+```
+（cloudflared 镜像 distroless 无 shell，探针借用同网络的 easybot 容器；easybot 有 busybox
+`nc`/`wget`，**没有 curl**。）
+
+**根因**：不是网络、不是 Clash TUN、不是配置 —— 是 **cloudflared 进程长跑数日后内部状态陈旧**
+（fake-ip/边缘地址解析与连接状态未自愈），隧道再怎么重连也起不来。
+
+**修法（最小动作）**：`docker restart orzmc-cloudflared` → **25～45 秒内**日志出现
+`Registered tunnel connection … protocol=http2`，三个域名立刻 200。不需要重建容器、不改配置。
+
+**自愈（已落地 2026-10-12）**：cron job `b0621d7056c1`（`orzmc-tunnel-guard`，每 10 分钟，
+no_agent watchdog）+ 脚本 `~/AppData/Local/hermes/scripts/orzmc_tunnel_guard.py`：
+端到端探测 `https://mcs.{SERVER_NAME}.cn/`（宿主 `curl.exe --ssl-no-revoke` + 容器内 `wget` 双通道，
+任一成功算健康；两者都失败再复测一次）→ 仍不可达则 `docker restart orzmc-cloudflared` →
+45 秒后复测 → 恢复/失败都把文本投递到飞书；**健康时零输出、零打扰**。
+15 分钟冷却（state `orzmc_tunnel_guard.json`）防重启风暴；状态日志 `orzmc_tunnel_guard.log`。
+测试用 `ORZMC_TUNNEL_GUARD_DRYRUN=1|2` 模拟「重启后恢复 / 重启后仍失败」分支，不真重启。
+
+> ⚠️ §9b 与 §9c 的区别：§9b = QUIC 被 TUN UDP 劫持（错误是 `no recent network activity`，
+> 修法 = 强制 `TUNNEL_TRANSPORT_PROTOCOL=http2`）；§9c = http2 已配却仍失败
+> （错误是 `TLS handshake with edge error: EOF`，修法 = 重启容器）。
+> 两者都表现为「容器全绿但域名 530」，先看日志里的错误文本再决定动作。
+
 ## 10. 坑：移动/重命名部署包目录后，旧路径会“复活”为空目录
 
 **现象**：`E:\migration` 被改名成 `E:\deploy` 后，隔一段时间又出现，里面只有空目录树（如 `migration/orzmusic-deploy-0.0.7/keygenmusic`，0 字节、无文件）。
