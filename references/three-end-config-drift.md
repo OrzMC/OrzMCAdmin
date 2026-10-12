@@ -9,6 +9,35 @@
 > - cron：并入「orzmc MC 每周巡检」`d81c8325fe8b` 每周一 9:00（原三 job 已删）；MCSM API key = .env `MCSM_LOCAL_API_KEY`（面板需开 API 密钥功能）
 > - 2026-09-09 首跑：✅ SUCCESS，Exa=52/MCSM=66 文件（零失败），34 一致/25 差异/8 数据（差异多为 Exa 端缺失 + 定位类差异，属预期漂移项）
 
+---
+
+## 🧾 已确认「有意差异」白名单（2026-10-12 老板逐条拍板 · **周报勿再重复报为待决策**）
+
+> 用途：每周巡检报告里这些项应**直接标「✅ 有意差异（勿报）」**，不再进「待用户决策」。新增确认项追加到本表。
+
+| # | 项 | 两端值 | 老板决策 |
+|:--|:--|:--|:--|
+| 1 | **GrimAC 配置** | MCSM 有 / Exa 全缺（10 文件） | **Exaroton 上不需要加反作弊插件** → 有意缺失，勿再报 |
+| 2 | **GetMeHome `limit.yml`** | MCSM=30 / Exa=10 | **有意为之**（家上限不同） |
+| 3 | EzShops `game-mode`/`language` | smp+en / prison+zh | 分属不同玩法/语言，预期 |
+| 4 | OrzMC `channel` | beta / release | 测试端 beta、生产端 release |
+| 5 | OrzMC IM 凭据（`im.yml`/`easybot.yml`） | 内网 easybot+builtin / 公网域名+easybot | 环境差异，预期（两张 IM 通道并行保留） |
+| 6 | CustomWorldHeight `config.yml` | MCSM 有 / Exa 缺 | 插件已计划移除，预期 |
+| 7 | bStats `serverUuid` | 两端不同 | 每服独立 UUID，正常 |
+| 8 | 运行时数据文件（homes/transactions/ip_blacklist/permission/player-shops/daily-sells…） | 两端独立 | 玩家数据，**非配置漂移** |
+
+### 2026-10-12 待执行（老板已批准，按端分工）
+
+| 项 | 目标 | 谁做 | 状态 |
+|:--|:--|:--|:--|
+| WorldEdit `disallowed-blocks` + `limits` **统一** | Exa 补齐 MCSM 基准：`limits.max-blocks-changed 1000000/2000000` + disallowed 追加 `sand/red_sand/gravel/water/lava`（Exa 当前 `-1/-1` 无限 + 只禁 tnt/fire/bedrock = **防崩服方案 A 未落地**） | Exaroton 端（生产） | ⏳ 待执行 |
+| Geyser `config-version` Exa 7→8 | 随 Geyser 插件升级（Exa 现 build 1230 → 1251）由插件自动迁移，或补键 | Exaroton 端 | ⏳ 待执行 |
+| bStats `enabled` 对齐 | **Exa true → false**（基准端 MCSM=false） | Exaroton 端 | ⏳ 待执行 |
+| OrzMC 主插件升级 + 配置迁移 | Exa 现 **1.0.24**（config-version 12）→ Hangar Release **1.0.29**（config-version 15） | Exaroton 端 | ⏳ 待执行 |
+| Paper 26.3 采用 | **维持 26.2**（GrimAC 无正式版支持 26.3） | 全体 | ✅ 已定（老板 2026-10-12） |
+| `mc_version_check.py` 映射表 | GriefPrevention3D / SkinsRestorer 未识别 → 已补 PREFIX_NAME | Hermes | ✅ 已完成 |
+| Cloudflare 隧道自愈 | Windows 侧已加 | 老板 | ✅ 已完成（2026-10-12） |
+
 # 三端配置差异审计（2026-08-11 三次审计；2026-08-12 重启审查 → v2 只审查不重启；2026-08-17/24/31 审查超时失败（MCSM 侧密钥三周未修）；**2026-09-03 v3：本地端迁 MCSM 本机栈**；**2026-09-07 v3 首跑审查超时失败：远程 MCSM 密钥四周未修 + 本机 MCSM 面板 API「API 响应异常」**）
 
 > **v3（2026-09-03，本地测试服迁 MCSM 后）**：三端 = **本地端**（本机 MCSM 栈 Paper 实例 716c2fb7，**目录直读复制** → `/tmp/mcsm_local_configs2`）/ **Exa**（Exaroton 海外服 API）/ **MCSM**（远程 Win11 面板 API）。脚本 `orzmc_config_audit.sh` v3 三路并发（fetch3_configs.fetch_all），STATUS 三端文件数检查。

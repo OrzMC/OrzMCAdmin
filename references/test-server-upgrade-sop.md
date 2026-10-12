@@ -162,6 +162,29 @@ exec java -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -Dlog4j2.configurationFile=/serv
 6. 验证清单：`logs/start-script.log` 出现 `使用核心: paper-26.2-129.jar`；`latest.log` 的版本行与 jar 名一致；根目录只剩一个核心 jar；`sh -n` + 4 场景（单版本化 / 双版本化取最新 / 仅固定名 / 都没有报错退出 1）。
 7. 附带收益：`mc_version_check.py` 可**直接读文件名**判定已部署核心版本（此前 folia 只能靠日志反推）。
 
+## 2d. 2026-10-12 实录（第三轮：核心 26.2-133 + Geyser 1251 + Via 5.12.1 + folia 三件套 + GP3D）
+
+> 触发：周巡检（`d81c8325fe8b`）报告「有更新可用」清单 + 老板逐条批准。全程 MCSM API，产物本地 sha 校验 → 备份 → `download_from_url` 直传 → 回读 sha256 → 启动 → 日志验收。
+
+| 实例 | 升级项 | 结果 |
+|:--|:--|:--|
+| papermc-test | Paper **26.2-129 → 26.2-133**、Geyser **1248 → 1251**、ViaVersion **5.12.0 → 5.12.1**、ViaBackwards **5.12.0 → 5.12.1** | ✅ `Paper version 26.2-133-ver/26.2@58e6e45` |
+| folia-test | Geyser **1248 → 1251**、Via 双件 **→ 5.12.1**、EssentialsC **4.3.2-all → 4.3.3**、ExecutableEvents **3.26.10.4 → 3.26.10.10**、SCore **5.26.10.4 → 5.26.10.10**、GriefPrevention3D **18.4.8 → 18.4.12** | ✅ `Folia version 26.2-7-ver/26.2.x@14b7fee`，`Done (258.480s)` |
+
+- **交付 11 文件 / 回读 sha256 11-11 一致**（paper 64.5MB 核心 + Geyser 49.9MB ×2 + 其余）；`plugins/update/` 启动后被消费（两实例均空）；根目录只剩 `paper-26.2-133.jar` / `folia-26.2-7.jar`
+- **备份**：建 `/upgrade-bak-20261012`（paper 4 件 / folia 7 件），删旧 `/upgrade-bak-20261001`；**实例最终停回原状**（升级前亦为停止态）
+- **OrzMC 无需升级**：两实例已是 1.0.29-dev.427（=Hangar beta 最新），启动自更新回显「已是最新」，无配置迁移
+- **验收唯一 ERROR**：paper `[Essentials] You are running an unsupported server version!`（既有已知，老板决策等正式版）；OrzMC 配置健康检查仅既有建议项（easybot 明文 http/ws、folia qq admin_dm 未配置），**无新增告警**
+- ⚠️ **观察项（本轮新发现，非升级引入）**：**两实例同时冷启动**时 folia 出现 4 次 `Folia Watchdog Thread: Tick region ... has not responded in 5.4s`（栈顶 villager `AcquirePoi` → Moonrise POI 加载）→ 疑为宿主资源争抢所致。**下次升级建议串行启动（paper 起完 Done 再起 folia）**
+
+**本轮新增实现坑（脚本已沉淀）**：
+1. **Modrinth version API 只给 `hashes.sha512` + `sha1`（无 sha256）** —— 断言别写死 sha256，会 `KeyError`。
+2. **Geyser build 响应无 `url` 字段**（只有 name+sha256）→ 直链须自行拼 `https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/<build>/downloads/spigot`。
+3. **Paper fill v3 API 的下载对象哈希在 `downloads["server:default"]["checksums"]["sha256"]`**（不是顶层 `sha256`）→ 内容寻址直链 = `https://fill-data.papermc.io/v1/objects/<sha256>/<name>`。
+4. **Modrinth API 偶发 `IncompleteRead`** → 抓取函数须自带退避重试（本轮流式重试 4 次通过）。
+5. **Modrinth 侧 jar 文件名可能不含版本号**（如 `GriefPrevention3D.jar`）→ 投递时改名为 `<名>-<版本>.jar`，维持「文件名含版本」惯例（否则 `mc_version_check.py` 又要靠 fallback 表）。
+6. **`mc_version_check.py` 未识别 jar 会导致漏报升级项**：本轮 `GriefPrevention3D-18.4.8.jar` 因 PREFIX_NAME 缺该前缀被报「未识别」→ 其 **18.4.8→18.4.12** 的升级项在周报里根本没出现（已修映射表，见 SKILL.md）。
+
 ## 3. 机制与坑
 
 1. **MCSM 面板/API stop 会置 `eventTask.ignore=true` 并落盘** → `autoRestart` 名存实亡（下次 daemon 重启内存复位，但磁盘仍 true）。测试实例本就手动启停，影响可控；如需恢复须改 Windows 侧 `InstanceConfig/<uuid>.json`。

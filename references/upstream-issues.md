@@ -75,6 +75,18 @@ wsl -d docker-desktop -e dmesg | grep -c 'Killed process.*easybot'
 
 **盯梢点**：packetevents release（v2.13.1+/2.14）、GrimAPI tag（>1.6.0.12）、GrimAC Modrinth alpha 是否含 `26.3`。
 
+### 🔄 2026-10-12 进展更新（周巡检补跑实测，**事实已变，旧结论作废**）
+
+| 项 | 09-20 旧结论 | 2026-10-12 实测 |
+|:--|:--|:--|
+| packetevents | 26.3 支持仅 main，未发版（release 仍 v2.13.0） | ✅ **v2.14.0（09-23）已发版且支持 26.3**；本地双服已部署 2.14.0 |
+| GrimAC | 主分支最后提交 09-10；「必然读不懂 26.3」 | ⚠️ **main 分支 2026-09-28 已合 `support 26.3 (#2888)`** —— 老板原话「**有开发版支持 26.3，不过不是稳定发行版**」。Modrinth alpha `2.3.74-f5bbe9c`（10-07）metadata 仍只标到 26.2 → **主干可用、无正式 release** |
+| Paper 核心 | 26.3 = ALPHA 通道（老板拍板不采用） | ⚠️ **Paper 26.3-177 于 2026-10-12（build 时间 15:04Z）转入 STABLE 通道**，26.2 线最新 STABLE = **133**（10-09） |
+| Via 三件套 | 5.12.0 已支持 26.3 | ✅ 最新 **5.12.1**（10-08）；测试服已升 5.12.1 |
+
+**当前处置（老板 2026-10-12 认可）**：**三端核心维持 26.2 线**（paper 26.2-133）+ Via `block-versions: [">26.2"]` 干净拒绝 26.3 客户端。
+**解禁条件**：GrimAC **发正式版**（含 26.3 支持）→ 届时再评估核心升 26.3。⚠️ 通道已不再是阻塞项（26.3 已 STABLE），**唯一阻塞 = GrimAC 无 release**。
+
 ## OOM 修复的落地验证（2026-10-02）
 
 本机未升级也**先验证了修复方案有效**：`E:/orzmc/easybot/data/data/gateway.db` 里已手工建上 v4 的三个索引（`idx_outbound_deliveries_outbox` / `_actor` / `_session`）→ 自 2026-09-30T03:21 起容器连续运行 2 天 5 小时，`RestartCount=0`、`memory.current` 稳定在 72MB（此前贴顶 508MB/512MiB）、dmesg 无 OOM kill。
