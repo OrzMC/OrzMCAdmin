@@ -121,6 +121,23 @@ required_commands: [java, curl, tar]
 | 2.0.7 | 2026-10-19 | 第四轮测试服升级基线（Paper 26.3-205 / WE 7.4.6 / WG 7.0.20 / Geyser 2.12.0）+ 新增 `references/nethernet.md`（NetherNet 迁移）+ 升级包交付规范 §2g + Exaroton 核心面板托管事实 |
 | 2.0.6 | 2026-09 | 第三轮升级（26.3 实验态）+ 多处巡检/权限/商店知识合并 |
 
+## 三端拓扑（2026-10-19 老板确认，权威）
+
+| 端点 | 域名 | 托管方式 | 角色 / 说明 |
+|:--|:--|:--|:--|
+| **本地测试服** | `dev.{SERVER_NAME}.cn` | 本机 MCSM 面板（Win 宿主 `E:/orzmc`；实例 `papermc-test` + `folia-test`） | 升级/插件/基岩/NetherNet 的实测场；家宽动态 IP + DDNS；官网 `show_address=false`（地址隐藏） |
+| **国内服（线上生产）** | `{SERVER_HOST}` | **MCSM 面板托管** | 国内玩家生产环境；运维走 MCSM API |
+| **海外服（线上生产）** | `paper.{SERVER_NAME}.cn` | **Exaroton 托管** | 海外玩家生产环境；核心由面板管理（不能上传核心 jar），插件走 `plugins/update/` |
+
+**已下线**：腾讯云中转机 2 台（正式 + 试用，2026-10-19 老板确认销毁）→ **frps 中转链路不再运行**；`references/cross-carrier-networking.md` 中的方案/工具链仍可复用，重建时按该文顶部清单执行。
+**待确认**：Windows 宿主上的 frpc 计划任务是否仍指向旧中转 IP（老板在 Windows 设备上核对，结果回填此处）。
+
+**查询现状的可靠方法**（本机 Clash TUN 会把域名解析成 `198.18.x` fake-IP，`ping`/`nslookup` 结果不可信）：
+```bash
+curl -s -H 'accept: application/dns-json' \
+  'https://1.1.1.1/dns-query?name=<域名>&type=A'
+```
+
 ## 使用时机
 - 用户要创建新的 PaperMC 服务器（本机/Exaroton/MCSM）
 - 用户要升级 PaperMC 服务端版本或构建

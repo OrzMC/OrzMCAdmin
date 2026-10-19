@@ -1,5 +1,11 @@
 # 跨网互联：电信服务器 × 联通/移动玩家（延迟高/被拒绝）
 
+> 🛑 **状态更新（2026-10-19）：两台腾讯云中转机已销毁，frps 中转链路当前不在运行。**
+> - 已销毁：正式机 `{RELAY_IP_FORMAL}`（上海 CVM 2C2G）+ 试用机 `{RELAY_IP_TRIAL}`（上海轻量 3M）
+> - 本文的**方案分析与工具链仍然有效**（OrzMCProxy 仓库的 frps/frpc 配置、PROXY protocol 透传、relay-monitor 监控、容量测算都可复用），但「生产部署流程」一节的 IP/主机信息属历史记录
+> - **重建中转时**：装 frps → 安全组放行 TCP 7000/25565-25566 + UDP 19132 → Windows `install-frp.ps1 -Role frpc` 改 serverAddr → verify-tunnel + bedrock_ping → 三处 proxy-protocol 联动（paper-global.yml / Geyser haproxy / frpc v2）
+> - ⚠️ 生产端当前玩家入口方式**待确认并回填本节**（直连家宽+DDNS？新中转？Cloudflare Tunnel？）
+
 > **触发场景**：玩家报延迟高、连不上、"Connection throttled"、"Timed out"、掉线；服务器部署在单一运营商网络（如电信家宽），联通/移动玩家受害。2026-08-13 沉淀。
 >
 > **部署资产（完整工具链在 `OrzMC/proxy` 子模块 = OrzMCProxy 仓库，2026-08-15 纳入 monorepo；本地实验 100% 闭环）**：
