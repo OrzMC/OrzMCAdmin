@@ -91,7 +91,8 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 ```
 
 > ⚠️ **本机实测：`advertise-addresses` 必须写成「公网 IP:宿主端口」**。容器内监听的是 172.x，且 webrtc 端口经 Docker NAT，若留空会把容器内网地址/端口公布给客户端 → 外网玩家拿到错误 endpoint，表现为列表能刷出来但进不了服。
-> ⚠️ 公网 IP 来自动态域名（kmdns.net）→ **IP 变动后需同步改 advertise-addresses 并重启实例**，否则新客户端连不上（老客户端 RakNet 不受影响）。
+> ⚠️ **不支持域名**（`EndpointAddress.parseEndpoint` 源码硬校验：`Expected a numeric IP address` / `Expected an IP literal, IPv4:port or [IPv6]:port`）。留空时 Geyser 取 `bedrock.address`，只有非通配地址才会被采用，仍是本机地址。
+> ⚠️ 公网 IP 动态（kmdns.net）→ 用 `scripts/nethernet_advertise_sync.py`（技能脚本目录，运行时副本在 `%LOCALAPPDATA%\hermes\scripts\`）自动跟进：DoH 查 A 记录 → 与配置比对 → 变更时改写并 `geyser reload`（只重载 Geyser，不踢 Java 玩家）。建议 cron 每 15 分钟跑一次。
 
 ### 5.2 仍未放行（截至 2026-10-19 晚）
 
