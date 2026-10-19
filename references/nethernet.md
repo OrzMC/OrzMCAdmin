@@ -78,7 +78,7 @@ bedrock:
 | `transport` | `both` ✅ | `both` ✅ |
 | `bedrock.port` | 19132 | 19132（容器内） |
 | `webrtc-port` | 19134 | 19135 |
-| `signaling.builtin.advertise-addresses` | `["114.240.151.81:19134"]` | `["114.240.151.81:19135"]` |
+| `signaling.builtin.advertise-addresses` | `["{HOME_IP}:19134"]` | `["{HOME_IP}:19135"]` |
 | Docker 发布 | UDP 19132 + TCP 19132 + UDP 19134 | UDP 19132 + TCP 19132 + UDP 19135（宿主侧 19133/19135） |
 | 玩家填的地址 | `dev.{SERVER_NAME}.cn:19132` | `dev.{SERVER_NAME}.cn:19133` |
 
