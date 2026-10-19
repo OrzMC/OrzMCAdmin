@@ -97,7 +97,7 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 
 | 层 | 现状 | 需要 |
 |:--|:--|:--|
-| Windows 防火墙 | 仅 `Bedrock Geyser 19132/19133 UDP` 两条入站规则 | 加 **TCP 19132、TCP 19133、UDP 19134、UDP 19135**（需管理员；脚本 `scripts/bedrock_nethernet_ports.ps1`） |
+| Windows 防火墙 | 仅 `Bedrock Geyser 19132/19133 UDP` 两条入站规则 | 加 **TCP 19132、TCP 19133、UDP 19134、UDP 19135**（需管理员；本机脚本 `%LOCALAPPDATA%\hermes\scripts\bedrock_nethernet_ports.ps1`，管理员 PowerShell 运行） |
 | 路由器端口转发 | 只转发 UDP 19132/19133（TCP 25565 已转发，证明 TCP 转发功能可用） | 加 **TCP 19132、TCP 19133、UDP 19134、UDP 19135** → `192.168.0.33` |
 | 外部验证 | check-host 4 节点对 TCP 19132/19133 全部 `Connection timed out` | 两层都放通后复测应能连上 |
 
