@@ -130,7 +130,7 @@ required_commands: [java, curl, tar]
 | **海外服（线上生产）** | `paper.{SERVER_NAME}.cn` | **Exaroton 托管** | 海外玩家生产环境；核心由面板管理（不能上传核心 jar），插件走 `plugins/update/` |
 
 **已下线**：腾讯云中转机 2 台（正式 + 试用，2026-10-19 老板确认销毁）→ **frps 中转链路不再运行**；`references/cross-carrier-networking.md` 中的方案/工具链仍可复用，重建时按该文顶部清单执行。
-**待确认**：Windows 宿主上的 frpc 计划任务是否仍指向旧中转 IP（老板在 Windows 设备上核对，结果回填此处）。
+**已核实（2026-10-19，本机 Windows 宿主实查）**：无 frpc 计划任务（`schtasks` 无匹配）、无 frpc 服务（`sc query` 无匹配）、无 `~/OrzMC/proxy` 目录 → **该宿主未部署 frpc 客户端，不存在指向旧中转 IP 的残留配置**。
 
 **查询现状的可靠方法**（本机 Clash TUN 会把域名解析成 `198.18.x` fake-IP，`ping`/`nslookup` 结果不可信）：
 ```bash
