@@ -111,6 +111,7 @@ required_commands: [java, curl, tar]
 > - `~/.hermes/scripts/…` = **主机级 cron 脚本**（版本巡检 `mc_version_check.py`、配置审查 `orzmc_config_audit.sh`、`grim_kick_ban.py` 等），不在技能目录内
 > - `~/OrzMC/proxy/scripts/…` = **OrzMCProxy 仓库**脚本（`bedrock_host_check.sh/.ps1`、`bedrock_ping.py`、`nethernet_check.py`、`relay-monitor.sh` 等）
 > - `~/minecraft-bot/…` = 机器人测试脚本（mineflayer）
+> - `scripts/skill_self_check.py` = **本技能自检**（frontmatter / 死链 / 孤儿文档 / 超长行 / 私有信息计数），改完技能跑一次，期望 `结果: PASS`
 >
 ## 最近变更（v2.x）
 
