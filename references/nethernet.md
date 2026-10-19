@@ -71,21 +71,44 @@ bedrock:
 
 ## 5. 本环境适配要点（OrzMC 现状）
 
-| 项 | 现状（2026-10-19） | 需要 |
-|:--|:--|:--|
-| Geyser 版本 | 2.12.0-b1265（paper/folia 均） | ✅ 已满足 |
-| `transport` | 未配置（默认 raknet） | ❌ 改 nethernet/both |
-| docker 端口发布 | 只发布 **UDP** 19132(paper) / 19133(folia) | ❌ 要加 **TCP 同端口**（面板改，普通 apikey 403） |
-| 路由器/防火墙 | 逐端口转发 UDP | ❌ 要加 TCP |
-| `clone-remote-port` | false | ✅ 与自带信令兼容 |
-| HTTPS | 无 | ⚠️ 不配则玩家首连有「信任提示」 |
+### 5.1 已落地（2026-10-19，本地测试服 dev.{SERVER_NAME}.cn，both 模式）
 
-**迁移动作清单（顺序）**：
-1. 面板给实例加 TCP 端口映射（`宿主:容器/tcp`）→ 重启容器生效
-2. 路由器/防火墙放通 TCP 同端口（`both` 模式再加一个 UDP webrtc）
-3. Geyser `config.yml`：`transport` + （可选）`signaling.builtin.https` → 重启
-4. 验证：`python3 ~/OrzMC/proxy/scripts/nethernet_check.py <host> <port>`（见 §6）
-5. 生产端（Exaroton）按其面板/文档确认端口后再切
+| 项 | paper（716c2f…） | folia（8A932D…） |
+|:--|:--|:--|
+| `transport` | `both` ✅ | `both` ✅ |
+| `bedrock.port` | 19132 | 19132（容器内） |
+| `webrtc-port` | 19134 | 19135 |
+| `signaling.builtin.advertise-addresses` | `["114.240.151.81:19134"]` | `["114.240.151.81:19135"]` |
+| Docker 发布 | UDP 19132 + TCP 19132 + UDP 19134 | UDP 19132 + TCP 19132 + UDP 19135（宿主侧 19133/19135） |
+| 玩家填的地址 | `dev.{SERVER_NAME}.cn:19132` | `dev.{SERVER_NAME}.cn:19133` |
+
+启动日志确认（两个实例均出现，且**不再**出现 `NetherNet support is NOT enabled`）：
+
+```
+Started Geyser on 0.0.0.0:19132
+Started built-in signaling server on http://0.0.0.0:19132
+NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
+```
+
+> ⚠️ **本机实测：`advertise-addresses` 必须写成「公网 IP:宿主端口」**。容器内监听的是 172.x，且 webrtc 端口经 Docker NAT，若留空会把容器内网地址/端口公布给客户端 → 外网玩家拿到错误 endpoint，表现为列表能刷出来但进不了服。
+> ⚠️ 公网 IP 来自动态域名（kmdns.net）→ **IP 变动后需同步改 advertise-addresses 并重启实例**，否则新客户端连不上（老客户端 RakNet 不受影响）。
+
+### 5.2 仍未放行（截至 2026-10-19 晚）
+
+| 层 | 现状 | 需要 |
+|:--|:--|:--|
+| Windows 防火墙 | 仅 `Bedrock Geyser 19132/19133 UDP` 两条入站规则 | 加 **TCP 19132、TCP 19133、UDP 19134、UDP 19135**（需管理员；脚本 `scripts/bedrock_nethernet_ports.ps1`） |
+| 路由器端口转发 | 只转发 UDP 19132/19133（TCP 25565 已转发，证明 TCP 转发功能可用） | 加 **TCP 19132、TCP 19133、UDP 19134、UDP 19135** → `192.168.0.33` |
+| 外部验证 | check-host 4 节点对 TCP 19132/19133 全部 `Connection timed out` | 两层都放通后复测应能连上 |
+
+> 只差这两层：**服务端配置与端口发布已全部就绪**，本机 `127.0.0.1` 上 RakNet PONG + 信令 HTTP 均正常。
+
+### 5.3 关键操作经验
+
+- MCSM 实例的 `docker.ports` 在 `daemon/data/InstanceConfig/<uuid>.json`；**普通 apikey（权限 1）不能改**（`PUT /api/instance` 需 ADMIN）。
+- 本次做法：停实例（`POST /api/protected_instance/stop`）→ 改 JSON + Geyser 配置 → `docker restart orzmc-mcsmanager-daemon`（daemon 启动时从磁盘重载 `InstanceConfig`）→ 启实例（`POST /api/protected_instance/open`，不是 `/start`）。
+- 启动/停止路由前缀是 **`/api/protected_instance/*`**（`/open` `/stop` `/restart` `/kill` `/command`）。
+- 实例停掉后容器会被移除，重启时按新 `ports` 重建，端口变更才生效。
 
 ## 6. 验证方法（含本机大坑）
 
