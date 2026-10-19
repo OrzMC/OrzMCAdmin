@@ -1,7 +1,7 @@
 ---
 name: orzmc
-description: "Minecraft 运维统一技能（唯一入口）：三端服务器运维/插件构建升级/性能诊断/权限体系/测试/基岩支持，46 个知识体系 + 31 个脚本。"
-version: 2.0.6
+description: "Minecraft 运维统一技能（唯一入口）：三端服务器运维/插件构建升级/性能诊断/权限体系/测试/基岩支持（含 NetherNet 迁移），73 个知识文档 + 170+ 脚本。"
+version: 2.0.7
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux, windows]
@@ -28,7 +28,8 @@ required_commands: [java, curl, tar]
 > | 快速实体统计（paper entity list / Spark / 计分板） | `references/entity-statistics.md` |
 > | 机器人玩家 Mineflayer（运维视角；开发细节见独立技能 `minecraft-bot-mineflayer`；**挂机脚本 stay-with-joker.js：5 bot 跟随真人玩家 + IPv4/IPv6 分流绕 per-IP 限制**） | `references/mineflayer-bot.md` |
 > | DeathChest 回归测试（死亡瞬间下线→物品丢失 ✅fix1；**动画 progress 越界卡服 ✅fix3 已合入 main 71d2571**；复现法见 ref） | `references/deathchest-regression.md` |
-> | Geyser 基岩支持（当前 offline 直连模式；floodgate 已回退 2026-08-05） | `references/geyser-floodgate.md` |
+> | **NetherNet 迁移（基岩新传输层：TCP 信令 + WebRTC/UDP；2.12 配置结构反编译实证 / A-B-C 三方案 / HTTPS 三做法 / 官方错误对照表 / 本机 Clash TUN 假阳性验证法；⚠️ 2026-10-27 基岩客户端停用 RakNet）** | `references/nethernet.md` + `~/OrzMC/proxy/scripts/nethernet_check.py`（已并入 OrzMCProxy main，v1.1.0，退出码 0=可用/1=不可达/2=用法/3=降级；`--signal-port` `--scheme https` `--json` `--self-test` `--no-emoji`） |
+> | **Geyser 基岩支持（当前 offline 直连模式；floodgate 已回退 2026-08-05）** | `references/geyser-floodgate.md` |
 > | **实例端口模型与审计（docker 实例必须逐条发布 `宿主:容器/协议`；端口以实例实际配置为准而非默认 25565/19132；多实例共享宿主时 UDP 错开 19132/19133；宿主≠容器 时 `clone-remote-port` 必须 false；Cloudflare Tunnel 不支持 UDP；脚本 `scripts/port-audit.py` 核对期望端口 vs 已发布 + 真实协议探测）** | `references/instance-ports.md` |
 > | **公网入口排障（域名+路由器映射+防火墙都"配好了"外网仍连不上）：根因常是本机 Clash TUN 抢默认路由 → 入站应答源地址被定成 198.18.0.1/钻进隧道；修法 = WSL 内加通用策略路由 `ip rule add from <LAN IP> table 100`（任意端口零维护，脚本 `scripts/orzmc-mc-reply-route.sh` + Windows 计划任务 OrzMC-MC-Reply-Route 每 10min 自愈）；⚠️ 老板坚持防火墙/路由器逐端口配置，勿再提 DMZ/端口段；含「ICMP 通但 TCP 全超时」判定法与外部节点验证法（勿在本机测）** | `references/public-ingress-clash-tun.md` |
 > | **插件源码构建/开发（构建工具选择、Gradle/Maven 坑、PR 流程、发布规范；**2026-09-12 并入 paper-26-plugin-dev**：Paper 26.x Brigadier 命令注册（LifecycleEvents.COMMANDS）、幽灵命令/greedyString 参数类型等迁移 8 坑、deprecation 零警告清理）** | `references/plugin-build.md` |
@@ -55,7 +56,7 @@ required_commands: [java, curl, tar]
 > | OrzMC 端到端测试报告（2026-08-06：机器人+真实玩家，28/28 通过，transfer 闭环） | 插件仓库 `plugin/docs/e2e-test-report-20260806.md`（OrzMCPlugin） |
 > | RCON 客户端（`scripts/rcon.py <命令> [端口]`，密码从环境变量 RCON_PASSWORD 读） | `scripts/rcon.py` |
 > | **实例端口审计（`scripts/port-audit.py [DATA_ROOT] [--probe] [--json]`：解析 InstanceConfig docker.ports + server.properties + Geyser config.yml 得出期望端口，标出必发布缺口/宿主端口冲突，可实时探测 Java+基岩双通道；退出码 1=有缺口）** | `scripts/port-audit.py` |
-> | **基岩版连通性诊断（`~/OrzMC/proxy/scripts/bedrock_host_check.sh` bash 跨平台 / `.ps1` Win）**：双模式——本机诊断（默认，RakNet 握手+端口监听+进程+防火墙五项）与远程探测（传 host 即可，端口默认 19132，纯数字第一参=端口）；用法 `bash bedrock_host_check.sh [host] [port]`、PS `.\bedrock_host_check.ps1 [-HostAddr x] [-Port n]`；-h/--help 帮助；**定位法：本机 PASS+监听✅ → 问题在外部 UDP 转发；FAIL → Geyser 本身**；使用说明/修复记录文档同目录（基岩诊断脚本_使用说明.md、脚本问题修复记录_平台注意事项.md，v1.1 含 7 条真机坑）；坑：macOS netstat `udp46 *.19132` 格式、BSD pgrep 只出 pid 不能二次 grep（统一 ps aux+grep）、Windows Store python3 stub 检测、PS 需 UTF-8 BOM+`${Var}:` 写法、RakNet Pong MOTD 从偏移 34 到包尾 UTF-8（长度字段不可靠） | `~/OrzMC/proxy/`（OrzMCProxy 子模块） |
+> | **基岩版连通性诊断（`~/OrzMC/proxy/scripts/bedrock_host_check.sh` bash 跨平台 / `.ps1` Win）**：双模式——本机诊断（默认，RakNet 握手+端口监听+进程+防火墙五项）与远程探测（传 host 即可，端口默认 19132，纯数字第一参=端口）；用法 `bash bedrock_host_check.sh [host] [port]`、PS `.\bedrock_host_check.ps1 [-HostAddr x] [-Port n]`；-h/--help 帮助；**定位法：本机 PASS+监听✅ → 问题在外部 UDP 转发；FAIL → Geyser 本身**；使用说明/修复记录文档同目录（基岩诊断脚本_使用说明.md、脚本问题修复记录_平台注意事项.md，v1.1 含 7 条真机坑）；坑：macOS netstat `udp46 *.19132` 格式、BSD pgrep 只出 pid 不能二次 grep（统一 ps aux+grep）、Windows Store python3 stub 检测、PS 需 UTF-8 BOM+`${Var}:` 写法、RakNet Pong MOTD 从偏移 34 到包尾 UTF-8（长度字段不可靠）；**2026-10-19 新增 `nethernet_check.py`（NetherNet 信令探测：UDP RakNet 基线 + TCP 信令 HTTP 探测 + 结论 + 退出码 0/1，`python3 nethernet_check.py [host] [port]`）**；⚠️⚠️ **本机经 Clash TUN 测 TCP 必假阳性**——域名被 fake-IP 成 `198.18.x.x`，TCP 握手被 TUN 本地接管后「接受并立即关闭」（脚本显示 `OPEN_NO_HTTP`，误判为端口可达）→ **必须用真实公网 IP（DoH 查：`https://1.1.1.1/dns-query?name=<域名>&type=A`）+ 外部节点验证**（`check-host.net/check-tcp?host=IP:PORT` 取 request_id 后查 `check-result/<id>`；外部节点一律 `Connection timed out` = TCP 未转发/未监听，若已转发但无监听则为 refused）；UDP 侧 check-udp 无意义（普通 UDP 包 Geyser 不回，只有 RakNet 专有包才 Pong） | `~/OrzMC/proxy/`（OrzMCProxy 子模块） |
 | LP 权限命令清单生成（`scripts/gen_perm_commands.py`：从仓库 `plugin/docs/permission-groups.md` 唯一权威文档解析生成 lp set 命令；方案① 2026-08-12） | `scripts/gen_perm_commands.py` |
 > | LoginSecurity 注册状态查询（`scripts/check_lsdb.py [db路径] [玩家名]`） | `scripts/check_lsdb.py` |
 > | **GrimAC 最近作弊记录查询（`scripts/grim_history.py [--limit N] [--player 名] [--hours N] [--kicked-only] [--config]`；数据源=history.v1.db grim_violations JOIN grim_players/grim_checks，处理方式判定=日志 ±10s 内 GrimAC kick 记录；2026-08-31 建）** | `scripts/grim_history.py` |

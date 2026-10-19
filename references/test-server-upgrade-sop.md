@@ -262,6 +262,28 @@ exec java -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -Dlog4j2.configurationFile=/serv
 7. ⚠️ **Geyser 2.12 新警告（时间敏感）**：`NetherNet support is NOT enabled ... Players will not be able to connect to your server, starting October 27th` → **2026-10-27 起基岩玩家将无法连接**，须在此之前启用 NetherNet（官方 blog `/blog/preparing-for-nethernet`，扩展仓库 `GeyserMC/GeyserNetherNet`）。实测 **paper 侧有该警告、folia 侧未见** → 处理时两实例都要查 config。
 8. ⚠️ **宿主磁盘压力**：本轮 Mac `df` 显示 **94% 占用、仅剩 6.6GB** → 升级前后都看一眼；`/upgrade-bak-*` 会累积（paper 已有 1012、1012-263、1019 三个），清理时注意 **26.2 回滚依赖 `upgrade-bak-20261012-263/worldedit-bukkit-7.4.5.jar`**，别提前删。
 
+## 2g. 升级包交付规范（老板要「打包发生产」时，2026-10-19 落地）
+
+交付物放 `~/Downloads/orzmc-upgrade-YYYYMMDD/`（= 老板 S: 盘「下载」共享），并在同目录生成同名 zip。
+
+**目录结构（按适用性分组，避免误发）**：
+```
+orzmc-upgrade-YYYYMMDD/
+├── 01-core/                  # 自建/自托管核心 jar（Exaroton 不能用，其核心由面板选）
+├── 02-plugins-<版本线>/       # 元数据只支持新版本的插件（如 WG 7.0.20 只标 26.3）
+├── 03-plugins-common/        # 新旧核心都兼容的（如 Geyser）
+├── 04-plugins-folia/         # Folia 独有
+├── 05-production-catchup/    # 生产端落后项的补差 jar
+├── SHA256SUMS.txt            # `find . -name "*.jar" -print0 | xargs -0 shasum -a 256 | sort -k2`
+├── ANNOUNCEMENT.md           # 可直接粘贴的公告（emoji 标题 + 33 连字符分割线 + 分节）
+└── SYNC-GUIDE.md             # 生产端 vs 测试服版本对照表 + 同步顺序 + 就绪门槛
+```
+
+**两条硬规矩**：
+1. 🔴 **包内路径必须 ASCII**（`01-core` 而不是 `01-核心`）——macOS `zip` 打中文目录名，**Windows 解压会乱码**（本轮实测 `unzip -l` 已见乱码）。中文只放**文档正文**里。
+2. 🔴 **生产端补差必须用「正式版优先」**：如 OrzMC 同时存在 `1.0.29`（Release）与 `1.0.29-dev.427`（Beta），差 1 小时但代码等同 → **给生产端用 Release**，测试服可继续 dev。
+3. 🟡 打 zip 前先 `rm -f <zip>` 避免旧包残留；打完后 `unzip -l` 核对内层路径是 ASCII。
+
 ## 3. 机制与坑
 
 1. **MCSM 面板/API stop 会置 `eventTask.ignore=true` 并落盘** → `autoRestart` 名存实亡（下次 daemon 重启内存复位，但磁盘仍 true）。测试实例本就手动启停，影响可控；如需恢复须改 Windows 侧 `InstanceConfig/<uuid>.json`。
