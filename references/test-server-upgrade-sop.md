@@ -233,6 +233,35 @@ exec java -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -Dlog4j2.configurationFile=/serv
   6. **SimpleLogin**：元数据标 26.3（folia 用）
 - 就绪前**不动生产端（Exaroton）**；就绪后再按「MCSM 测试服 → Exaroton 生产」顺序推进
 
+## 2f. 2026-10-19 实录（第四轮：Paper 26.3-205 + WE 7.4.6 正式版 + Geyser 2.12.0 → **26.3 两大门槛解除**）
+
+> 触发：老板「先在测试服上更新插件和核心到最新版本，测试一下」。两实例均停服 0 玩家时执行。
+
+| 实例 | 升级项 | 结果 |
+|:--|:--|:--|
+| papermc-test | Paper **26.3-177 → 26.3-205（STABLE）**、WorldEdit **7.4.6-beta-02 → 7.4.6 正式版**、WorldGuard **7.0.19 → 7.0.20**、Geyser **1251 → 2.12.0-b1265** | ✅ `Paper 26.3-205-main@a90108f`、`Done (146.714s)`；重启后 `Done (94.448s)` |
+| folia-test | Geyser **1251 → 1265**、EssentialsC **4.3.3 → 4.3.4**、ExecutableEvents **3.26.10.10 → 3.26.10.17**、SCore **5.26.10.10 → 5.26.10.17**、GriefPrevention3D **18.4.12 → 18.4.14** | ✅ Folia 26.2-7（核心未动）+ `Done (117.509s)`；重启后 `Done (100.451s)` |
+
+**🎉 26.3 就绪门槛（2026-10-12 定的 6 项）本轮解除 2 项**：
+1. ✅ **WorldEdit 出正式版 7.4.6（release，game_versions 含 26.3）** → 26.3 上 `Enabling v7.4.6+7648-00664b0`、adapter=`PaperweightAdapter v26_3`，**不再崩服**
+2. ✅ **Geyser 2.12.0-b1265 在 26.3 上能正常启用**（`Started Geyser on UDP 19132`）——10-12 那个 `asBukkitCopy/asCraftMirror` 反射坑已修
+3. ⏳ 仍缺：EssentialsX 正式版（2.22.0 仍报 unsupported）、GrimAC 正式 release、F3F4Perms/SimpleLogin 元数据口径
+
+**folia 核心未动的判据（可复用）**：`folia-26.3-3` 通道 = **ALPHA**（26.2-7 是 BETA），违反「核心只升 STABLE/BETA」纪律 → 暂不升；等 Folia 26.3 有 BETA 构建。
+
+**插件元数据须逐条核对 game_versions 再决定是否升 folia**：`WorldGuard 7.0.20` 的 `game_versions` **只标 26.3**（无 26.2）→ folia（26.2-7）**故意不升**，仍是 7.0.19 / WE 7.4.5。**教训：同一插件在两实例可能不能同版本，取决于各实例核心版本线**。
+
+### 本轮新增坑（重要）
+
+1. 🔴 **`/tmp` 会在 macOS 重启时被清空**（`/tmp -> private/tmp`）——本轮 Mac 中途重启，`/tmp/orz_up*` 全部消失（脚本/产物/日志/`mc.py` 全丢，得重建）。→ **多步升级的工作目录一律放 `~/.hermes/tmp/<任务名>/`**，别用 `/tmp`。
+2. 🔴 **sha256 回读必须在「启动前」做**（对 `plugins/update/` 里的新文件）：服务器启动后插件 jar 被 JVM 加载 → **Windows 侧文件被锁**，回读会挂住/只读到半包（本轮 7.9MB 的 WE 只读到 524288B 就 EOF）。核心 jar 在根目录未被锁，运行态仍可回读（本轮 55MB `paper-26.3-205.jar` 运行中回读 sha256 ✅）。
+3. 🔴 **面板 daemon 下载通道会「迟钝/截断」**（本轮实测：签署耗时 16.4s、流被截断、多次读取挂到超时）→ 触发后**停手等待**，别重试风暴；期间起服验收改用 **`GET /api/protected_instance/outputlog?size=1200`**（绕开 daemon 拉流，一行 `Done (Xs)!` 就够判定），完全不依赖 latest.log 下载。
+4. 🟡 **`mc_version_check.py` 的 Modrinth slug 不能猜**：`GriefPrevention3D` = `griefprevention-3d-subdivisions`、`SimpleLogin` = `simple-login`（按 `loaders` 过滤 folia）；用错 slug 会返回同名但完全无关的老项目（本轮误查到 `1.2`/2025-10-15 版）。
+5. 🟡 **验证链分层**（下载通道不可靠时的替代证据）：① 上游→本地哈希直验 ② `files/list` 落地 size 与本地逐字节相等 ③ 启动日志 `Enabling X vY` 版本号。三层齐全即可判「部署成功」，sha256 回读作为补强而非唯一依据。
+6. 🟡 **`paper-26.3-177.jar` 出现过「删了又回来」**：删除后确认只剩 133/205，重启后目录里又见 177（疑为手动恢复或面板状态回滚）→ 删核心前先确认再删；`start.sh` 取 `sort -V | tail -1` 保证选最高版（205），多留旧 jar 不影响启动，只吃磁盘。
+7. ⚠️ **Geyser 2.12 新警告（时间敏感）**：`NetherNet support is NOT enabled ... Players will not be able to connect to your server, starting October 27th` → **2026-10-27 起基岩玩家将无法连接**，须在此之前启用 NetherNet（官方 blog `/blog/preparing-for-nethernet`，扩展仓库 `GeyserMC/GeyserNetherNet`）。实测 **paper 侧有该警告、folia 侧未见** → 处理时两实例都要查 config。
+8. ⚠️ **宿主磁盘压力**：本轮 Mac `df` 显示 **94% 占用、仅剩 6.6GB** → 升级前后都看一眼；`/upgrade-bak-*` 会累积（paper 已有 1012、1012-263、1019 三个），清理时注意 **26.2 回滚依赖 `upgrade-bak-20261012-263/worldedit-bukkit-7.4.5.jar`**，别提前删。
+
 ## 3. 机制与坑
 
 1. **MCSM 面板/API stop 会置 `eventTask.ignore=true` 并落盘** → `autoRestart` 名存实亡（下次 daemon 重启内存复位，但磁盘仍 true）。测试实例本就手动启停，影响可控；如需恢复须改 Windows 侧 `InstanceConfig/<uuid>.json`。
