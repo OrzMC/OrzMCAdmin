@@ -24,7 +24,7 @@
 | max-tick-time | 60000 | 600000 | 用途差异 |
 | motd | 测试服-验证地图恢复状况 | 海外服宣传语 | 用途差异 |
 | pause-when-empty-seconds | -1 | 60 | 用途差异 |
-| rcon.password | orztest2026 | （空） | 与 enable-rcon 一致 |
+| rcon.password | {TEST_PASSWORD} | （空） | 与 enable-rcon 一致 |
 | resource-pack-prompt | （空） | "" | 表示差异，无实质影响 |
 | server-port | 25565 | 39742 | Exa 端口映射 |
 | simulation-distance / view-distance | 3 / 6 | 5 / 10 | 性能策略差异（测试服更保守） |

@@ -16,7 +16,7 @@
 ```bash
 cd ~/minecraft-bot && node tab-single.js "/home "   # 单测一个命令的补全
 ```
-- 登录流程：自动 `/login orztest2026`（GrimTest02 等测试号），spawn 后 4s 发请求
+- 登录流程：自动 `/login {TEST_PASSWORD}`（GrimTest02 等测试号），spawn 后 4s 发请求
 - 输出：`[RESP] tid=1 start=6 len=0 matches=["test1"]` = 补全正常返回家名
 - 输出 `[-] 超时无响应` = 无补全响应（先检查协议版本/包格式，再怀疑服务器）
 

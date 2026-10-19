@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 原生 node RCON 客户端 —— 测 Bot 命令（$ 前缀）自动化时用，shell/python 无法安全传 $v 这类参数
 // 用法: node rcon.js <命令> [端口=25575] [密码]
-//   node rcon.js "orzdebug $v l" 25575 orztest2026
+//   node rcon.js "orzdebug $v l" 25575 {TEST_PASSWORD}
 // 背景（2026-08-07 实测）:
 //   - execSync/spawnSync 传 shell 字符串时 $v 被 bash 展开为空 → 服务器收到 "orzdebug  l" 静默无效
 //   - RCON 包 length 字段 = id(4) + type(4) + payload + 2 null 的总长（少算 8 字节 → 服务器立即断开）

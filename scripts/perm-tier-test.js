@@ -8,9 +8,9 @@ const path = require('path');
 const PORT = parseInt(process.argv[2] || '25565');
 const HOST = '127.0.0.1';
 const BOTS = {
-  TestNewbie:   { group: 'default', password: 'NewbiePass123' },
-  TestMember:   { group: 'member', password: 'MemberPass123' },
-  TestBuilder:  { group: 'builder', password: 'BuilderPass123' },
+  TestNewbie:   { group: 'default', password: '{TEST_PWD_NEWBIE}' },
+  TestMember:   { group: 'member', password: '{TEST_PWD_MEMBER}' },
+  TestBuilder:  { group: 'builder', password: '{TEST_PWD_BUILDER}' },
 };
 
 // 粒子 patch（26.2→1.21.11 兼容）

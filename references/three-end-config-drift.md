@@ -128,7 +128,7 @@
 | difficulty | normal | easy | easy | ⚠️ 本地测试难度与云端不同（云端 easy） |
 | enable-jmx-monitoring | false | true | true | ⚠️ 云端开 JMX，本地关 |
 | enable-query / query.port | false | true / 9898 | true / 9898 | ⚠️ 云端开 query，本地关 |
-| enable-rcon / rcon.password | true / orztest2026 | false / 空 | false / 空 | ✅ 本地测试开 RCON（预期） |
+| enable-rcon / rcon.password | true / {TEST_PASSWORD} | false / 空 | false / 空 | ✅ 本地测试开 RCON（预期） |
 | management-server-enabled | false | true | false | ⚠️ 仅 Exa 开管理服务器（0.0.0.0:9900） |
 | management-server-secret | 本地值 | Exa 值 | MCSM 值 | ✅ 每端独立密钥（预期） |
 | max-players | 20 | 20 | 150 | ⚠️ **MCSM 150 vs 本地/Exa 20**（定位差异，用户决策保留） |

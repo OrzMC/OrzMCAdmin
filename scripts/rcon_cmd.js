@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// 正确协议的 Minecraft RCON 客户端（本地测试服默认 25575/orztest2026）
+// 正确协议的 Minecraft RCON 客户端（本地测试服默认 25575/{TEST_PASSWORD}）
 // 用法: node rcon_cmd.js "<命令>" [port] [password]
 // 例:   node rcon_cmd.js "lp group builder permission check worldedit.wand"
 // 注意: LP 命令输出走 luckperms-command-executor logger（RCON 响应拿不到）——
 //       LP 类命令请改用 bot 通道 /orzdebug $e + 查日志；本脚本适合 tp/save 等无输出命令
 const net = require('net');
-const [cmd, port = 25575, pwd = 'orztest2026'] = process.argv.slice(2);
+const [cmd, port = 25575, pwd = '{TEST_PASSWORD}'] = process.argv.slice(2);
 function rcon(command) {
   return new Promise((resolve) => {
     const s = net.createConnection(port, '127.0.0.1');

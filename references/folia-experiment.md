@@ -27,7 +27,7 @@
 | 核心 | Paper 26.2-112（**已停运**） | Folia 26.2-4 BETA（2026-08-11） |
 | 路径 | `~/minecraft-server` | `~/folia-test` |
 | Java 端口 | ~~25565~~（已让出） | **25565**（接管 Paper 的） |
-| RCON | ~~25575~~ | **25575**（接管，密码 orztest2026） |
+| RCON | ~~25575~~ | **25575**（接管，密码 {TEST_PASSWORD}） |
 | Geyser UDP | ~~19132~~ | **19132**（接管 Paper 的） |
 | Geyser auth-type | offline | offline（2026-08-18 对齐 Paper；原 online 会触发 `MinecraftProfileNotFoundException 404`，offline 直连不查 XBL） |
 | MOTD | `§e[Paper] 测试服-验证地图恢复状况` | `§e[Folia] OrzMC Test`（保留区分标识） |

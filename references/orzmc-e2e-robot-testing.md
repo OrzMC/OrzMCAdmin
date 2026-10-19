@@ -18,8 +18,8 @@
 
 | 账号 | 密码 | LP 组 | 用途 |
 |:--|:--|:--|:--|
-| TestNewbie | NewbiePass123 | default（本地 promoted 标记=member 资格） | 提交 builder 申请 |
-| TestMember | MemberPass123 | member | 补充测试 |
+| TestNewbie | {TEST_PWD_NEWBIE} | default（本地 promoted 标记=member 资格） | 提交 builder 申请 |
+| TestMember | {TEST_PWD_MEMBER} | member | 补充测试 |
 | TestAdmin | AdminPass123 | admin | — |
 
 - 资格预检基于**本地状态**（permission.yml promoted 标记 / APPROVED 记录），不是 LP 实际组——测试前确认玩家在 permission.yml 有 member 资格

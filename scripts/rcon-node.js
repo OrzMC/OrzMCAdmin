@@ -1,6 +1,6 @@
 // node 原生 RCON 客户端（正确 length 语义，可直接复用）
 // 用法: node rcon-node.js '<命令>' [密码] [端口]
-// 示例: node rcon-node.js 'orzdebug $v l' orztest2026 25575
+// 示例: node rcon-node.js 'orzdebug $v l' {TEST_PASSWORD} 25575
 // 关键点:
 //   - 不经 shell（数组 spawn/直接 node 运行），$ 不会被展开 —— 避免 python 子进程环境差异
 //   - length 字段 = id(4) + type(4) + payload + 2 null 的总长（payload.length + 10），
@@ -9,7 +9,7 @@
 const net = require('net');
 
 const CMD = process.argv[2] || 'list';
-const PASSWORD = process.argv[3] || 'orztest2026';
+const PASSWORD = process.argv[3] || '{TEST_PASSWORD}';
 const PORT = parseInt(process.argv[4] || '25575');
 
 function send(sock, id, type, payload) {

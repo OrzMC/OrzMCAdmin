@@ -57,9 +57,9 @@ TNT/fire **已在默认列表**（无需重复）。效果：`//set sand` 在**�
 
 ### 测试账号快速搭建（2026-08-30 实测）
 
-- RCON `whitelist add <名>` → bot 首登（自动 /register，密码 orztest2026）→ 退出 → RCON `lp user <名> parent set builder`（无回显正常）→ 等冷却 → 重进验证
+- RCON `whitelist add <名>` → bot 首登（自动 /register，密码 {TEST_PASSWORD}）→ 退出 → RCON `lp user <名> parent set builder`（无回显正常）→ 等冷却 → 重进验证
 - ⚠️ **防重登冷却**：GriefPrevention3D `Spam.LoginCooldownSeconds` 默认 60s，连续登录被踢 `You must wait X seconds before logging-in again` → 重试间隔 >60s
-- ⚠️ 测试账号 `test`/`test1` 的密码**不是** orztest2026（历史账号），新账号最干净
+- ⚠️ 测试账号 `test`/`test1` 的密码**不是** {TEST_PASSWORD}（历史账号），新账号最干净
 - bot 脚本：`~/minecraft-bot/exec-cmds.js <名> <命令1> [命令2...]`（自动 register/login/执行/退出，打印聊天响应）
 - ⚠️ WE `//pos1`/`//pos2` **不接受坐标参数**（`Usage: //pos2 [coordinates]`），选区必须木斧点击——命令解析层验证（//set sand）不需要选区
 

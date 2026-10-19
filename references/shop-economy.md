@@ -45,7 +45,7 @@
 配置改完必须 bot 实测卖出价校准（纯读配置心算不可靠——sell=单价语义曾致评估全错）。模式：`~/minecraft-bot/econ-verify.js`（登录 → 等 RCON give → 逐物品 equip 主手 → `/sellhand` → `bot.on('message')` 捕获响应：禁卖提示 `That item cannot be sold` / 卖出金额 `Sold Nx X for $Y`）。
 - **RCON give 必须玩家在线**（离线 give 对新建账号不生效，报 No player was found）→ 脚本登录后轮询背包等物品（过滤 written_book 新手指南），期间补 give
 - **防重登冷却**：GriefPrevention3D `Spam.LoginCooldownSeconds` 默认 60s，连续登录被踢 `You must wait X seconds before logging-in again` → 重试前 sleep 60+
-- 新账号自动 `/register` 幂等（测试服密码 orztest2026）；已注册账号密码不符会卡未登录（背包不可见）——直接换新账号
+- 新账号自动 `/register` 幂等（测试服密码 {TEST_PASSWORD}）；已注册账号密码不符会卡未登录（背包不可见）——直接换新账号
 - **批量 >99 测试用 `/sellinventory`**（不是 /sellall——该命令不存在；sellinventory=卖背包全部可卖物，单次触发 >99 序列化路径）；脚本：`~/minecraft-bot/econ-sellall.js`（等 give → /sellinventory → 退出）；先 `minecraft:clear <玩家>` 清残留物品再 give，避免干扰
 - 验收矩阵：禁卖品（预期 That item cannot be sold）+ 压价品（实测单价必须 = 配置 sell）+ 正常品（钻石等保留价）+ 批量 >99（无序列化警告）+ transactions.yml 落盘
 

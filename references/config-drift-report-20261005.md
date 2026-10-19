@@ -61,7 +61,7 @@
 | 0@max-tick-time | 60000 | 600000 |
 | 0@motd | §e[Paper] 测试服-验证地图恢复状况 | §b🗡 §7欢迎来到§a{SERVER_NAME}§7的§e海外§7服务器！§b⛏ |
 | 0@pause-when-empty-seconds | -1 | 60 |
-| 0@rcon.password | orztest2026 |  |
+| rcon.password | {TEST_PASSWORD} |  |
 | 0@resource-pack-prompt |  | "" |
 | 0@server-port | 25565 | 39742 |
 | 0@simulation-distance | 3 | 5 |

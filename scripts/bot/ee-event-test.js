@@ -1,6 +1,6 @@
 // EE 双事件测试：跳跃（PLAYER_JUMP_EVENT）+ 行走（PLAYER_WALK）
 const mineflayer = require('mineflayer');
-const PWD = 'BotTest123';
+const PWD = process.env.BOT_TEST_PASSWORD || 'CHANGE_ME';
 const bot = mineflayer.createBot({
   host: '127.0.0.1',
   port: 25565,
