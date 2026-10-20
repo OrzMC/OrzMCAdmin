@@ -92,7 +92,11 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 
 > ⚠️ **本机实测：`advertise-addresses` 必须写成「公网 IP:宿主端口」**。容器内监听的是 172.x，且 webrtc 端口经 Docker NAT，若留空会把容器内网地址/端口公布给客户端 → 外网玩家拿到错误 endpoint，表现为列表能刷出来但进不了服。
 > ⚠️ **不支持域名**（`EndpointAddress.parseEndpoint` 源码硬校验：`Expected a numeric IP address` / `Expected an IP literal, IPv4:port or [IPv6]:port`）。留空时 Geyser 取 `bedrock.address`，只有非通配地址才会被采用，仍是本机地址。
-> ⚠️ 公网 IP 动态（kmdns.net）→ 用 `scripts/nethernet_advertise_sync.py`（技能脚本目录，运行时副本在 `%LOCALAPPDATA%\hermes\scripts\`）自动跟进：DoH 查 A 记录 → 与配置比对 → 变更时改写并 `geyser reload`（只重载 Geyser，不踢 Java 玩家）。建议 cron 每 15 分钟跑一次。
+> ⚠️ 公网 IP 动态（kmdns.net）→ 用 `scripts/nethernet_advertise_sync.py`（技能脚本目录，运行时副本在 `%LOCALAPPDATA%\hermes\scripts\`）自动跟进：DoH 查 A 记录 → 与配置比对 → 变更时改写并 `geyser reload`（只重载 Geyser，不踢 Java 玩家）。已挂 cron `orzmc-nethernet-advertise-sync`（no_agent，每 15 分钟，包装脚本 `nethernet_advertise_cron.py`，无变化时静默）。
+
+> ✅ **2026-10-20 全链路验证通过（纯 IP 直连）**：`GET /v1/join` → 200，`POST /v1/join/<id>` → 200（返回 SDP answer），随后 UDP 19134 上 DTLS/WebRTC 建立，玩家成功进服。说明 both 模式、advertise-addresses、Docker NAT、路由器端口转发、防火墙全部正确。
+
+> ⚠️ **域名入口当前不可用（未配 HTTPS）**：客户端填**域名**时强制 TLS，明文 HTTP 信令收到 ClientHello 后直接断开，玩家卡「加载延迟」且服务端无任何日志。测试期客户端一律用 **`114.240.151.81:19132`**（首连弹一次「信任此服务器」）。生产上线前必须给域名补 HTTPS。
 
 ### 5.2 仍未放行（截至 2026-10-19 晚）
 
