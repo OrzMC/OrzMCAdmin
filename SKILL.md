@@ -28,7 +28,7 @@ required_commands: [java, curl, tar]
 > | 快速实体统计（paper entity list / Spark / 计分板） | `references/entity-statistics.md` |
 > | 机器人玩家 Mineflayer（运维视角；开发细节见独立技能 `minecraft-bot-mineflayer`；**挂机脚本 stay-with-joker.js：5 bot 跟随真人玩家 + IPv4/IPv6 分流绕 per-IP 限制**） | `references/mineflayer-bot.md` |
 > | DeathChest 回归测试（死亡瞬间下线→物品丢失 ✅fix1；**动画 progress 越界卡服 ✅fix3 已合入 main 71d2571**；复现法见 ref） | `references/deathchest-regression.md` |
-> | **NetherNet 迁移（基岩新传输层：TCP 信令 + WebRTC/UDP；2.12 配置结构反编译实证 / A-B-C 三方案 / HTTPS 三做法 / 官方错误对照表 / 本机 Clash TUN 假阳性验证法；⚠️ 2026-10-27 基岩客户端停用 RakNet）** | `references/nethernet.md` + `~/OrzMC/proxy/scripts/nethernet_check.py`（已并入 OrzMCProxy main，v1.1.0，退出码 0=可用/1=不可达/2=用法/3=降级；`--signal-port` `--scheme https` `--json` `--self-test` `--no-emoji`） |
+> | **NetherNet 迁移（基岩新传输层：TCP 信令 + WebRTC/UDP；2.12 配置结构反编译实证 / A-B-C 三方案 / HTTPS 三做法 / 官方错误对照表 / 本机 Clash TUN 假阳性验证法；⚠️ 2026-10-27 基岩客户端停用 RakNet）。**关键实测**：域名入口**必须** HTTPS —— 客户端填域名时强制 TLS（`16 03 01` ClientHello，SNI=域名），明文 HTTP 信令被 FIN，玩家卡「加载延迟」且服务端零日志；纯 IP 才回退明文 + 一次性信任弹窗。2026-10-20 纯 IP 全链路（`GET /v1/join` 200 → `POST /v1/join/<id>` 200 → DTLS 建连）在测试服验证通过；动态公网 IP 由 `scripts/nethernet_advertise_sync.py` + cron `orzmc-nethernet-advertise-sync`（15 分钟，静默）自动跟进 `advertise-addresses` | `references/nethernet.md` + `~/OrzMC/proxy/scripts/nethernet_check.py`（已并入 OrzMCProxy main，v1.1.0，退出码 0=可用/1=不可达/2=用法/3=降级；`--signal-port` `--scheme https` `--json` `--self-test` `--no-emoji`） |
 > | **Geyser 基岩支持（当前 offline 直连模式；floodgate 已回退 2026-08-05）** | `references/geyser-floodgate.md` |
 > | **实例端口模型与审计（docker 实例必须逐条发布 `宿主:容器/协议`；端口以实例实际配置为准而非默认 25565/19132；多实例共享宿主时 UDP 错开 19132/19133；宿主≠容器 时 `clone-remote-port` 必须 false；Cloudflare Tunnel 不支持 UDP；脚本 `scripts/port-audit.py` 核对期望端口 vs 已发布 + 真实协议探测）** | `references/instance-ports.md` |
 > | **公网入口排障（域名+路由器映射+防火墙都"配好了"外网仍连不上）：根因常是本机 Clash TUN 抢默认路由 → 入站应答源地址被定成 198.18.0.1/钻进隧道；修法 = WSL 内加通用策略路由 `ip rule add from <LAN IP> table 100`（任意端口零维护，脚本 `scripts/orzmc-mc-reply-route.sh` + Windows 计划任务 OrzMC-MC-Reply-Route 每 10min 自愈）；⚠️ 老板坚持防火墙/路由器逐端口配置，勿再提 DMZ/端口段；含「ICMP 通但 TCP 全超时」判定法与外部节点验证法（勿在本机测）** | `references/public-ingress-clash-tun.md` |
@@ -117,6 +117,7 @@ required_commands: [java, curl, tar]
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.1.1 | 2026-10-20 | NetherNet 实测闭环：`both` 模式双通道验证通过；确认**域名入口必须 HTTPS**（客户端对域名强制 TLS，明文信令被断开 → 卡「加载延迟」且零日志），纯 IP 走 TOFU；新增动态公网 IP 同步脚本 `nethernet_advertise_sync.py` + cron `orzmc-nethernet-advertise-sync`；防火墙放行脚本 `bedrock_nethernet_ports.ps1` |
 | 2.1.0 | 2026-10-19 | 全面 review：30 篇专题/历史文档补齐分组索引（0 孤儿 0 死链）；7783 字「插件基线」巨型条目外置为 `references/plugin-baseline-legacy.md`（零信息丢失）；修正 26.3 口径（ALPHA→STABLE、Folia 26.3 已出、Geyser 已可用）；新增「脚本位置约定」 |
 | 2.0.7 | 2026-10-19 | 第四轮测试服升级基线（Paper 26.3-205 / WE 7.4.6 / WG 7.0.20 / Geyser 2.12.0）+ 新增 `references/nethernet.md`（NetherNet 迁移）+ 升级包交付规范 §2g + Exaroton 核心面板托管事实 |
 | 2.0.6 | 2026-09 | 第三轮升级（26.3 实验态）+ 多处巡检/权限/商店知识合并 |
