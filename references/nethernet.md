@@ -67,7 +67,7 @@ bedrock:
 1. `signaling.builtin.https` 直接指向证书（Geyser 同端口提供 HTTPS）
 2. 信令端口前挂反向代理（Nginx/Caddy）做 TLS
 3. 外部信令服务（Warden 自带 HTTPS）
-—— 不配 HTTPS 也能用，只是玩家首连要确认「信任」。
+—— **不配 HTTPS 也能用，但只对纯 IP 地址成立**：客户端填纯 IP 时才回退到明文 HTTP，弹一次「信任此服务器」后即可进服；**填域名时客户端强制 TLS**（抓包可见 `16 03 01` ClientHello、SNI=域名、ALPN=h2,http/1.1），明文 HTTP 信令无法应答，客户端会卡在「加载延迟」，而服务端连一行日志都不会有。域名入口必须配 HTTPS。
 
 ## 5. 本环境适配要点（OrzMC 现状）
 
@@ -128,7 +128,8 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 | `Built-in signaling cannot use port … because the Java server already uses it` | 基岩与 Java 共用端口（`clone-remote-port`）| 要独立端口，或继续用外部信令（Geyser 自动回退）|
 | `RakNet and NetherNet each need their own UDP port` | `both` 但 `webrtc-port` = 基岩端口 | 设成另一个空闲 UDP |
 | `… is a loopback address` | `bedrock.address` 是 127.0.0.1 | 改 `0.0.0.0` |
-| 玩家弹「trust on first use」 | 信令走明文 HTTP | 配 HTTPS 或外部信令 |
+| 玩家弹「trust on first use」 | 信令走明文 HTTP（纯 IP 直连） | 配 HTTPS 或外部信令 |
+| 域名连接卡「加载延迟」、服务端无任何日志 | 客户端对域名强制 HTTPS，明文 HTTP 信令收到 TLS ClientHello 后直接断开 | 给该域名配 HTTPS（内置证书/反代/外部信令）；临时可用纯 IP 直连验证 |
 
 ## 8. 备选路线：GeyserNetherNet 扩展（不推荐用于生产）
 
