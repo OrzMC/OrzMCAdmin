@@ -96,7 +96,7 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 
 > ✅ **2026-10-20 全链路验证通过（纯 IP 直连）**：`GET /v1/join` → 200，`POST /v1/join/<id>` → 200（返回 SDP answer），随后 UDP 19134 上 DTLS/WebRTC 建立，玩家成功进服。说明 both 模式、advertise-addresses、Docker NAT、路由器端口转发、防火墙全部正确。
 
-> ⚠️ **域名入口当前不可用（未配 HTTPS）**：客户端填**域名**时强制 TLS，明文 HTTP 信令收到 ClientHello 后直接断开，玩家卡「加载延迟」且服务端无任何日志。测试期客户端一律用 **`114.240.151.81:19132`**（首连弹一次「信任此服务器」）。生产上线前必须给域名补 HTTPS。
+> ⚠️ **域名入口当前不可用（未配 HTTPS）**：客户端填**域名**时强制 TLS，明文 HTTP 信令收到 ClientHello 后直接断开，玩家卡「加载延迟」且服务端无任何日志。测试期客户端一律用 **`{HOME_IP}:19132`**（首连弹一次「信任此服务器」）。生产上线前必须给域名补 HTTPS。
 
 ### 5.2 仍未放行（截至 2026-10-19 晚）
 
