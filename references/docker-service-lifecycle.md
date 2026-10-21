@@ -63,6 +63,8 @@ sleep 120 && docker ps -a --format '{{.Names}}' | grep MCSM- || echo '实例未�
 ```
 改完 ping 一下磁盘值确认没被回写（`grep -o '"autoStart": *[a-z]*' InstanceConfig/*.json`）。
 
+📌 **`docker stop MCSM-<id>` 后容器会被直接移除**（daemon 以 `--rm` 方式跑实例），`docker ps -a | grep MCSM-` 返回空是**正常结果**、不是误删；实例仍登记在 `InstanceConfig/<uuid>.json`，面板里点启动即可重新创建容器。关服验收看**宿主端口不再监听**（25565/25566/19132…），不要看容器是否残留。
+
 ## 4. 重启自愈链条与**断点：Windows 自动登录**
 
 | 环 | 现状 | 依据 |
