@@ -18,7 +18,7 @@ required_commands: [java, curl, tar]
 > |:--|:--|
 > | 本机服务器操作（创建/升级/备份/状态） | `references/local-backend.md` |
 > | Exaroton 云端（API 端点表 + 平台要点） | `references/exaroton-backend.md` |
-> | MCSM 面板（API 端点表 + 平台要点 + 适配器） | `references/mcsm-backend.md` |
+> | MCSM 面板（API 端点表 + 平台要点 + 适配器；**启动实例/改 docker 端口/开启 RCON 见 `references/mcsm-start-rcon.md`**） | `references/mcsm-backend.md` |
 > | **EasyBot IM 网关运维（docker 容器/健康检查/QQ token/投递诊断 API 版 `scripts/easybot_deliveries.py`；0.0.33 起投递记录在 messages 表；原 easybot-gateway-ops 技能合并）** | `references/easybot-gateway.md` |
 > | **部署配置同步（config drift 判定/fallback 判断/补键同步；原 deployment-config-sync 技能合并）** | `references/config-sync.md` |
 > | **Git 子模块全量同步（OrzMC monorepo 15 子模块；默认分支探测/发布后指针/分支清理/独立 clone 去重；原 git-submodule-sync 技能合并）** | `references/git-submodule-sync.md` |
