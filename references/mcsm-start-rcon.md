@@ -41,3 +41,38 @@ RCON_PASSWORD=<pw> python scripts/rcon.py 25576 list     # Folia
 ```
 
 本机验证过的端口矩阵：Paper 游戏 25565 / RCON 25575；Folia 游戏 25566 / RCON 25576；基岩 19132(19133)、19134(19135)/udp。
+
+## 4. 局域网放行：Windows 防火墙 ≠ Hyper-V 防火墙
+
+本机 `~/.wslconfig` 是 `networkingMode=mirrored`，Docker 发布的端口**不会出现在 Windows 的 `netstat`/`Get-NetTCPConnection`** 里（Linux 套接字由 WSL 镜像栈持有）。因此：
+
+- 只加 `New-NetFirewallRule` 对 WSL 内监听**不一定生效**，必须同时加 **Hyper-V 防火墙**规则（`DefaultInboundAction=Block` 是默认值）：
+
+```powershell
+New-NetFirewallRule -DisplayName "OrzMC RCON 25575 TCP" -Direction Inbound -Action Allow `
+  -Protocol TCP -LocalPort 25575 -RemoteAddress 192.168.0.0/24 -Profile Any
+New-NetFirewallHyperVRule -Name "OrzMC-RCON-25575" -DisplayName "OrzMC RCON 25575 TCP" `
+  -Direction Inbound -Action Allow -Protocol TCP -LocalPorts 25575 `
+  -RemoteAddresses 192.168.0.0/24 -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}'
+```
+
+需要管理员；本机 `ConsentPromptBehaviorAdmin=0`，`Start-Process -Verb RunAs` 可静默提权。
+
+- **本机自测无效**：从 Windows 或容器连 `192.168.0.33:<端口>` 会超时（mirrored 模式下回不到 VM；原生监听如 SSH 22 正常）。判断是否放行要看规则存在，最终结论必须用**另一台设备**验证。
+- MCSM 面板 23333 **本来就没发布到宿主**（只在 docker 网络 + cloudflared 隧道里），局域网 `http://<LAN IP>:23333` 必然连不上；要局域网直连需在 `compose.site.yaml` 给 `mcsmanager-web` 加 `ports: ["23333:23333"]` 再 `./orzmc.sh up -d`，并同样加两层防火墙规则。
+
+## 5. 面板访问慢 / 连不上：先分清三条路径
+
+| 路径 | 地址 | 典型表现 |
+|---|---|---|
+| 公网隧道 | `https://mcs.{SERVER_NAME}.cn` | 可用但**慢**：经 Cloudflare SIN 边缘往返，TTFB 0.5~0.9s，SPA 每个 API 再吃一次 RTT |
+| 局域网直连 | `http://<LAN IP>:23333` | 默认**连不上**（23333 未发布到宿主），发布后毫秒级 |
+| 宿主本机 | `http://127.0.0.1:23333` | 发布后 ~7ms |
+
+测慢的方法：`curl -o file -w '%{time_starttransfer}'` 对比容器内 `node -e "fetch('http://127.0.0.1:23333/…')"`。上游本地 100~200ms、隧道 700~900ms 即隧道往返主导。静态资源已由 Cloudflare zstd 压缩并缓存（`cf-cache-status: HIT`、`max-age=86400`），不是带宽问题。
+
+## 6. ⚠️ `orzmc.sh up` 会重生成 `cloudflared/config.yml`
+
+当它判定 config 与 `.env` 不一致时，会备份并**用模板覆盖**，模板只含 4 条官方 ingress：`mcs` / `easybot` / `mcs-node` / `orzmcs`。站点手工加的 `music.{SERVER_NAME}.cn → host.docker.internal:8080` 会被**静默删掉**（表现：音乐站 404/530）。
+
+每次跑完 `up` 都要 `diff` 备份与现文件，手工补回后 `docker restart orzmc-cloudflared`。根治要靠把站点增量写成 `.env` 变量，不要手改生成物。
