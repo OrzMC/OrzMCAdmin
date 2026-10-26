@@ -75,9 +75,9 @@ required_commands: [java, curl, tar]
 >
 > | 主题 | 文档 | 内容 |
 > |:--|:--|:--|
-> | 巡检报告与案例复盘 | `references/config-drift-report-20261005.md` | 巡检日期：2026-10-05（周一 9:00 周巡检，脚本 cmp3 自动生成，基准端 = MCSM jokerh |
 > | 巡检报告与案例复盘 | `references/config-drift-report-20261012.md` | 巡检日期：2026-10-12（周一 周巡检 · 补跑版，脚本 cmp3 自动生成，基准端 = MCSM joker |
 > | 巡检报告与案例复盘 | `references/config-drift-report-20261019.md` | 两端配置漂移报告 · 2026-10-19（周巡检） |
+> | 巡检报告与案例复盘 | `references/config-drift-report-20261026.md` | 两端配置漂移报告 · 2026-10-26（周巡检 · 降级）：含**面板 API 密钥被轮换致巡检静默假阴性**、files API 单次 list 5.7~37s 不可全量扫描、`cmp3_configs.py` 插件路径重复拼接 bug 修复 |
 > | 巡检报告与案例复盘 | `references/context-trap-case-study.md` | 上下文脏数据根因链（joker / TestMember 案例实录） |
 > | 巡检报告与案例复盘 | `references/deathchest-fix.md` | DeathChest 3.0.1 修复案例（死亡瞬间下线 → 物品永久丢失） |
 > | Rank 与权限体系 | `references/lp-api-bootstrap-correction.md` | LuckPermsBootstrap 校正模式 + 权限名核实（2026-08-08 实战） |
@@ -171,10 +171,12 @@ curl -s -H 'accept: application/dns-json' \
 >
 > ⚠️⚠️ **2026-09-12 拓扑更正：面板栈本体已迁 Windows（`E:/orzmc`，见 `references/platform-migration.md`）** —— `mcs.{SERVER_NAME}.cn` 现指向 Windows 上的 MCSM（web `10.18.0` / daemon `4.18.0`），Mac 上 `/Users/Shared/orzmc/...` 只是**迁移前的历史副本（勿直读、勿据此判断线上状态）**；Mac 已无 docker。**操作一律走 MCSM API**（凭据 `~/.hermes/.env` 的 `MCSM_LOCAL_*`）：`instance.status` 3=运行中 / `files/list|download|mkdir|copy|move|delete` / `files/download_from_url` / `files/upload` / `protected_instance/open|stop|command`。升级实测流程 + 配置迁移 + 备份清理 → `references/test-server-upgrade-sop.md`；配置补键工具 `scripts/config_merge_defaults.py`。
 > ⚠️ **面板可达性依赖 Windows 侧 `cloudflared` 隧道**：2026-09-28 / 10-12 两次 `HTTP 530 + error 1033`（Argo Tunnel error）故障 → **周巡检静默空转**（配置拉取 0 文件、版本巡检部署侧全空，脚本仍报 `ok`）。**老板已于 2026-10-12 在 Windows 侧加自愈守护**。排查法：`curl -o /dev/null -w '%{http_code}' https://mcs.{SERVER_NAME}.cn/`（同域 `orzmc.{SERVER_NAME}.cn` 200 而 mcs 530 = 仅面板隧道故障）；⚠️ **巡检报告若出现「MCSM 端 0 文件 / 全部插件未部署」= 故障信号，须先探面板再下结论**。
+> 🔑 **2026-10-26 新增同类假阴性：面板 apiKey 被轮换** —— `~/.hermes/.env` 的 `MCSM_LOCAL_API_KEY` 失效时表现与隧道故障相同（`mc_version_check.py` 全部「未部署」、审计扫描 0 清单项，均不报错）。**三秒判定法**：`GET /api/auth?apikey=<key>` → `403 {"data":"密钥不正确"}` 即密钥失效（vs 隧道故障是 curl 5xx/超时）。面板侧真值在 Windows `E:\orzmc\mcsmanager\web\data\User\<uuid>.json` 的 `apiKey` 字段（`ssh win` 可读，用户 joker=实例归属者 / admin=超管）；`.env` 在 cron 模式下被安全策略禁止写入，应急可用「环境变量 + `mcsm_env._load_env` 打补丁」在内存层覆盖跑一轮，但**必须请老板更新 .env**（否则下周继续盲飞）。⚠️ 同期面板 `files/list` 单次延迟 5.7~37s、`files/download` 签发大量失败 → 全量递归扫描（~70 次 list）跑不完，改定点拉取（核心 7 件 + 关键插件配置）。
 >
 > **测试服版本基线（⚠️ 历史快照 2026-09-20，仅作演进参考；**当前权威 = 本段 2026-10-19 基线行**）**：两实例均 **26.2 线 + Java 25**，插件走 **dev/beta 轨道**（老板决策：测试服用于开发测试验证插件功能）——**Geyser-Spigot build 1245（2.11.3）**、**LuckPerms 5.5.85**、**ViaVersion/ViaBackwards 5.12.0**、**ViaRewind 4.2.0**、**WorldGuard 7.0.19**；OrzMC paper **1.0.27-dev.422**（启动自更新确认「已是最新」）/ folia **1.0.25-dev.416**（启动后未落自更新日志，**待手动补或下次重启确认**）；papermc-test 额外 Paper **26.2-126**（STABLE）+ voicechat **2.6.23**；folia-test 额外 Folia **26.2-7**（该分支最新，**Folia 尚无 26.3**）+ AxGraves **1.31.0** + EssentialsC **4.3.0** + GriefPrevention3D **18.4.4** + ExecutableEvents **3.26.9.17** + SCore **5.26.9.17** + VaultUnlocked **2.20.3**。
 > 🆕🆕 **2026-10-19 第四轮升级后基线（最新权威，实测自启动日志）**：**papermc-test** = Paper **26.3-205（STABLE）+ WorldEdit 7.4.6 正式版 + WorldGuard 7.0.20 + Geyser 2.12.0-b1265（26.3 上首次成功启用）+ OrzMC 1.0.29-dev.427 + LuckPerms 5.5.87 + Via 5.12.1 + packetevents 2.14.0 + grimac 2.3.74-abb95b6 + voicechat 2.6.24**；**folia-test** = Folia **26.2-7**（26.3 仅 ALPHA 未采用）+ Geyser 1265 + EssentialsC 4.3.4 + ExecutableEvents 3.26.10.17 + SCore 5.26.10.17 + GriefPrevention3D 18.4.14 + **WorldEdit 7.4.5 / WorldGuard 7.0.19（故意不升：WG 7.0.20 元数据只标 26.3）**。→ **26.3 就绪门槛 6 项已解除 2 项（WE 正式版 ✅ / Geyser ✅）**，仍缺 EssentialsX 正式版、GrimAC 正式 release、F3F4Perms/SimpleLogin 元数据；实录与 8 条新坑见 `references/test-server-upgrade-sop.md` §2f。
 > 🆕 **2026-10-12 第三轮升级后基线（历史，实测自 `logs/latest.log`）**：**papermc-test** = **⚠️ 已按老板决策切到 26.3 实验态：Paper 26.3-177 + WorldEdit 7.4.6-beta-02（Geyser 1251 在 26.3 上不可用被迫禁用；**2026-10-19 已由 b1265 解决**）**（26.3 之前的 26.2 态 = Paper 26.2-133 + WE 7.4.5，两者产物与备份均在 `/upgrade-bak-20261012-263/` 与 `/tmp/orzmc_263_check/`；详见 `references/test-server-upgrade-sop.md` §2e「26.3 实测 + 决策」）；**folia-test** = Folia **26.2-7**（**Folia 当时无 26.3**（2026-10-19 已出 26.3-3，仅 ALPHA））+ Geyser-Spigot **build 1251** + Via 双件 **5.12.1** + EssentialsC **4.3.3** + ExecutableEvents **3.26.10.10** + SCore **5.26.10.10** + GriefPrevention3D **18.4.12** + AxGraves 1.32.1 + OrzMC 1.0.29-dev.427。26.3 前的两实例 26.2 态：paper 26.2-133 + Geyser 1251 + Via 5.12.1 + OrzMC 1.0.29-dev.427 + LuckPerms 5.5.87 + packetevents 2.14.0 + voicechat 2.6.24 + WorldEdit 7.4.5 + WorldGuard 7.0.19 + GrimAC 2.3.74-abb95b6。备份 `/upgrade-bak-20261012` 保留、实例停回停止态；升级实录与 6 条新坑 → `references/test-server-upgrade-sop.md` §2d。
+> 🆕 **2026-10-26 周巡检实查（核心/插件版本，MCSM 面板 API 读 jar 文件名 + 加载日志）**：**papermc-test 核心已升到 Paper 26.3-223（= fill 最新 STABLE，2026-10-25 18:46Z 发布）**；folia-test 仍 **Folia 26.2-7**（最新 folia 26.3-5 仍为 **ALPHA**，按「只升 STABLE」纪律不动）。插件待升项：Geyser-Spigot b1265→**b1271（2.12.0）**、LuckPerms 5.5.87→**5.5.88**、voicechat 2.6.24→**2.6.25**；folia 侧 EssentialsC 4.3.4→**4.3.5**、GriefPrevention3D 18.4.14→**19.0.1（跨大版本，需验证）**、SCore 5.26.10.17→**5.26.10.20**。其余 20 项一致。
 > 🔴 **Exaroton（生产端）jar 严重落后（2026-10-12 首次盘点，此前巡检**从不查 Exa 侧 jar**——只对比配置）**：⚠️ **Exaroton 核心由面板管理（根目录只有 `.paper` 目录、无核心 jar）→ 核心版本只能面板选，不能上传 jar**；插件仍走 `plugins/update/`。2026-10-19 复核现状：OrzMC **1.0.24**（config-version 12）、Geyser-Spigot-**1230**、ViaVersion/ViaBackwards **5.11.0**、ViaRewind 4.1.3、LuckPerms **5.5.77**、packetevents **2.13.0**、worldguard-bukkit-7.0.18、GetMeHome 3.0.0-4、SkinsRestorer.jar（无版本名）；**无 GrimAC（老板决策：生产端不加反作弊）**、无 voicechat。→ 已建「有意差异白名单 + 待执行表」见 `references/three-end-config-drift.md`；**建议给周巡检加 Exaroton jar 盘点**（缺口项）。
 > 🔴 **Via 三件套必须 ≥ 5.12.0**：5.11.0 只支持到 MC 26.2，**5.12.0 才支持 26.3 客户端**——玩家官方启动器自动升级到 26.3 后旧版接不住（比升核心更紧急）。
 > 🔴🔴 **但 26.3 客户端目前「能进却会被 GrimAC 踢」（2026-09-20 实测）**：GrimAC 2.3.74 内置（shaded/relocated）packetevents 只到 26.2 → 26.3 客户端一进服就 `Unknown entity metadata type id: 105 version V_26_2`，GrimAC 状态被污染后**误报 BadPacketsN 并踢人**。上游 packetevents 的 26.3 支持 09-19 才合入 main（**未发版**，最新 release 仍 v2.13.0）、GrimAPI 最新 v1.6.0.12（09-03）早于该合并 → **GrimAC 目前无解**。
@@ -267,6 +269,18 @@ python3 $CMP/mcsm_delete.py /plugins/xxx.jar      # 删除（{"targets":[...]}�
 python3 $CMP/mcsm_list_filter.py                  # 列目录（需 file_name 过滤）
 ```
 > 端点表/认证/踩坑 → `references/mcsm-backend.md`、`references/exaroton-backend.md`
+
+> 🔑 **API 密钥轮换（2026-10-19 实测）**：面板重新生成密钥后，**只改 `~/.hermes/.env` 的 `MCSM_LOCAL_API_KEY`**（32 位纯 hex），技能/脚本/仓库一律不存值（`secret_guard` 会把关）。
+> - 验证鉴权：`GET /api/overview` 或 `GET /api/instance` 返回 200；**`/api/auth` 恒为 404（该端点不存在），别拿它判断 key 好坏**
+> - 失败语义：`{"status":403,"data":"密钥不正确"}` → key 不对（或面板里新建后未保存/未启用）；用假 key 对照可确认报错确属鉴权而非网络
+>
+> 🔻 **`初始化失败，远程节点不存在！` = daemonId 与面板真实节点 uuid 不符**（2026-10-19 踩过：`.env` 写 `064118e0…`，面板实际是 `fbb3492c…`）
+> ```bash
+> # 查真实节点：返回字段是 uuid（不是 daemonId），本机节点备注 orzmc-local
+> curl -s "https://mcs.{SERVER_NAME}.cn/api/service/remote_services_list?apikey=$MCSM_LOCAL_API_KEY"
+> # 然后改 ~/.hermes/.env 的 MCSM_LOCAL_DAEMON_ID，再验一次 /api/instance
+> ```
+> ⚠️ 轮换 key 后若同时报「节点不存在」或面板极慢（TLS/首字节 3~8s、传输 30s 超时），先按限流纪律冷却 2~3 分钟再探测，别连打（MCSM 面板跑在 Windows + Cloudflare Tunnel 后面，负载高时会这样）。
 
 ### 6. 版本巡检（cron 每日 10:00）
 

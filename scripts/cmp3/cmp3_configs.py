@@ -109,8 +109,8 @@ total = 0
 diff_files = []
 for pdir, rel in walk_plugin_configs(f"{BASE}/plugins"):
     total += 1
-    b_path = f"{BASE}/plugins/{pdir}/{rel}"
-    c_path = f"{CMP}/plugins/{pdir}/{rel}"
+    b_path = f"{BASE}/plugins/{rel}"   # rel 已含 pdir（相对 base_plugins），勿再拼 pdir
+    c_path = f"{CMP}/plugins/{rel}"
     bl = read(b_path)
     cl = read(c_path)
     name = f"{pdir}/{rel}"
