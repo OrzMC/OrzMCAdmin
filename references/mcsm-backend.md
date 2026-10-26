@@ -75,6 +75,37 @@
 
 `-1`=忙碌 / `0`=停止 / `1`=停止中 / `2`=启动中 / `3`=运行中
 
+## 面板「重启」卡死：服务停了不再起来（2026-10-26 实测定位）
+
+**现象（老板报障）**：面板点「重启」→ 服务关闭 → 面板一直转圈/不响应，再点「启动」也不动 → **只有点「终止」才恢复**。
+
+**实测证据（folia-test，0 玩家）**：
+| 操作 | 结果 |
+|:--|:--|
+| `GET /api/protected_instance/restart` | **200，3.4s 返回**（异步受理） |
+| 之后状态 | status **3(运行) → 1(停止中)**，停在 1 **≥130s**，最终才回 3 |
+| `GET /api/protected_instance/stop` | **93.7s 后 SSL EOF**（`EOF occurred in violation of protocol`）→ **请求被掐断**，服务仍在 status=3 |
+| 普通 `GET /api/instance` | 间歇 **120s 超时**；TLS 握手 1.7~5s、首字节 3~8s、总耗时常撞 30s 上限 |
+| 实例配置 | `stopTimeout: 0`（**无强制终止超时**）、`stopCommand: stop`、`processType: docker` |
+
+**根因（按证据排序）**：
+1. **面板↔daemon 链路（Cloudflare Tunnel `mcs-node.{SERVER_NAME}.cn` wss:443）不稳**：长时间同步请求在 ~90~100s 被掐（与 Cloudflare 100s 请求窗口吻合）。「重启」= 停 → 等状态迁移 → 起，若中段连接被断，**服务已收到 stop 但 start 永远没发出去** → 停在停止态；「终止」是短请求，能把状态机复位，所以点它才"活"。
+2. `stopTimeout: 0` 放大了问题：MCSM 不会在优雅停止超时后强制 kill，stop 一直等，必然撞穿 100s 窗口。
+
+**处置（按推荐顺序）**：
+1. **操作习惯**：面板里「重启」改为**两步**——① 终止（kill）② 等状态=0 ③ 启动。API 同样分两步：
+   ```bash
+   G=/api/protected_instance; Q="daemonId=$MCSM_LOCAL_DAEMON_ID&uuid=<实例>&apikey=$MCSM_LOCAL_API_KEY"
+   curl -s "$BASE$G/kill?$Q"    # 短请求
+   # 轮询 /api/instance 到 status=0
+   curl -s "$BASE$G/open?$Q"
+   ```
+2. **实例设置 → 停止超时** 由 `0` 改为 **15~30s**（优雅停止失败时自动强制 kill，重启流程可控）。
+3. **链路治理**：Windows 侧查 `cloudflared`（CPU/内存/重连日志、是否存在连接风暴）；面板/daemon 尽量走**局域网直连**（Mac↔Windows 同网）绕开 Cloudflare 100s 限制。
+4. 长期：考虑升级 MCSM（新版有把重启/停止改为异步的实现）。
+
+⚠️ **诊断纪律**：面板慢时**不要连打**——每次探测间隔 ≥10s，冷却 2~3 分钟；状态查询超时 ≠ 操作失败（本例 stop 报 SSL EOF，但服务实际没停，最终 status 仍为 3）。
+
 ## 并发下载实例文件 → 500 根因（2026-09-09 实测于本机 Docker 部署，web 10.18.0 / daemon 4.18.0）
 
 **结论：不是"下载并发"上限，而是"签发凭据接口"的硬编码限流。下载链路由两步组成：**
