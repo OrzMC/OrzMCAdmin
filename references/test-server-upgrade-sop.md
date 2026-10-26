@@ -284,6 +284,38 @@ orzmc-upgrade-YYYYMMDD/
 2. 🔴 **生产端补差必须用「正式版优先」**：如 OrzMC 同时存在 `1.0.29`（Release）与 `1.0.29-dev.427`（Beta），差 1 小时但代码等同 → **给生产端用 Release**，测试服可继续 dev。
 3. 🟡 打 zip 前先 `rm -f <zip>` 避免旧包残留；打完后 `unzip -l` 核对内层路径是 ASCII。
 
+## 2h. 2026-10-26 实录（第五轮：Paper 26.3-224 + 两端 Geyser/LuckPerms + voicechat + folia 三件套；**SSH 直投成为标准交付通道**）
+
+> 触发：老板「测试服插件和核心都升级最新版本」。Folia 核心 26.3-5 = **ALPHA** → 老板明确选「保持 26.2-7 不动」。
+
+| 实例 | 升级项 | 结果 |
+|:--|:--|:--|
+| papermc-test | Paper **26.3-223 → 26.3-224（STABLE）**、Geyser **1265 → 1271**、LuckPerms **5.5.87 → 5.5.88**、voicechat **2.6.24 → 2.6.26** | ✅ `Paper version 26.3-224-main@eb9098a`、`Done (119.375s)`、Geyser `Started on UDP 19132` |
+| folia-test | Geyser **1265 → 1271**、LuckPerms **5.5.87 → 5.5.88**、EssentialsC **4.3.4 → 4.3.5**、SCore **5.26.10.17 → 5.26.10.20**、**GriefPrevention3D 18.4.14 → 19.0.1（跨大版本）** | ✅ `Folia 26.2-7-ver`、`Done (140.574s)`、GP3D 19.0.1 正常 `Enabling` |
+
+- 未升（已最新/纪律）：Via 三件套（5.12.2 仅 SNAPSHOT）、packetevents 2.14.0、GrimAC（本地 alpha 比 release 新）、WorldEdit/WorldGuard/EssentialsX/SkinsRestorer/GriefPrevention/F3F4Perms
+- **folia 的 WE/WG 保持 7.4.5 / 7.0.19**：WG 7.0.20 元数据只标 26.3，folia 是 26.2 线 → 不同步升（同「同一插件在两实例可能不能同版本」教训）
+- 唯一 ERROR：paper `[Essentials] unsupported server version`（既有，等正式版）
+- 备份：`/upgrade-bak-20261026`（paper 102.8MB / folia 59.4MB）留存；已删旧的 `20261012-263`、`20261019`×2（共释放 ~236MB）
+
+### 🔴 交付通道变更：**scp 直投取代 `download_from_url`（本轮起标准做法）**
+
+面板 files API 本轮依然不可靠（配置巡检拉取 2/5 失败、单文件 111~135s）→ 直接走 **SSH + scp**，9/9 sha256 回读一致，55MB 核心秒级。
+
+| 步骤 | 命令（Mac 侧） |
+|:--|:--|
+| 投递 | `scp paper-26.3-224.jar "win:E:/orzmc/mcsmanager/daemon/data/InstanceData/<uuid>/"` <br> `scp *.jar "win:E:/.../<uuid>/plugins/"` |
+| 备份 | `ssh win "powershell -File E:/orzmc/tmp/backup.ps1"`（`Copy-Item` 到 `upgrade-bak-<日期>`） |
+| 校验 | `powershell -File E:/orzmc/tmp/verify.ps1` → `Get-FileHash -Algorithm SHA256 -LiteralPath` vs 本地 `shasum -a 256` |
+| 停/启 | 仍走面板：`command=stop` → 轮询 status=0；`open` 启动（面板抖动时 `kill` 兜底） |
+
+**踩坑（都吃过）**：
+1. **Windows OpenSSH 默认 shell = PowerShell** → `cmd /c a & b` 会被当后台作业、路径通配符行为不同 → 一律 `powershell -NoProfile -Command "..."` 或写 .ps1。
+2. **三层嵌套引号（bash → ssh → PowerShell）必翻车**（`\.Line` / `ExpectedExpression`）→ **脚本落盘 + `scp` + `powershell -File`**，脚本内只用 ASCII。
+3. **Windows 输出是 GBK** → 本地管道加 `LC_ALL=C tr -d '\r'`，脚本里不要输出中文。
+4. **面板 `command=stop` 请求可能 TLS 超时/断连但仍已送达**（本轮 folia 报 2 次 ERR，实际服务照常停止）→ 见 status=0 即可，别重复发。
+5. 冷启动：paper 131s、folia 105~140s 才 `status=3`；**串行启动**（paper `Done` 后再起 folia）避免 Folia Watchdog。
+
 ## 3. 机制与坑
 
 1. **MCSM 面板/API stop 会置 `eventTask.ignore=true` 并落盘** → `autoRestart` 名存实亡（下次 daemon 重启内存复位，但磁盘仍 true）。测试实例本就手动启停，影响可控；如需恢复须改 Windows 侧 `InstanceConfig/<uuid>.json`。
