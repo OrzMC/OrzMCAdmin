@@ -174,7 +174,7 @@ wsl -d Ubuntu -u root -- bash -c "tcpdump -n -i any 'tcp port 25565'"
 ### 两个会让排查翻车的坑
 
 1. **hairpin 假阳性**：在局域网内打开 `https://mcs.{SERVER_NAME}.cn` 会成功（路由器 NAT 回环），看起来像公网可达。Caddy 访问日志里**所有请求的 `remote_ip` 都是 `172.18.0.1`（Docker 网关）**，因此日志也无法区分 LAN 与公网来源。→ **判断公网可达只能靠外部节点**（check-host.net 多节点 + SSL Labs `api.ssllabs.com/api/v3/analyze?host=...`，后者报 `Unable to connect to the server` 即不可达）。
-2. **家宽 IP 会随 PPPoE 重拨变化**（实例：`114.240.148.212` → `114.240.151.88`）。拿旧 IP 去测会得到“503/超时”这种完全误导的结论——**排查前先 `curl http://ip.3322.net/` 取当前 WAN IP**，并核对 `nslookup`/DoH 的 A 记录（本机解析被 Clash 劫持成 `198.18.x` 假 IP，要用 `https://1.1.1.1/dns-query` 取真值）。
+2. **家宽 IP 会随 PPPoE 重拨变化**（实例：`{HOME_IP}` → `{HOME_IP}`）。拿旧 IP 去测会得到“503/超时”这种完全误导的结论——**排查前先 `curl http://ip.3322.net/` 取当前 WAN IP**，并核对 `nslookup`/DoH 的 A 记录（本机解析被 Clash 劫持成 `198.18.x` 假 IP，要用 `https://1.1.1.1/dns-query` 取真值）。
 
 ### 延迟结论（取代旧 TTFB ≈ 3×RTT 模型）
 
