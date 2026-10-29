@@ -141,3 +141,41 @@ wsl -d Ubuntu -u root -- bash -c "tcpdump -n -i any 'tcp port 25565'"
 - **WSL 策略路由层：已用通用 `from <LAN IP>` 规则**，零维护（新增端口不用改这里）。
 - 所以新增一个自定义端口的完整流程 = ①路由器加一条映射 ②Windows 防火墙加一条 Allow ③MCSM 实例 `docker.ports` 加一条 —— 共三处，路由层不用动。
 - 验收记录：2026-09-12 老板手机蜂窝实连 Java 双实例（25565/25566）+ 基岩双实例（19132/19133）均连通 ✅。
+
+## 8. 家宽入站 80/443 被运营商封锁 → 改用高位端口（2026-10-29 实测，OrzMC 现行架构）
+
+**结论**：北京联通家宽**入站 80/443 被静默丢弃**（连路由器都收不到），高位的 18443 正常。
+所以 web 面板不能走 443，只能映射高位端口到容器 443。
+
+**现行拓扑**（已弃用 Cloudflare Tunnel，`orzmc-tunnel-guard` cron 已删）：
+
+```
+公网 114.x.x.x:18443 ──路由器映射──> 宿主 192.168.0.33:18443 ──> Caddy(容器 443)
+                                                    ├─> mcsmanager-web:23333   (mcs.{SERVER_NAME}.cn)
+                                                    └─> easybot:8080           (easybot.{SERVER_NAME}.cn)
+```
+
+- compose：`E:/orzmc/compose.site.yaml` 的 `caddy` 服务，ports `80:80` / `443:443`（保留但公网不可用）/ **`18443:443`（实际入口）**
+- Caddyfile：`E:/orzmc/site/Caddyfile`；证书 Let's Encrypt **DNS-01**（镜像 `caddybuilds/caddy-cloudflare`，`.env` 的 `CF_DNS_API_TOKEN` 需 `Zone:DNS:Edit`）→ 不依赖入站 80 验证，端口被封也能签
+- 防火墙：`OrzMC-Web-TLS` = 入站 TCP `80,443,18443` Allow，全 profile
+- 面板 23333 只对 LAN 放行，公网只走 Caddy 一条入口
+- 最终地址：**`https://mcs.{SERVER_NAME}.cn:18443/`**（证书对域名有效，与端口无关）
+
+### 判据：refused 与 timeout 不是一回事
+
+| 外部探测结果 | 含义 |
+|:--|:--|
+| `Connection refused` | 路由器直接 RST = **没有这条端口映射** |
+| `Connection timed out` | 包被静默丢弃 = **运营商封锁**（80/443）或映射到了不响应的内网主机 |
+| 连通 + 时间 < 1s | 正常 |
+
+用这一对现象可以区分“映射没加”和“被运营商封”，比反复改路由器有效得多。
+
+### 两个会让排查翻车的坑
+
+1. **hairpin 假阳性**：在局域网内打开 `https://mcs.{SERVER_NAME}.cn` 会成功（路由器 NAT 回环），看起来像公网可达。Caddy 访问日志里**所有请求的 `remote_ip` 都是 `172.18.0.1`（Docker 网关）**，因此日志也无法区分 LAN 与公网来源。→ **判断公网可达只能靠外部节点**（check-host.net 多节点 + SSL Labs `api.ssllabs.com/api/v3/analyze?host=...`，后者报 `Unable to connect to the server` 即不可达）。
+2. **家宽 IP 会随 PPPoE 重拨变化**（实例：`114.240.148.212` → `114.240.151.88`）。拿旧 IP 去测会得到“503/超时”这种完全误导的结论——**排查前先 `curl http://ip.3322.net/` 取当前 WAN IP**，并核对 `nslookup`/DoH 的 A 记录（本机解析被 Clash 劫持成 `198.18.x` 假 IP，要用 `https://1.1.1.1/dns-query` 取真值）。
+
+### 延迟结论（取代旧 TTFB ≈ 3×RTT 模型）
+
+直连 Caddy 只有一跳，TTFB ≈ 客户端到家的 RTT，不再有「TLS + 边缘 + 回源」三段叠加；国内访问 10–30ms 级，海外 150–300ms 级。原 Cloudflare Tunnel 的 0.7s 地板结构性问题已消除。
