@@ -334,6 +334,8 @@ orzmc-upgrade-YYYYMMDD/
 
 ### 本轮新增坑
 
+0. 🔴 **比对「最新版」必须先按 `version_type=release` 过滤，再比日期**（2026-11-02 真实疏漏）：ViaVersion 在 Modrinth 上最新一条是 `5.12.3-SNAPSHOT`（beta），若只看「最新一条」就会把整项当 SNAPSHOT 跳过，而底下躺着 10-27 发布的 **5.12.2 正式版**。→ 判定顺序：先取 release 集合里版本号最高的，再判断「是否等于部署版」；SNAPSHOT/BETA 只作参考列，不参与「是否需要升级」的结论。
+
 1. 🟡 **`E:/orzmc/tmp` 会消失**（一周后重跑时 scp 报 `No such file or directory`）→ 每次先 `New-Item -ItemType Directory -Force` 再造 .ps1。
 2. 🟡 **`paper-26.3-<build>.jar` 名字随构建变**：升级要「投新名 + 删旧名」，`start.sh` 的 `sort -V | tail -1` 会自动选最高版本，删旧前必须已备份。
 3. 🟡 **无版本号文件名的插件（`GriefPrevention.jar`）顺手改成 `<名>-<版本>.jar`**，让 `mc_version_check.py` 的前缀映射能识别，避免下轮报「未识别 jar」漏报升级。

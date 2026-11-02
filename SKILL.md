@@ -123,6 +123,30 @@ required_commands: [java, curl, tar]
 | 2.0.7 | 2026-10-19 | 第四轮测试服升级基线（Paper 26.3-205 / WE 7.4.6 / WG 7.0.20 / Geyser 2.12.0）+ 新增 `references/nethernet.md`（NetherNet 迁移）+ 升级包交付规范 §2g + Exaroton 核心面板托管事实 |
 | 2.0.6 | 2026-09 | 第三轮升级（26.3 实验态）+ 多处巡检/权限/商店知识合并 |
 
+## 版本纪律（2026-11-02 老板定，权威）
+
+| 对象 | 规则 | 说明 |
+|:--|:--|:--|
+| **第三方插件** | **只跟 release 正式版** | beta / alpha / SNAPSHOT 一律不升；已装的预发布构建应**回退到正式版** |
+| **MC 核心** | 只升 **STABLE / BETA** | ALPHA（如 Folia 26.3-6）不动，只记录 |
+| **OrzMC 自研插件** | 豁免上述插件纪律 | 测试服刻意走 Hangar beta 通道验证功能 |
+| 例外判定 | 上游**只发**一种构建（如 Geyser 只发 build 快照、GrimAC 的 alpha 曾为 26.3 支持）时 | 需逐个说明理由，并在巡检报告里标注 |
+
+⚠️ **比对「最新版」必须先按 `version_type=release` 过滤，再比版本号**（2026-11-02 真实疏漏）：
+ViaVersion 最新一条是 `5.12.3-SNAPSHOT`，只看「最新一条」会把整项误判为 SNAPSHOT 跳过，而 10-27 发布的 **5.12.2 正式版**就在下面。
+`mc_version_check.py` 已按此改造：✅=最新正式版 / ⚠️=有正式版可升 / 🔵=部署为预发布或高于正式版（应回退）。
+
+## 巡检体系（2026-11-02 扩为四部分）
+
+| 部分 | 脚本 | 关键点 |
+|:--|:--|:--|
+| ① 配置审查 | `~/.hermes/scripts/orzmc_config_audit.sh` | 面板拉取不完整时**自动**改走 `cmp3/fetch3_ssh.py`（`ssh win` 读 Windows 实例目录，秒级 66 文件） |
+| ② 插件质量 | `~/.hermes/scripts/orzmc_quality_report.py` | gradle 全量 + 覆盖率；时序类失败先看 CI 同 commit |
+| ③ 版本巡检 | `~/.hermes/scripts/mc_version_check.py` | release-only 语义（见上表）；Folia 只比非 ALPHA |
+| ④ 健康体检 | `~/.hermes/scripts/orzmc_weekly_health.py`（技能内同源副本 `scripts/`） | 日志 SEVERE/加载失败、Geyser `Started on UDP`、NetherNet 警告、备份堆积/磁盘水位、TPS/在线人数 |
+
+> 巡检纪律：**只读**；每部分必须给「数据有效性证据」（文件数/条目数/实例数），数据源不可达时显式写「本次无效」，禁止输出假绿结论。
+
 ## 三端拓扑（2026-10-19 老板确认，权威）
 
 | 端点 | 域名 | 托管方式 | 角色 / 说明 |
