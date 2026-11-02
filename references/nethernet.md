@@ -154,6 +154,20 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 
 **后续（同日）切 `both` 实测**：`webrtc-port: 19134` + `transport: both` + `advertise-addresses: ["<域名>:19134"]`，重启后外部实测 **RakNet 39~66ms 应答 / NetherNet 80~116ms / `基岩模式 both ✅`** —— RakNet 一应答就同时**证明 UDP 19132 已放通**（这是 both 模式最大的诊断价值：把 UDP 单向转发变成可外部验证）。要点：`advertise-addresses` 端口必须跟 `webrtc-port` 一致，写成 `port` 会出现「老客户端能进、新客户端进不去」的半瘫。
 
+### 5.5 `advertise-addresses` 写 IP 还是写域名？（2026-11-02 实测）
+
+官方语义：支持 `host` 或 `host:port`（端口省略则用 `webrtc-port`）；**域名在信令启动时解析，解析不了则信令根本不启动**；留空（`[]`）= 本机地址 + `stun-discovery` 探到的公网地址。
+
+**关键陷阱：宿主机跑着 Clash/代理时，域名写法会废掉。** 测试服那台 Windows 实测：`dev.{SERVER_NAME}.cn` → **`198.18.1.7`（Clash TUN 假 IP）**，即使指定 `-Server 223.5.5.5` 仍是假 IP（TUN 劫持全部 DNS）；出口 IP 是**代理节点地址**而非家宽公网 IP。后果：域名解析成假 IP → advertise 玩家连不到的地址；`stun-discovery` 同样会探到代理出口 IP → 也错。该机**必须写死公网 IP**，且不能依赖 STUN。
+
+| 写法 | 适用 | 风险 |
+|:--|:--|:--|
+| `["<公网IP>:<webrtc端口>"]` | 宿主机无代理、IP 稳定（家宽 NAT） | IP 变了要改配置重启 |
+| `["<域名>:<webrtc端口>"]` | 宿主机 DNS 干净、IP 常变 | 宿主机有代理/TUN → 解析成假 IP → 全挂；启动时解析失败 → 信令不起 |
+| `[]`（留空） | 机器直接持有公网 IP | NAT 后靠 STUN 猜地址，**生产端就是这样挂的** |
+
+**自检（在服务器主机上跑）**：`Resolve-DnsName <域名>` 必须回真实公网 IP；`curl -s https://ifconfig.me` 必须等于该域名的 A 记录。任一不符 → 用 IP 写法。
+
 ## 6. 验证方法（含本机大坑）
 
 ### 6.0 一键体检（2026-11-02 起首选）
