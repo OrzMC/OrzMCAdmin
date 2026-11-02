@@ -1,7 +1,7 @@
 ---
 name: orzmc
 description: "Minecraft 运维统一技能（唯一入口）：三端服务器运维/插件构建升级/性能诊断/权限体系/测试/基岩支持（含 NetherNet 迁移），74 份参考文档 + 170+ 脚本。"
-version: 2.1.0
+version: 2.2.0
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux, windows]
@@ -28,7 +28,7 @@ required_commands: [java, curl, tar]
 > | 快速实体统计（paper entity list / Spark / 计分板） | `references/entity-statistics.md` |
 > | 机器人玩家 Mineflayer（运维视角；开发细节见独立技能 `minecraft-bot-mineflayer`；**挂机脚本 stay-with-joker.js：5 bot 跟随真人玩家 + IPv4/IPv6 分流绕 per-IP 限制**） | `references/mineflayer-bot.md` |
 > | DeathChest 回归测试（死亡瞬间下线→物品丢失 ✅fix1；**动画 progress 越界卡服 ✅fix3 已合入 main 71d2571**；复现法见 ref） | `references/deathchest-regression.md` |
-> | **NetherNet 迁移（基岩新传输层：TCP 信令 + WebRTC/UDP；2.12 配置结构反编译实证 / A-B-C 三方案 / HTTPS 三做法 / 官方错误对照表 / 本机 Clash TUN 假阳性验证法；⚠️ 2026-10-27 基岩客户端停用 RakNet）。**关键实测**：域名入口**必须** HTTPS —— 客户端填域名时强制 TLS（`16 03 01` ClientHello，SNI=域名），明文 HTTP 信令被 FIN，玩家卡「加载延迟」且服务端零日志；纯 IP 才回退明文 + 一次性信任弹窗。2026-10-20 纯 IP 全链路（`GET /v1/join` 200 → `POST /v1/join/<id>` 200 → DTLS 建连）在测试服验证通过；动态公网 IP 由 `scripts/nethernet_advertise_sync.py` + cron `orzmc-nethernet-advertise-sync`（15 分钟，静默）自动跟进 `advertise-addresses` | `references/nethernet.md` + `~/OrzMC/proxy/scripts/nethernet_check.py`（已并入 OrzMCProxy main，v1.1.0，退出码 0=可用/1=不可达/2=用法/3=降级；`--signal-port` `--scheme https` `--json` `--self-test` `--no-emoji`） |
+> | **NetherNet 迁移（基岩新传输层：TCP 信令 + WebRTC/UDP；2.12 配置结构反编译实证 / A-B-C 三方案 / HTTPS 三做法 / 官方错误对照表 / 本机 Clash TUN 假阳性验证法；⚠️ 2026-10-27 基岩客户端停用 RakNet）。**关键实测**：域名入口**必须** HTTPS —— 客户端填域名时强制 TLS（`16 03 01` ClientHello，SNI=域名），明文 HTTP 信令被 FIN，玩家卡「加载延迟」且服务端零日志；纯 IP 才回退明文 + 一次性信任弹窗。2026-10-20 纯 IP 全链路（`GET /v1/join` 200 → `POST /v1/join/<id>` 200 → DTLS 建连）在测试服验证通过；动态公网 IP 由 `scripts/nethernet_advertise_sync.py` + cron `orzmc-nethernet-advertise-sync`（15 分钟，静默）自动跟进 `advertise-addresses` | `references/nethernet.md` + `~/OrzMC/proxy/scripts/nethernet_check.py`（已并入 OrzMCProxy main，v1.1.0，退出码 0=可用/1=不可达/2=用法/3=降级；`--signal-port` `--scheme https` `--json` `--self-test` `--no-emoji`）；**2.12.1 权威键名表 / 单端口 vs both 语义 / 双协议验证矩阵（RakNet Pong、`GET /v1/join`、`POST` 401 是预期、匿名 STUN 不可作凭据、日志线程名区分传输层）→ 该文 §3 / §6.1**） |
 > | **Geyser 基岩支持（当前 offline 直连模式；floodgate 已回退 2026-08-05）** | `references/geyser-floodgate.md` |
 > | **实例端口模型与审计（docker 实例必须逐条发布 `宿主:容器/协议`；端口以实例实际配置为准而非默认 25565/19132；多实例共享宿主时 UDP 错开 19132/19133；宿主≠容器 时 `clone-remote-port` 必须 false；Cloudflare Tunnel 不支持 UDP；脚本 `scripts/port-audit.py` 核对期望端口 vs 已发布 + 真实协议探测）** | `references/instance-ports.md` |
 > | **公网入口排障（域名+路由器映射+防火墙都"配好了"外网仍连不上）：根因常是本机 Clash TUN 抢默认路由 → 入站应答源地址被定成 198.18.0.1/钻进隧道；修法 = WSL 内加通用策略路由 `ip rule add from <LAN IP> table 100`（任意端口零维护，脚本 `scripts/orzmc-mc-reply-route.sh` + Windows 计划任务 OrzMC-MC-Reply-Route 每 10min 自愈）；⚠️ 老板坚持防火墙/路由器逐端口配置，勿再提 DMZ/端口段；含「ICMP 通但 TCP 全超时」判定法与外部节点验证法（勿在本机测）；**2026-10-29：家宽入站 80/443 被运营商封 → web 入口改映射高位 18443，Caddy 直连 + DNS-01（已弃 Cloudflare Tunnel）；refused=无映射 / timeout=被封** | `references/public-ingress-clash-tun.md` |
@@ -56,6 +56,7 @@ required_commands: [java, curl, tar]
 > | OrzMC 端到端测试报告（2026-08-06：机器人+真实玩家，28/28 通过，transfer 闭环） | 插件仓库 `plugin/docs/e2e-test-report-20260806.md`（OrzMCPlugin） |
 > | RCON 客户端（`scripts/rcon.py <命令> [端口]`，密码从环境变量 RCON_PASSWORD 读） | `scripts/rcon.py` |
 > | **实例端口审计（`scripts/port-audit.py [DATA_ROOT] [--probe] [--json]`：解析 InstanceConfig docker.ports + server.properties + Geyser config.yml 得出期望端口，标出必发布缺口/宿主端口冲突，可实时探测 Java+基岩双通道；退出码 1=有缺口）** | `scripts/port-audit.py` |
+> | **统一连通性检查（`scripts/connectivity_check.py`：一次跑完 DNS（自动绕 Clash TUN fake-IP，DoH 取真值）→ Java 协议握手/版本/协议号/人数 → 基岩旧协议 RakNet Pong → 基岩新协议 NetherNet 信令 `GET /v1/join` → 基岩端口 HTTPS 信令 → `--external` 公网 TCP 外部节点（check-host.net 3 节点）；内置目标 paper/folia/paper-pub/prod-mcsm，可 `--host --java --bedrock` 自定义；`--json` 供 cron；退出码 0=全通/1=FAIL/3=仅WARN。**判读纪律：`RakNet 无应答` ≠ 故障**（可能是 transport=nethernet-only 或 UDP 未放通，须与配置里 transport 对照）；**`HTTPS 信令不可用` = 域名入口基岩玩家必卡「加载延迟」且服务端零日志**） | `scripts/connectivity_check.py` |
 > | **基岩版连通性诊断（`~/OrzMC/proxy/scripts/bedrock_host_check.sh` bash 跨平台 / `.ps1` Win）**：双模式——本机诊断（默认，RakNet 握手+端口监听+进程+防火墙五项）与远程探测（传 host 即可，端口默认 19132，纯数字第一参=端口）；用法 `bash bedrock_host_check.sh [host] [port]`、PS `.\bedrock_host_check.ps1 [-HostAddr x] [-Port n]`；-h/--help 帮助；**定位法：本机 PASS+监听✅ → 问题在外部 UDP 转发；FAIL → Geyser 本身**；使用说明/修复记录文档同目录（基岩诊断脚本_使用说明.md、脚本问题修复记录_平台注意事项.md，v1.1 含 7 条真机坑）；坑：macOS netstat `udp46 *.19132` 格式、BSD pgrep 只出 pid 不能二次 grep（统一 ps aux+grep）、Windows Store python3 stub 检测、PS 需 UTF-8 BOM+`${Var}:` 写法、RakNet Pong MOTD 从偏移 34 到包尾 UTF-8（长度字段不可靠）；**2026-10-19 新增 `nethernet_check.py`（NetherNet 信令探测：UDP RakNet 基线 + TCP 信令 HTTP 探测 + 结论 + 退出码 0/1，`python3 nethernet_check.py [host] [port]`）**；⚠️⚠️ **本机经 Clash TUN 测 TCP 必假阳性**——域名被 fake-IP 成 `198.18.x.x`，TCP 握手被 TUN 本地接管后「接受并立即关闭」（脚本显示 `OPEN_NO_HTTP`，误判为端口可达）→ **必须用真实公网 IP（DoH 查：`https://1.1.1.1/dns-query?name=<域名>&type=A`）+ 外部节点验证**（`check-host.net/check-tcp?host=IP:PORT` 取 request_id 后查 `check-result/<id>`；外部节点一律 `Connection timed out` = TCP 未转发/未监听，若已转发但无监听则为 refused）；UDP 侧 check-udp 无意义（普通 UDP 包 Geyser 不回，只有 RakNet 专有包才 Pong） | `~/OrzMC/proxy/`（OrzMCProxy 子模块） |
 | LP 权限命令清单生成（`scripts/gen_perm_commands.py`：从仓库 `plugin/docs/permission-groups.md` 唯一权威文档解析生成 lp set 命令；方案① 2026-08-12） | `scripts/gen_perm_commands.py` |
 > | LoginSecurity 注册状态查询（`scripts/check_lsdb.py [db路径] [玩家名]`） | `scripts/check_lsdb.py` |
@@ -118,6 +119,7 @@ required_commands: [java, curl, tar]
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.2.0 | 2026-11-02 | **版本纪律定档：第三方插件只跟 release、核心只升 STABLE/BETA、OrzMC 豁免**（含「先按 version_type 过滤再比版本」坑）；巡检扩为四部分（+健康体检、SSH 直读兜底）；NetherNet 文档按 2.12.1 实装键名重写 + 新增双协议验证矩阵；Exaroton 文件 API 端点纠正 + `exa_sync_plugins.py` |
 | 2.1.1 | 2026-10-20 | NetherNet 实测闭环：`both` 模式双通道验证通过；确认**域名入口必须 HTTPS**（客户端对域名强制 TLS，明文信令被断开 → 卡「加载延迟」且零日志），纯 IP 走 TOFU；新增动态公网 IP 同步脚本 `nethernet_advertise_sync.py` + cron `orzmc-nethernet-advertise-sync`；防火墙放行脚本 `bedrock_nethernet_ports.ps1` |
 | 2.1.0 | 2026-10-19 | 全面 review：30 篇专题/历史文档补齐分组索引（0 孤儿 0 死链）；7783 字「插件基线」巨型条目外置为 `references/plugin-baseline-legacy.md`（零信息丢失）；修正 26.3 口径（ALPHA→STABLE、Folia 26.3 已出、Geyser 已可用）；新增「脚本位置约定」 |
 | 2.0.7 | 2026-10-19 | 第四轮测试服升级基线（Paper 26.3-205 / WE 7.4.6 / WG 7.0.20 / Geyser 2.12.0）+ 新增 `references/nethernet.md`（NetherNet 迁移）+ 升级包交付规范 §2g + Exaroton 核心面板托管事实 |
@@ -144,6 +146,11 @@ ViaVersion 最新一条是 `5.12.3-SNAPSHOT`，只看「最新一条」会把整
 | ② 插件质量 | `~/.hermes/scripts/orzmc_quality_report.py` | gradle 全量 + 覆盖率；时序类失败先看 CI 同 commit |
 | ③ 版本巡检 | `~/.hermes/scripts/mc_version_check.py` | release-only 语义（见上表）；Folia 只比非 ALPHA |
 | ④ 健康体检 | `~/.hermes/scripts/orzmc_weekly_health.py`（技能内同源副本 `scripts/`） | 日志 SEVERE/加载失败、Geyser `Started on UDP`、NetherNet 警告、备份堆积/磁盘水位、TPS/在线人数 |
+| ⑤ **连通性体检** | `~/.hermes/scripts/connectivity_check.py`（技能内同源副本 `scripts/`） | **Java + 基岩双协议一次跑完**：DNS（自动绕本机 TUN fake-IP）/ Java 协议握手 / RakNet Pong（旧）/ NetherNet 信令 `GET /v1/join`（新）/ 基岩端口 HTTPS 信令 / 可选 `--external` 公网 TCP 外部节点 |
+
+**TPS/玩家数取数纪律**：**从 `logs/latest.log` 读**，面板 `outputlog` 只做兜底（缓冲会截断，表现为「日志与面板都读不到 TPS」的假告警）。两种格式都要认：Paper `TPS from last 1m, 5m, 15m: a, b, c`；Folia 分区行 `at X.XX TPS`（多行，取 **min** = 最差分区，否则会拿平均值掩盖卡顿）。日志内容先剥 ANSI 色码再解析，否则数字前会粘色码。
+
+**脚本双副本纪律**：cron 用的权威副本在 `~/.hermes/scripts/`，技能 `scripts/` 下的同源副本仅供分发——**只改一边会导致下次巡检跑旧逻辑**；改完必须 `md5` 比对两份一致（或只改 cron 副本并在技能里标注版本）。
 
 > 巡检纪律：**只读**；每部分必须给「数据有效性证据」（文件数/条目数/实例数），数据源不可达时显式写「本次无效」，禁止输出假绿结论。
 
@@ -199,6 +206,7 @@ curl -s -H 'accept: application/dns-json' \
 > 🔑 **2026-10-26 新增同类假阴性：面板 apiKey 被轮换** —— `~/.hermes/.env` 的 `MCSM_LOCAL_API_KEY` 失效时表现与隧道故障相同（`mc_version_check.py` 全部「未部署」、审计扫描 0 清单项，均不报错）。**三秒判定法**：`GET /api/auth?apikey=<key>` → `403 {"data":"密钥不正确"}` 即密钥失效（vs 隧道故障是 curl 5xx/超时）。面板侧真值在 Windows `E:\orzmc\mcsmanager\web\data\User\<uuid>.json` 的 `apiKey` 字段（`ssh win` 可读，用户 joker=实例归属者 / admin=超管）；`.env` 在 cron 模式下被安全策略禁止写入，应急可用「环境变量 + `mcsm_env._load_env` 打补丁」在内存层覆盖跑一轮，但**必须请老板更新 .env**（否则下周继续盲飞）。⚠️ 同期面板 `files/list` 单次延迟 5.7~37s、`files/download` 签发大量失败 → 全量递归扫描（~70 次 list）跑不完，改定点拉取（核心 7 件 + 关键插件配置）。
 > 🆕🔑 **2026-10-26 晚巡检实证：MCSM 配置/版本数据的首选源 = SSH 直读 Windows 实例目录，不是面板 API**。面板 `files/list` 实测 3.7~135s 抖动（26 次调用中位 8.6s），`files/download` 签发+拉流 2/5 失败、单文件 111~135s → 全量（58 件）拉不完；而 `ssh win`（192.168.0.33 / User WangA）→ `E:\orzmc\mcsmanager\daemon\data\InstanceData\<uuid>\` 直接 `tar -cf - -T <清单>` 打包回传 **58/58 秒级全取**。**纪律：① 「list 超时 8s」在慢响应期不成立（会砍掉约一半数据），实际用「8s 首档 + 50s 复审」；② 需要全量配置/部署版本时先试 SSH 直读，面板 API 仅作 SSH 不可用时兜底；③ jar 版本盘点也走 SSH `Get-ChildItem`（比签名单文件快 100 倍）。** 脚本化改造（审计 + 版本巡检默认走 SSH）列入待决策。
 > 🔴 **2026-11-02 周巡检：面板 `/download` 数据通道整体 502（不再是"慢/偶发失败"，而是全量失败）**。症状：`api/files/download` 签发 **200 + password 正常**，但 `GET https://mcs.{SERVER_NAME}.cn/download/<password>/<file>` **一律 502 Bad Gateway**（59/59），http 直连则 `RemoteDisconnected`；同时 `/api/overview` 200、`service/remote_services_list` `available:true`、`files/list` 正常 → **不是密钥/隧道/daemon 故障，而是该下载路由打通不到 daemon**。`orzmc_config_audit.sh` 因此每周必然 `STATUS: ❌ FAIL(MCSM 0 文件)`（静默降级，报告里全是"基准端缺失"）。**处置：SSH 直读兜底已实战有效**（`scp` 清单文件到 `C:\Users\WangA\hermes-tmp\`，`ssh win` 里 `cd /d <实例目录> && tar -cf - -T <清单>` 重定向回本机解包，66/66 秒级），待给 `fetch3_configs.fetch_mcsm` 加 SSH fallback（待决策 #1，见 `references/config-drift-report-20261102.md`）。
+> 🆕🆕 **2026-11-02 第六轮升级后基线（当前权威，自启动日志实读）**：**paper** = Paper **26.3-237（STABLE）** + Geyser **1280** + LuckPerms **5.5.90** + ViaVersion/ViaBackwards **5.12.2** + voicechat **2.6.25（release，已从 beta 回退）** + GriefPrevention **16.18.8** + GrimAC **2.3.74（release）**；**folia** = Folia **26.2-7** + 同批 Geyser/LuckPerms/Via + GP3D **19.0.5** + WorldEdit **7.4.6**（WorldGuard 保持 **7.0.19**：7.0.20 的 `game_versions` 只声明 26.3）。**海外服 Exaroton** 插件已同步到同版本（核心由面板管，已是 26.3-237）；**国内服 MCSM 因 apikey 失效未同步，需人工**。交付包：`S:\orzmc-upgrade-20261102\`（+ `.zip`）。
 >
 > **测试服版本基线（⚠️ 历史快照 2026-09-20，仅作演进参考；**当前权威 = 本段 2026-10-19 基线行**）**：两实例均 **26.2 线 + Java 25**，插件走 **dev/beta 轨道**（老板决策：测试服用于开发测试验证插件功能）——**Geyser-Spigot build 1245（2.11.3）**、**LuckPerms 5.5.85**、**ViaVersion/ViaBackwards 5.12.0**、**ViaRewind 4.2.0**、**WorldGuard 7.0.19**；OrzMC paper **1.0.27-dev.422**（启动自更新确认「已是最新」）/ folia **1.0.25-dev.416**（启动后未落自更新日志，**待手动补或下次重启确认**）；papermc-test 额外 Paper **26.2-126**（STABLE）+ voicechat **2.6.23**；folia-test 额外 Folia **26.2-7**（该分支最新，**Folia 尚无 26.3**）+ AxGraves **1.31.0** + EssentialsC **4.3.0** + GriefPrevention3D **18.4.4** + ExecutableEvents **3.26.9.17** + SCore **5.26.9.17** + VaultUnlocked **2.20.3**。
 > 🆕🆕 **2026-10-19 第四轮升级后基线（最新权威，实测自启动日志）**：**papermc-test** = Paper **26.3-205（STABLE）+ WorldEdit 7.4.6 正式版 + WorldGuard 7.0.20 + Geyser 2.12.0-b1265（26.3 上首次成功启用）+ OrzMC 1.0.29-dev.427 + LuckPerms 5.5.87 + Via 5.12.1 + packetevents 2.14.0 + grimac 2.3.74-abb95b6 + voicechat 2.6.24**；**folia-test** = Folia **26.2-7**（26.3 仅 ALPHA 未采用）+ Geyser 1265 + EssentialsC 4.3.4 + ExecutableEvents 3.26.10.17 + SCore 5.26.10.17 + GriefPrevention3D 18.4.14 + **WorldEdit 7.4.5 / WorldGuard 7.0.19（故意不升：WG 7.0.20 元数据只标 26.3）**。→ **26.3 就绪门槛 6 项已解除 2 项（WE 正式版 ✅ / Geyser ✅）**，仍缺 EssentialsX 正式版、GrimAC 正式 release、F3F4Perms/SimpleLogin 元数据；实录与 8 条新坑见 `references/test-server-upgrade-sop.md` §2f。
@@ -294,6 +302,8 @@ python3 $CMP/mcsm_upload_update.py <jar名...>                           # MCSM 
 ~/.hermes/skills/gaming/orzmc/scripts/adapters/mcsm.sh status|players|logs 50|start|stop|restart|command "list"
 python3 $CMP/mcsm_delete.py /plugins/xxx.jar      # 删除（{"targets":[...]}）
 python3 $CMP/mcsm_list_filter.py                  # 列目录（需 file_name 过滤）
+python3 ~/.hermes/skills/gaming/orzmc/scripts/exa_sync_plugins.py --plan plan.json [--dry-run]
+#   ↑ Exaroton 插件批量同步：上传 → 回读 sha256 比对 → 删旧 jar；服务器必须 OFFLINE；核心不能传只能面板选
 ```
 > 端点表/认证/踩坑 → `references/mcsm-backend.md`、`references/exaroton-backend.md`
 
@@ -362,6 +372,7 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 - ⚠️ 插件必须匹配 MC 版本（Modrinth API 用 `game_versions` 过滤）
 - ⚠️ eula.txt 不写 `eula=true` 服务器拒绝启动
 - ⚠️ Java 25 只能跑 26.x；老版本需要旧 JDK
+- ⚠️ **经 `ssh win` 跑 PowerShell：复杂逻辑一律写成 `.ps1` 文件上传再 `-File` 执行**，不要把多行脚本塞进 `ssh win "powershell -Command ..."`——双层引号会把 `$var` 吃成空（报 `foreach 缺少变量名` / `=E:/... 无法识别`），排查十分钟才发现是转义。**`.ps1` 只写纯 ASCII**：含中文的脚本以 UTF-8 无 BOM 传过去，Windows PowerShell 5.1 按 GBK 解码 → 乱码 → ParserError（要中文就存 UTF-8 BOM，或改在 Mac 侧读文件）。
 - ⚠️ macOS bash 3.2：`$var` 后接全角字符（如 `（`）会报 unbound variable，必须写 `${var}`
 - ⚠️ MCSM 有玩家在线时严禁 stop/restart/command/文件操作（先查 `info.currentPlayers`）
 - ⚠️ **MCSM 升级跨大版本（如 26.1→26.2）**：世界数据首次启动自动转换（日志 `Starting upgrade for world`），确认无玩家时段操作
