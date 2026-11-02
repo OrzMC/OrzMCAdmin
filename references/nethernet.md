@@ -1,6 +1,6 @@
 # NetherNet（基岩新传输层）迁移知识库
 
-> 状态：**测试服 = `both` 双协议验证通过；国内服生产 = `nethernet` 单端口（`webrtc-port: 0`）+ 显式 `advertise-addresses`；海外服 Exaroton 仍 `raknet` 待切**
+> 状态（2026-11-02 最新）：**测试服 paper/folia = `both`（19134/19135）+ 写死公网 IP**（宿主机跑 Clash，域名/STUN 都不可用，见 §5.5）；**国内服生产 = `both`（`webrtc-port: 19134`）+ `advertise-addresses: ["<域名>:19134"]`，实测双通道均通**；海外服 Exaroton 仍 `raknet` 待切
 > 来源：Geyser 官方 blog `/blog/preparing-for-nethernet`、官方 setup 文档 `geysermc.org/wiki/geyser/setup/`、**Geyser-Spigot 2.12.0-b1265 jar 反编译实证**（`GeyserConfig$BedrockConfig` / `$SignalingConfig$*`）+ **2.12.1（build 1280）实装 config.yml 字段核对**
 
 ## 1. 是什么 / 为什么必须处理
@@ -93,6 +93,17 @@ bedrock:
 
 ## 5. 本环境适配要点（OrzMC 现状）
 
+### 5.0 三端现状速查（2026-11-02，一页看完）
+
+| 端点 | transport | 端口（玩家填） | `advertise-addresses` | 外部实测 |
+|:--|:--|:--|:--|:--|
+| 测试服 paper | `both` | 19132 → webrtc **19134** | `["<公网IP>:19134"]`（写死，因宿主 Clash） | RakNet ✅ / NetherNet ✅ |
+| 测试服 folia | `both` | 19132（宿主 19133）→ webrtc **19135** | `["<公网IP>:19135"]` | RakNet ✅ / NetherNet ✅ |
+| 国内服生产 | `both` | 19132 → webrtc **19134** | `["<域名>:19134"]` | RakNet 39~66ms ✅ / NetherNet 80~116ms ✅ |
+| 海外服 Exaroton | `raknet` | 19132 | `[]` | 待切（面板需额外开 UDP） |
+
+**每次都要问的 3 个问题**：① `transport` 是啥（`nethernet` 时 RakNet 无应答属正常）② UDP 端口实际放行了哪些（TCP 通 ≠ 玩家能玩）③ `advertise-addresses` 下发的地址客户端真的能到吗（宿主机有代理时优先怀疑这里）。
+
 ### 5.1 已落地（2026-10-19，本地测试服 dev.{SERVER_NAME}.cn，both 模式）
 
 | 项 | paper（716c2f…） | folia（8A932D…） |
@@ -119,7 +130,7 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 
 > ✅ **域名入口可用（实证）**：`dev.{SERVER_NAME}.cn:19132` 在 `builtin.https` 留空时实连正常（首连弹一次「信任此服务器」）。想免掉弹窗再配 HTTPS，**不是可用性前提**（见 §2 更正）。
 
-### 5.2 仍未放行（截至 2026-10-19 晚）
+### 5.2 端口放行核对表（2026-10-20 已全部放通，保留作逐项核对）
 
 | 层 | 现状 | 需要 |
 |:--|:--|:--|
@@ -127,7 +138,7 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 | 路由器端口转发 | 只转发 UDP 19132/19133（TCP 25565 已转发，证明 TCP 转发功能可用） | 加 **TCP 19132、TCP 19133、UDP 19134、UDP 19135** → `192.168.0.33` |
 | 外部验证 | check-host 4 节点对 TCP 19132/19133 全部 `Connection timed out` | 两层都放通后复测应能连上 |
 
-> 只差这两层：**服务端配置与端口发布已全部就绪**，本机 `127.0.0.1` 上 RakNet PONG + 信令 HTTP 均正常。
+> 这张表是「放通前」的缺口清单；2026-10-20 已按此全部放通（见 §5.1 全链路验证），后续新增实例/换宿主照此逐项核对即可。
 
 ### 5.3 关键操作经验
 
@@ -149,10 +160,9 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 5. **把 UDP 变成可测**：切成 `both` + `webrtc-port: 19134` 后，`connectivity_check.py` 的 RakNet 探测能直接判定 UDP 19132 是否放通（有 Pong = 通），不必等玩家试。
 6. 需要更细证据时临时开 `advanced.nethernet-debug: true`（重启生效，日志很吵，看完改回）。
 
-**结论**：同是「无证书 + 信令 200」，测试服能进、生产端不能 —— 差异**不在 TLS，而在地址下发方式**：测试服把 `advertise-addresses` 写死成「公网地址:webrtc 端口」，生产端留空交给 STUN 猜。**修复 = 显式写 `advertise-addresses: ["<域名>:<端口>"]`**（单端口填 `19132`，both 填 `webrtc-port`）。凡「信令通、玩家卡住」先比 UDP 转发与 advertise 地址两项，别先怀疑平台或客户端版本。
-**验证方式**：`python3 scripts/conn_watch.py --host {SERVER_HOST}` —— 让玩家实连，Java 在线人数与基岩 `/v1/join` 在线人数任一上升即证明进服成功（不依赖服务端日志权限）。
+**本案定性（2026-11-02）**：两端都是「无证书 + 信令 200」却一好一坏 → 差异**不在 TLS，在地址下发**：测试服把 `advertise-addresses` 写死成「公网地址:webrtc 端口」，生产端留空交给 STUN 猜。修法 = 显式写（详见 §5.5）。
 
-**后续（同日）切 `both` 实测**：`webrtc-port: 19134` + `transport: both` + `advertise-addresses: ["<域名>:19134"]`，重启后外部实测 **RakNet 39~66ms 应答 / NetherNet 80~116ms / `基岩模式 both ✅`** —— RakNet 一应答就同时**证明 UDP 19132 已放通**（这是 both 模式最大的诊断价值：把 UDP 单向转发变成可外部验证）。要点：`advertise-addresses` 端口必须跟 `webrtc-port` 一致，写成 `port` 会出现「老客户端能进、新客户端进不去」的半瘫。
+**同日切 `both` 后实测**：RakNet **39~66ms** / NetherNet **80~116ms** / `基岩模式 both ✅`。→ **RakNet 一应答就同时证明 UDP 19132 已放通**（both 模式最大的诊断价值：把单向 UDP 转发变成可外部验证）。最终验收用 `python3 scripts/conn_watch.py --host <域名>`（Java 在线数 或 基岩 `/v1/join` 在线数任一上升 = 玩家真进服，不依赖服务端日志权限）。
 
 ### 5.5 `advertise-addresses` 写 IP 还是写域名？（2026-11-02 实测）
 
@@ -245,4 +255,5 @@ python3 ~/.hermes/scripts/conn_watch.py --host <域名> [--duration 600]
 |:--|:--|
 | Bedrock 26.40+ | Mojang 开始推送 NetherNet 客户端 |
 | **2026-10-27** | 基岩客户端停用 RakNet → 未切换服务器基岩玩家无法连接 |
+| **2026-11-02** | 生产端基岩连不上→真因：`advertise-addresses: []` 交给 STUN 猜地址（出网 IP ≠ 域名 A 记录）；修 = 显式写域名/端口 → 恢复；同日再切 `both` + `webrtc-port: 19134`，新旧客户端均可进 |
 | Bedrock 26.60 | 可关掉 RakNet（收敛为纯 nethernet）；同时移除 26.30 支持 |

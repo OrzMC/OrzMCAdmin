@@ -1,7 +1,7 @@
 ---
 name: orzmc
 description: "Minecraft 运维统一技能（唯一入口）：三端服务器运维/插件构建升级/性能诊断/权限体系/测试/基岩支持（含 NetherNet 迁移），74 份参考文档 + 170+ 脚本。"
-version: 2.2.1
+version: 2.3.0
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux, windows]
@@ -120,10 +120,10 @@ required_commands: [java, curl, tar]
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.3.0 | 2026-11-02 | **技能整理 + NetherNet 生产端定案**：生产端从 `nethernet` 单端口切到 **`both`**（`webrtc-port: 19134`，`advertise-addresses: ["<域名>:19134"]`），实测 RakNet 39~66ms + NetherNet 80~116ms 双通；新增 §5.0 三端现状速查表、§5.5 IP/域名/留空三写法取舍（**宿主机跑 Clash 时必须写数字 IP**）；§5.2 端口清单转为「已放通核对表」；清理变更记录重复行（两条 2.2.0 合并）；三端拓扑/定时任务清单补 Windows 端 Hermes（job `8582a0f31644`） |
 | 2.2.1 | 2026-11-02 | **纠正「域名必须 HTTPS」的错误结论**（域名+无证书实测可连；两端 TLS 探测一致）；生产端真因 = STUN 下发地址错，改显式 `advertise-addresses` 后恢复；`connectivity_check.py` 降噪（RakNet 无应答 / 无 HTTPS 信令记 ℹ️ 不记 WARN）；新增 `scripts/conn_watch.py` 玩家入场监听（改完网络配置后验「玩家到底能不能进」）；`both` 模式 `advertise-addresses` 端口必须等于 `webrtc-port` |
-| 2.2.0 | 2026-11-02 | **版本纪律定档：第三方插件只跟 release、核心只升 STABLE/BETA、OrzMC 豁免**（含「先按 version_type 过滤再比版本」坑）；巡检扩为四部分（+健康体检、SSH 直读兜底）；NetherNet 文档按 2.12.1 实装键名重写 + 新增双协议验证矩阵；Exaroton 文件 API 端点纠正 + `exa_sync_plugins.py` |
-| 2.2.0 | 2026-11-02 | 新增**统一连通性检查** `scripts/connectivity_check.py`（Java 协议握手 + 基岩 RakNet 旧协议 + NetherNet 新协议信令 + 基岩端口 HTTPS 信令 + 可选外部节点 TCP；自动绕本机 TUN fake-IP）；巡检扩为五部分；版本纪律定稿（插件只跟 release）；配置审查接 SSH 直读兜底；健康体检 TPS 改读 latest.log（兼容 Folia 分区 TPS）；Exaroton 文件 API 端点纠正 + `exa_sync_plugins.py` |
-| 2.1.1 | 2026-10-20 | NetherNet 实测闭环：`both` 模式双通道验证通过；确认**域名入口必须 HTTPS**（客户端对域名强制 TLS，明文信令被断开 → 卡「加载延迟」且零日志），纯 IP 走 TOFU；新增动态公网 IP 同步脚本 `nethernet_advertise_sync.py` + cron `orzmc-nethernet-advertise-sync`；防火墙放行脚本 `bedrock_nethernet_ports.ps1` |
+| 2.2.0 | 2026-11-02 | **版本纪律定档**（插件只跟 release / 核心只升 STABLE+BETA / OrzMC 豁免，含「先按 version_type 过滤再比版本」坑）；**巡检扩为五部分**（+健康体检 +统一连通性体检）；`connectivity_check.py`（Java + 基岩 RakNet/NetherNet 双协议 + HTTPS 信令 + 外部节点，自动绕 TUN fake-IP）与 `conn_watch.py`（玩家入场监听）；配置审查接 SSH 直读兜底；TPS 改读 `latest.log`（兼容 Folia 分区）；NetherNet 文档按 2.12.1 实装键名重写；Exaroton 文件 API 端点纠正 + `exa_sync_plugins.py` |
+| 2.1.1 | 2026-10-20 | NetherNet 实测闭环：`both` 模式双通道验证通过；~~确认「域名入口必须 HTTPS」~~ **（该结论已被 2.2.1 推翻：域名 + 无证书实测可正常进服，仅弹一次 TOFU）**；新增动态公网 IP 同步脚本 `nethernet_advertise_sync.py` + cron `orzmc-nethernet-advertise-sync`；防火墙放行脚本 `bedrock_nethernet_ports.ps1` |
 | 2.1.0 | 2026-10-19 | 全面 review：30 篇专题/历史文档补齐分组索引（0 孤儿 0 死链）；7783 字「插件基线」巨型条目外置为 `references/plugin-baseline-legacy.md`（零信息丢失）；修正 26.3 口径（ALPHA→STABLE、Folia 26.3 已出、Geyser 已可用）；新增「脚本位置约定」 |
 | 2.0.7 | 2026-10-19 | 第四轮测试服升级基线（Paper 26.3-205 / WE 7.4.6 / WG 7.0.20 / Geyser 2.12.0）+ 新增 `references/nethernet.md`（NetherNet 迁移）+ 升级包交付规范 §2g + Exaroton 核心面板托管事实 |
 | 2.0.6 | 2026-09 | 第三轮升级（26.3 实验态）+ 多处巡检/权限/商店知识合并 |
@@ -162,7 +162,7 @@ ViaVersion 最新一条是 `5.12.3-SNAPSHOT`，只看「最新一条」会把整
 | 端点 | 域名 | 托管方式 | 角色 / 说明 |
 |:--|:--|:--|:--|
 | **本地测试服** | `dev.{SERVER_NAME}.cn` | 本机 MCSM 面板（Win 宿主 `E:/orzmc`；实例 `papermc-test` + `folia-test`） | 升级/插件/基岩/NetherNet 的实测场；家宽动态 IP + DDNS；官网 `show_address=false`（地址隐藏） |
-| **国内服（线上生产）** | `{SERVER_HOST}` | **MCSM 面板托管** | 国内玩家生产环境；运维走 MCSM API；基岩 **`transport: nethernet` 单端口**（`webrtc-port: 0` → 只需 TCP+UDP 19132），`advertise-addresses` **必须显式写 `<域名>:19132`**（留空靠 STUN 会下发错地址 → 玩家连不上）；26.40 之前的老客户端进不来 |
+| **国内服（线上生产）** | `{SERVER_HOST}` | **MCSM 面板托管** | 国内玩家生产环境；运维走 MCSM API；基岩 **`transport: both`**（`webrtc-port: 19134`），`advertise-addresses` **必须显式写 `["<域名>:19134"]`（端口 = webrtc-port，不是 port）** —— 留空靠 STUN 会下发错地址（2026-11-02 实测的连不上真因）；放行 TCP 19132 + UDP 19132 + UDP 19134；新旧客户端都能进 |
 | **海外服（线上生产）** | `paper.{SERVER_NAME}.cn` | **Exaroton 托管** | 海外玩家生产环境；核心由面板管理（不能上传核心 jar），插件走 `plugins/update/` |
 
 **已下线**：腾讯云中转机 2 台（正式 + 试用，2026-10-19 老板确认销毁）→ **frps 中转链路不再运行**；`references/cross-carrier-networking.md` 中的方案/工具链仍可复用，重建时按该文顶部清单执行。
@@ -361,6 +361,9 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 |:--|:--|:--|:--|:--|:--|
 | MC 三端版本巡检 | `0b4298821a86` | 每日 10:00 | `~/.hermes/scripts/mc_version_check.py` | 脚本输出 + agent 解读（skills=orzmc, toolsets=terminal/file/web）| 查核心+19 插件最新版 vs 本地部署 → 有差异发飞书询问用户 |
 | 三端配置审查 | `ab06b886c39f` | 每周一 9:15 | `~/.hermes/scripts/orzmc_config_audit.sh` | 同上（toolsets=terminal/file）| 只审查不重启：Exa+MCSM 并发拉取 77 配置 → cmp3 对比 → 报告落盘 references/ |
+| **NetherNet advertise 同步** | `8582a0f31644`（**跑在 Windows 端 Hermes**，不是 Mac） | 每 15 分钟 | `%LOCALAPPDATA%\hermes\scripts\nethernet_advertise_sync.py` | no_agent watchdog | DoH 查真 A 记录 → 与 paper/folia 的 `advertise-addresses` 比对 → 变更时改写 + `geyser reload`；无变化静默（日志 `%LOCALAPPDATA%\hermes\logs\nethernet-advertise-sync.log`） |
+
+> ⚠️ **跨端查 cron 必须两端都看**：Windows 那台也跑着独立 Hermes（`gateway run` 进程 + `%LOCALAPPDATA%\hermes\cron\jobs.json`），Mac 端 `jobs.json` 里看不到它的任务。
 
 - 两者脚本均读 `~/.hermes/.env` 凭据；cron 精简 PATH 实测通过（2026-08-12 全量体检）
 - 脚本维护记录：audit 脚本 `Bearer ***` bug 已修（2026-08-12）；version_check Geyser build 号比较已修（2026-08-12）
@@ -369,6 +372,7 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 
 - ⚠️ **对比两端差异时，必须把同一探测也打到「已知可用」的一侧作对照**；两端探测结果一致 → 该维度**不是**根因，立刻换维度。只拿失败端的数据就下结论会把排查带向错误方向（例：把「没配 TLS 证书」当成基岩连不上的根因，实际两端探测行为一致，真因是 `advertise-addresses` 下发了错地址）。定性前先问一句：这个差异在「能用的那端」存在吗？
 - ⚠️ **Geyser 切 `both` 模式：`advertise-addresses` 的端口必须等于 `webrtc-port`**（不是 `port`）。写错会变成「RakNet 老客户端能进、NetherNet 新客户端卡住」的半瘫，且两端日志都不报错 —— 只看日志永远找不到。
+- ⚠️ **服务器主机跑着 Clash/代理（TUN 模式）时，`advertise-addresses` 只能写数字公网 IP**：系统 DNS 被劫持成 `198.18.x` 假 IP（连指定公共 DNS 也一样），`stun-discovery` 探到的是**代理出口地址**（实测返回代理机 IP + 随机源端口）→ 域名写法与留空都会把玩家导到死地址。自检：主机上 `Resolve-DnsName <域名>` 必须回真公网 IP、`curl -s https://ifconfig.me` 必须等于该域名 A 记录；任一不符 → 写 IP。动态 IP 变化交给 `nethernet_advertise_sync.py` 守护。
 
 - ⚠️ **配置重建升级（OrzMC/EzShops 等）备份必须隔离目录**：旧配置备份与"拉新配置"严禁写同一目录——拉新强制用 `*_new/` 独立目录（2026-08-09 实测教训：复用同一 outdir 导致旧备份被新默认配置覆盖，迁移依据永久丢失；/tmp 无 Time Machine/APFS 快照兜底）。备份后**立即打印内容摘要（key: value）核对**，并二次复制到 `~/backups/`；迁移前先 diff 新旧确认依据完整
 - ⚠️ **破坏性升级（删配置重建）前**：先 `skill_view` 查技能已有脚本/端点结论（mcsm_delete.py 用 `{"targets":[...]}`、MCSM 重启用 `api/protected_instance/restart`、Exaroton 上传用 PUT+UA），不凭记忆手写；备份/迁移清单先列给用户确认（plan-first）
