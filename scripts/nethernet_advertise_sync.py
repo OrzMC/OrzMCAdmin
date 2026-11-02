@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """NetherNet 公网地址自动同步（OrzMC 本地测试服）。
 
-背景：Geyser 的 signaling.builtin.advertise-addresses 只接受 **数字 IP 字面量**
-（EndpointAddress 源码明确拒绝域名："Expected a numeric IP address"），而本机公网 IP
-来自动态域名 → 必须有人盯着 A 记录变化并改写配置。
+背景：本机公网 IP 来自动态域名（家宽 NAT，路由器重启会变）→ 必须有人盯着 A 记录变化并改写配置。
+为何不用域名/留空（2026-11-02 实测，见 references/nethernet.md §5.5）：
+  · 域名写法：本机 Clash TUN 把 dev.{SERVER_NAME}.cn 解析成 198.18.1.7（假 IP），指定 223.5.5.5 也一样
+  · 留空（靠 STUN）：实测回的是 Clash 代理出口地址（非家宽公网 IP）+ 随机源端口，完全不可用
+  · 故本机只能写死数字公网 IP（2.12.0 反编译确认 EndpointAddress 只收数字 IP；2.12.1 虽支持域名但要求启动时解析成功）
 
 本脚本：DoH 解析域名 → 与两个实例的 advertise-addresses 比对 → 不同则改配置并
 `geyser reload`（只重载 Geyser，不踢 Java 玩家）。

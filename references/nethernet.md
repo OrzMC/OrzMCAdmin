@@ -168,6 +168,8 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 
 **自检（在服务器主机上跑）**：`Resolve-DnsName <域名>` 必须回真实公网 IP；`curl -s https://ifconfig.me` 必须等于该域名的 A 记录。任一不符 → 用 IP 写法。
 
+**测试服现有守护（勿重复造轮子）**：Windows 端 Hermes cron `8582a0f31644`（`orzmc-nethernet-advertise-sync`，**每 15 分钟**，no_agent watchdog，无变化静默）→ 跑 `scripts/nethernet_advertise_sync.py`：DoH 取真 A 记录 → 比对 paper/folia 两份 config 的 `advertise-addresses` → 不同则改写 + `geyser reload`（不重启服务器、不踢 Java 玩家）。日志 `%LOCALAPPDATA%\hermes\logs\nethernet-advertise-sync.log`。注意：Windows 上也有独立 Hermes（gateway 进程 + `%LOCALAPPDATA%\hermes\cron\jobs.json`），跨端查 cron 不要只看 Mac。
+
 ## 6. 验证方法（含本机大坑）
 
 ### 6.0 一键体检（2026-11-02 起首选）
