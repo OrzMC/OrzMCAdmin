@@ -171,36 +171,60 @@ def storage_health():
                     add('WARN', '备份', '%s 有 %d 份 upgrade-bak（%.0f MB），建议只留 1~2 份' % (m.group(1), cnt, mb))
 
 # ---------- 4. 运行时指标 ----------
+def _parse_tps(txt):
+    """解析两种 TPS 输出：Paper 汇总行 / Folia 分区行（at X.XX TPS）"""
+    vals = []
+    lines = [l for l in txt.splitlines() if "TPS from last" in l]
+    if lines:
+        vals = [float(x) for x in re.findall(r"\d+\.\d+", lines[-1].split(":", 1)[-1])]
+    if not vals:
+        region = re.findall(r"at\s+(\d+\.\d+)\s+TPS", txt)
+        if region:
+            vals = [float(x) for x in region]
+    return vals
+
+
 def runtime_health(status):
+    """TPS/玩家：优先 SSH 读 latest.log；不足则走面板控制台（Folia 走分区 TPS 解析）"""
     for name, meta in INST.items():
         if status.get(name) != 3:
             add("INFO", "%s 运行" % meta["label"], "实例未运行（status=%s），跳过 TPS/玩家检查" % status.get(name))
             continue
-        # 玩家数 + TPS（Paper 支持 tps；Folia 也支持）
-        _send_cmd(meta["uuid"], "list")
-        _send_cmd(meta["uuid"], "tps")
-        time.sleep(4)
-        txt = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", _outputlog(meta["uuid"]))
-        if not txt:
-            add("WARN", "%s 运行" % meta["label"], "读不到控制台输出（面板 outputlog 不可用）")
-            continue
+        log = "%s/%s/logs/latest.log" % (WIN_ROOT, meta["uuid"])
+        rc, out = ps("if (Test-Path '%s') { (Get-Content '%s' -Tail 1200 | Select-String -Pattern "
+                     "'TPS from last|at .* TPS|players online' | Select-Object -Last 12).Line } else { 'NO_LOG' }"
+                     % (log, log), timeout=120)
+        txt = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", out or "")
+        vals = _parse_tps(txt)
+        play_lines = [l for l in txt.splitlines() if "players online" in l.lower()]
         players = None
-        m = re.findall(r"There are (\d+) (?:of a max|out of maximum)", txt)
-        if m:
-            players = int(m[-1])
-        tps_lines = [l for l in txt.splitlines() if "TPS from last" in l]
-        vals = []
-        if tps_lines:
-            tail = tps_lines[-1].split(":", 1)[-1]
-            vals = [float(x) for x in re.findall(r"\d+\.\d+", tail)]
+        if play_lines:
+            m = re.findall(r"There are (\d+)", play_lines[-1])
+            if m:
+                players = int(m[-1])
+
+        if not vals or players is None:
+            _send_cmd(meta["uuid"], "tps")
+            time.sleep(7)
+            ptxt = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", _outputlog(meta["uuid"]))
+            if not vals:
+                vals = _parse_tps(ptxt)
+            if players is None:
+                mm = re.findall(r"There are (\d+)", ptxt)
+                if mm:
+                    players = int(mm[-1])
+
         if not vals:
-            add("WARN", "%s 性能" % meta["label"], "未能从控制台读到 TPS（outputlog 缓冲截断）")
-        elif min(vals) < 18.0:
-            add("WARN", "%s 性能" % meta["label"], "TPS 偏低：%s" % ", ".join("%.2f" % v for v in vals[:3]))
+            add("WARN", "%s 性能" % meta["label"], "日志与面板都读不到 TPS")
         else:
-            add("INFO", "%s 性能" % meta["label"], "TPS %s" % ", ".join("%.2f" % v for v in vals[:3]))
+            worst = min(vals)
+            tag = "日志/控制台"
+            if worst < 18.0:
+                add("WARN", "%s 性能" % meta["label"], "TPS 偏低：min %.2f（%s，共 %d 个采样）" % (worst, tag, len(vals)))
+            else:
+                add("INFO", "%s 性能" % meta["label"], "TPS min %.2f（%s，%d 采样）" % (worst, tag, len(vals)))
         if players is not None:
-            add("INFO", "%s 玩家" % meta["label"], "当前在线 %d 人" % players)
+            add("INFO", "%s 玩家" % meta["label"], "最近记录在线 %d 人" % players)
 
 
 def _panel_cfg():

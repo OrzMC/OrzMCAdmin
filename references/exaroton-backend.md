@@ -52,6 +52,9 @@
 - ✅ **生命周期实测**（2026-08-03）：start = LOADING(6)→STARTING(2)→ONLINE(1) 约 40s；stop = SAVING(5)→OFFLINE(0) 约 10s；restart（在线）= STARTING→ONLINE 约 32s；**restart 在离线时返回 400「Server is not online」**（官方预期）
 - ✅ **写操作即时生效**：MOTD / RAM / files.config / playerlists 修改无需重启服务器
 - ⚠️ **写配置文件用 PUT files/data + 裸文本 body**（2026-08-09 修正，**2026-08-03 的 `{"text": 全文}` JSON 包装结论已作废**）：GET→改文本→PUT 覆盖，可改任意配置（server.properties/spigot/paper/插件 config.yml 均可用）；**切勿 JSON 包装**——会被原样存为文件内容（config.yml 变 JSON 字符串，插件 YAML 解析静默回退默认值；server.properties 尾残留 `{"text"="..."}` 垃圾块，Exaroton 已中招）。统一用 `scripts/exa_file.py`（GET 自动解包 JSON/裸文本，PUT 裸文本）。**POST files/data 是假成功**（返回旧内容不生效）；**POST files/config 仅支持 API 白名单 35 项**（max-tick-time/sync-chunk-writes 等不在其中，返回 success=True 但实际不改）。⚠️ 这些配置修改**需重启服务器才生效**（files/config 白名单项除外）
+- ✅ **插件批量同步实测通过（2026-11-02）**：离线状态下 `PUT /servers/{id}/files/data/plugins/{name}.jar/`（body=裸字节，`Content-Type: application/octet-stream`，UA `HermesAgent/1.0` + `Authorization: Bearer`）**5/5 全部 200**，Geyser 50MB 单文件 4.6s；`GET /files/data/...` 回读 sha256 与本地**逐字节一致**；`DELETE /files/data/plugins/{old}.jar/` 删旧 jar 200。→ **之前记的「PUT 必被 Cloudflare managed challenge 拦」不是必然**，与触发频率/UA 有关；失败再退浏览器，不必先假设写不了。
+- ✅ **读端点正确写法（2026-11-02 复核）**：`GET /servers/{id}/files/info/{dir}/.`（列目录，取 `data.children`）、`GET /servers/{id}/files/data/{path}/`（读内容；**传目录会返回整个目录的 ZIP**）、`GET /servers/{id}/logs`（200 可用，此前「/logs 全 403」是端点写法问题）。**不存在** `/files?path=` 这类 query 式端点，会返回 `Unknown API method`（400）——不要误判成权限/403。
+- ⚠️ **核心由面板管理，API 不可传 jar**：2026-11-02 查得海外服已是 `PaperMC 26.3 (237)`（与测试服同步）；升级核心只能在面板选版本或等平台自动更新。
 - ⚠️ **start/stop/restart 是 GET**（官方 OpenAPI 确认；POST 会触发 Cloudflare 人机验证）
 - ⚠️ Exaroton 大文件（>10MB）上传易触发 Cloudflare 524，停服后重试即可
 - ⚠️ Exaroton 服务器**运行中禁止写文件**（API 返回 `File access is currently unavailable`），上传插件/升级必须**先停服**
