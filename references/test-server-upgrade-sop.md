@@ -318,6 +318,27 @@ orzmc-upgrade-YYYYMMDD/
 4. **面板 `command=stop` 请求可能 TLS 超时/断连但仍已送达**（本轮 folia 报 2 次 ERR，实际服务照常停止）→ 见 status=0 即可，别重复发。
 5. 冷启动：paper 131s、folia 105~140s 才 `status=3`；**串行启动**（paper `Done` 后再起 folia）避免 Folia Watchdog。
 
+## 2i. 2026-11-02 实录（第六轮：Paper 26.3-237 + Geyser 1280 + LuckPerms 5.5.90 + voicechat 2.6.27 + GP 16.18.8 / GP3D 19.0.5 + 交付包）
+
+> 触发：老板「核心和插件都升级，升级后打包放到 S: 盘」。距上一轮（10-26）一周，版本已前进。
+
+| 实例 | 升级项 | 验证 |
+|:--|:--|:--|
+| papermc-test | Paper **224 → 237（STABLE）**、Geyser **1271 → 1280**、LuckPerms **5.5.88 → 5.5.90**、voicechat **2.6.26 → 2.6.27**、GriefPrevention **16.18.7 → 16.18.8**（同时把无版本文件名 `GriefPrevention.jar` 改为 `GriefPrevention-16.18.8.jar`） | ✅ `Paper 26.3-237-main@7e88a0d`、`Done (93.6s)`、Geyser `Started UDP 19132` |
+| folia-test | Geyser **1271 → 1280**、LuckPerms **5.5.90**、GP3D **19.0.1 → 19.0.5** | ✅ `Folia 26.2-7`、`Done (96.7s)` |
+
+- **Folia 核心仍不升**：26.3 线到 11-02 只有 **build 6（ALPHA）** → 保持 26.2-7（BETA）
+- 跳过（同既有纪律）：Via 三件套（仅 5.12.3-SNAPSHOT）、packetevents（`2.14.0+spigot` 同版本）、GrimAC（本地 alpha 更新）、folia 的 WE/WG
+- 全程：SSH 实读清单 → 上游比对 → curl 下载+哈希 → console `stop`（这次两端各 20s 干净停机）→ `upgrade-bak-20261102` 备份 → scp 投递 → **8/8 sha256 远端=本地** → 串行启动验收 → 打包交付
+- 交付：`~/Downloads/orzmc-upgrade-20261102/`（01-core / 02-plugins-paper / 03-plugins-common / 04-plugins-folia + SHA256SUMS + README + ANNOUNCEMENT + SYNC-GUIDE）+ 同名 zip（103MB，`unzip -t` 无错、路径全 ASCII）
+
+### 本轮新增坑
+
+1. 🟡 **`E:/orzmc/tmp` 会消失**（一周后重跑时 scp 报 `No such file or directory`）→ 每次先 `New-Item -ItemType Directory -Force` 再造 .ps1。
+2. 🟡 **`paper-26.3-<build>.jar` 名字随构建变**：升级要「投新名 + 删旧名」，`start.sh` 的 `sort -V | tail -1` 会自动选最高版本，删旧前必须已备份。
+3. 🟡 **无版本号文件名的插件（`GriefPrevention.jar`）顺手改成 `<名>-<版本>.jar`**，让 `mc_version_check.py` 的前缀映射能识别，避免下轮报「未识别 jar」漏报升级。
+4. 🟢 面板本轮响应好（stop 20s 到位、status 查询 5~15s）；**同一面板时快时慢，脚本仍需重试 + 超时容忍**。
+
 ## 3. 机制与坑
 
 1. **MCSM 面板/API stop 会置 `eventTask.ignore=true` 并落盘** → `autoRestart` 名存实亡（下次 daemon 重启内存复位，但磁盘仍 true）。测试实例本就手动启停，影响可控；如需恢复须改 Windows 侧 `InstanceConfig/<uuid>.json`。
