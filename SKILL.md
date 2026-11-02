@@ -120,6 +120,7 @@ required_commands: [java, curl, tar]
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
 | 2.2.0 | 2026-11-02 | **版本纪律定档：第三方插件只跟 release、核心只升 STABLE/BETA、OrzMC 豁免**（含「先按 version_type 过滤再比版本」坑）；巡检扩为四部分（+健康体检、SSH 直读兜底）；NetherNet 文档按 2.12.1 实装键名重写 + 新增双协议验证矩阵；Exaroton 文件 API 端点纠正 + `exa_sync_plugins.py` |
+| 2.2.0 | 2026-11-02 | 新增**统一连通性检查** `scripts/connectivity_check.py`（Java 协议握手 + 基岩 RakNet 旧协议 + NetherNet 新协议信令 + 基岩端口 HTTPS 信令 + 可选外部节点 TCP；自动绕本机 TUN fake-IP）；巡检扩为五部分；版本纪律定稿（插件只跟 release）；配置审查接 SSH 直读兜底；健康体检 TPS 改读 latest.log（兼容 Folia 分区 TPS）；Exaroton 文件 API 端点纠正 + `exa_sync_plugins.py` |
 | 2.1.1 | 2026-10-20 | NetherNet 实测闭环：`both` 模式双通道验证通过；确认**域名入口必须 HTTPS**（客户端对域名强制 TLS，明文信令被断开 → 卡「加载延迟」且零日志），纯 IP 走 TOFU；新增动态公网 IP 同步脚本 `nethernet_advertise_sync.py` + cron `orzmc-nethernet-advertise-sync`；防火墙放行脚本 `bedrock_nethernet_ports.ps1` |
 | 2.1.0 | 2026-10-19 | 全面 review：30 篇专题/历史文档补齐分组索引（0 孤儿 0 死链）；7783 字「插件基线」巨型条目外置为 `references/plugin-baseline-legacy.md`（零信息丢失）；修正 26.3 口径（ALPHA→STABLE、Folia 26.3 已出、Geyser 已可用）；新增「脚本位置约定」 |
 | 2.0.7 | 2026-10-19 | 第四轮测试服升级基线（Paper 26.3-205 / WE 7.4.6 / WG 7.0.20 / Geyser 2.12.0）+ 新增 `references/nethernet.md`（NetherNet 迁移）+ 升级包交付规范 §2g + Exaroton 核心面板托管事实 |
