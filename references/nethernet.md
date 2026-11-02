@@ -128,12 +128,23 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 
 > 只差这两层：**服务端配置与端口发布已全部就绪**，本机 `127.0.0.1` 上 RakNet PONG + 信令 HTTP 均正常。
 
-### 5.3 关键操作经验
-
-- MCSM 实例的 `docker.ports` 在 `daemon/data/InstanceConfig/<uuid>.json`；**普通 apikey（权限 1）不能改**（`PUT /api/instance` 需 ADMIN）。
+### 5.3 关键操作经验- MCSM 实例的 `docker.ports` 在 `daemon/data/InstanceConfig/<uuid>.json`；**普通 apikey（权限 1）不能改**（`PUT /api/instance` 需 ADMIN）。
 - 本次做法：停实例（`POST /api/protected_instance/stop`）→ 改 JSON + Geyser 配置 → `docker restart orzmc-mcsmanager-daemon`（daemon 启动时从磁盘重载 `InstanceConfig`）→ 启实例（`POST /api/protected_instance/open`，不是 `/start`）。
 - 启动/停止路由前缀是 **`/api/protected_instance/*`**（`/open` `/stop` `/restart` `/kill` `/command`）。
 - 实例停掉后容器会被移除，重启时按新 `ports` 重建，端口变更才生效。
+
+### 5.4 生产端「信令通、玩家仍连不上」排障法（2026-11-02 实录）
+
+现场：生产 `transport: nethernet` + `webrtc-port: 0`（单端口）+ `advertise-addresses: []` + `stun-discovery: true`，启动日志 `Built-in signaling started on http://0.0.0.0:19132`（**单端口模式下日志不会出现 `with NetherNet on UDP port X` 那半句，属正常**），外部实测 TCP 19132 信令 200、Java 25565 正常、**UDP 探测无应答**。
+
+判定顺序（照这个走，别先怀疑平台/版本）：
+
+1. **`RakNet 无应答` 在 nethernet 模式下是正常现象**（该模式根本不监听 RakNet）→ 不能当故障证据，也不能当 UDP 通不通的证据。
+2. **先核对 UDP 转发**：单端口模式要放行 **UDP 19132**；`both` 模式要 UDP 19132 + UDP `webrtc-port`。TCP 通了只说明信令通，玩家真正的游戏流量走 UDP——「信令成功 → 随后卡加载延迟」几乎都是 UDP 没转发。
+3. **再核对 `advertise-addresses`**：`[]` + STUN 自动发现时，若主机**出网 IP ≠ 域名 A 记录**（双 WAN / 旁路由 / VPN 分流），会把错误地址下发给客户端 → 必挂。核对法：主机 `curl -s https://ifconfig.me` 与 `nslookup <域名> 223.5.5.5` 比对。
+4. **加固做法**：显式写 `advertise-addresses: ["<域名>:<端口>"]`（单端口填 `19132`，both 填 `webrtc-port`），不再依赖 STUN。
+5. **把 UDP 变成可测**：切成 `both` + `webrtc-port: 19134` 后，`connectivity_check.py` 的 RakNet 探测能直接判定 UDP 19132 是否放通（有 Pong = 通），不必等玩家试。
+6. 需要更细证据时临时开 `advanced.nethernet-debug: true`（重启生效，日志很吵，看完改回）。
 
 ## 6. 验证方法（含本机大坑）
 
