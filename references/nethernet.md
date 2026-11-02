@@ -1,6 +1,6 @@
 # NetherNet（基岩新传输层）迁移知识库
 
-> 状态：**测试服已落地并双协议验证通过（both 模式）；生产端仍为 raknet，待切** ｜ 最后更新：2026-11-02
+> 状态：**测试服 = `both` 双协议验证通过；国内服生产 = `nethernet` 单端口（`webrtc-port: 0`）+ 显式 `advertise-addresses`；海外服 Exaroton 仍 `raknet` 待切**
 > 来源：Geyser 官方 blog `/blog/preparing-for-nethernet`、官方 setup 文档 `geysermc.org/wiki/geyser/setup/`、**Geyser-Spigot 2.12.0-b1265 jar 反编译实证**（`GeyserConfig$BedrockConfig` / `$SignalingConfig$*`）+ **2.12.1（build 1280）实装 config.yml 字段核对**
 
 ## 1. 是什么 / 为什么必须处理
@@ -12,10 +12,10 @@
 
 ## 2. 机制差异（这是迁移真正的坑）
 
-> 🔴 **2026-11-02 重要更正：「域名入口必须 HTTPS」在当前版本已不成立**
-> 事实：① 测试服 `signaling.builtin.https.certificate` 为空（**没配证书**），老板用 **`dev.{SERVER_NAME}.cn:19132`（域名）实连正常**；② 对测试服与生产端的 19132 端口做 TLS 探测（`openssl s_client -servername <域名>`）**两者行为完全一致**：TCP 建连后 TLS ClientHello 无应答直接 EOF；③ 两端 `/v1/join` 返回字段完全相同（`transportLayer=2, connection=4, protocol=2225/26.60`），`POST /v1/join/<nonce>` 同为 401。
-> → 结论：**Geyser 2.12.1（build 1280）+ Bedrock 26.60 客户端对域名不再强制 TLS**，明文 HTTP 信令即可完成连接（下面 2026-10-20 的「强制 TLS」是在 Geyser 1265 / 更早客户端上观测的，属版本相关行为，不可当通则）。
-> 「无证书」因此**不是**基岩连不上的原因；配 `builtin.https` 的收益降级为「免掉 TOFU 信任弹窗」，不再是可用性前提。判据必须实测，不能照抄旧结论。
+> 🔴 **「域名入口必须 HTTPS」不成立（版本相关，别照抄旧结论）**
+> 实测（Geyser 2.12.1 build 1280 + Bedrock 26.60）：`signaling.builtin.https.certificate` 留空时，客户端用**域名**（如 `dev.example.com:19132`）照样能进服，只弹一次「信任此服务器」；对测试服与生产端的 19132 做 `openssl s_client -servername <域名>`，**两端行为完全一致**（TCP 建连 → ClientHello → 服务端直接 EOF），`/v1/join` 字段与 `POST /v1/join/<nonce>` 的 401 也一致。
+> → **TLS 不是两端可用性差异的分水岭**；Geyser 1265 / 更早客户端上曾观测到「域名强制 TLS、明文信令被 FIN」，属版本相关行为。
+> 结论：**没证书不是连不上的原因**；配 `builtin.https` 的收益 = 免掉 TOFU 弹窗。基岩进不来先查 **UDP 转发 / `advertise-addresses` / `transport`** 三处（§5.4）。
 
 | 维度 | RakNet（旧） | NetherNet（新） |
 |:--|:--|:--|
@@ -73,6 +73,7 @@ bedrock:
 > ⚠️ **「单端口」的唯一判定标准 = `webrtc-port: 0`**（注释原文 `0 means the same port as above`）。此时 NetherNet 与 RakNet 共用 `bedrock.port`，但**信令 TCP 仍占该端口** → 「单端口」= TCP+UDP 同号，只转 UDP 时玩家列表都刷不出来。
 > `webrtc-port` 填了另一个端口（如 19134）= `both` 双端口模式：UDP 19132(RakNet) + UDP 19134(WebRTC) + **TCP 19132(信令)**，共 3 条放行规则。测试服即此模式（paper 19134 / folia 19135）。
 > 2026-11-02 核对：`transport: both` 的日志形态为 `Started Geyser on UDP port 19132` + `Built-in signaling started on http://0.0.0.0:19132, with NetherNet on UDP port 19134`；单端口模式日志里的 webrtc 端口号会与 bedrock 端口相同。
+> ⚠️ **`both` 模式下 `advertise-addresses` 的端口必须写 `webrtc-port`**（如 `[<域名>:19134]`）；错写成 `port`(19132) 会出现「RakNet 老客户端能进、NetherNet 新客户端卡住」的半瘫，且两端日志都无报错 —— 切 both 时最易漏的一步。
 
 ## 4. 三种落地方案
 
@@ -88,7 +89,7 @@ bedrock:
 1. `signaling.builtin.https` 直接指向证书（Geyser 同端口提供 HTTPS）
 2. 信令端口前挂反向代理（Nginx/Caddy）做 TLS
 3. 外部信令服务（Warden 自带 HTTPS）
-—— **不配 HTTPS 也能用，但只对纯 IP 地址成立**：客户端填纯 IP 时才回退到明文 HTTP，弹一次「信任此服务器」后即可进服；**填域名时客户端强制 TLS**（抓包可见 `16 03 01` ClientHello、SNI=域名、ALPN=h2,http/1.1），明文 HTTP 信令无法应答，客户端会卡在「加载延迟」，而服务端连一行日志都不会有。域名入口必须配 HTTPS。
+—— **不配 HTTPS 也能用（含域名入口）**：客户端回退明文 HTTP，首连弹一次「信任此服务器」即可进服（2.12.1 + 26.60 实测）。配 HTTPS 的唯一收益 = **不弹这个框**。⚠️ 别把「卡加载延迟」归因于缺证书，该症状更常见于 UDP 未转发或 `advertise-addresses` 下发错地址（§5.4）。
 
 ## 5. 本环境适配要点（OrzMC 现状）
 
@@ -99,7 +100,7 @@ bedrock:
 | `transport` | `both` ✅ | `both` ✅ |
 | `bedrock.port` | 19132 | 19132（容器内） |
 | `webrtc-port` | 19134 | 19135 |
-| `signaling.builtin.advertise-addresses` | `["{HOME_IP}:19134"]` | `["{HOME_IP}:19135"]` |
+| `signaling.advertise-addresses`（2.12.1 键位） | `["<公网IP>:19134"]` | `["<公网IP>:19135"]` |
 | Docker 发布 | UDP 19132 + TCP 19132 + UDP 19134 | UDP 19132 + TCP 19132 + UDP 19135（宿主侧 19133/19135） |
 | 玩家填的地址 | `dev.{SERVER_NAME}.cn:19132` | `dev.{SERVER_NAME}.cn:19133` |
 
@@ -116,7 +117,7 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 
 > ✅ **2026-10-20 全链路验证通过（纯 IP 直连）**：`GET /v1/join` → 200，`POST /v1/join/<id>` → 200（返回 SDP answer），随后 UDP 19134 上 DTLS/WebRTC 建立，玩家成功进服。说明 both 模式、advertise-addresses、Docker NAT、路由器端口转发、防火墙全部正确。
 
-> ⚠️ **域名入口当前不可用（未配 HTTPS）**：客户端填**域名**时强制 TLS，明文 HTTP 信令收到 ClientHello 后直接断开，玩家卡「加载延迟」且服务端无任何日志。测试期客户端一律用 **`{HOME_IP}:19132`**（首连弹一次「信任此服务器」）。生产上线前必须给域名补 HTTPS。
+> ✅ **域名入口可用（实证）**：`dev.{SERVER_NAME}.cn:19132` 在 `builtin.https` 留空时实连正常（首连弹一次「信任此服务器」）。想免掉弹窗再配 HTTPS，**不是可用性前提**（见 §2 更正）。
 
 ### 5.2 仍未放行（截至 2026-10-19 晚）
 
@@ -128,14 +129,16 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 
 > 只差这两层：**服务端配置与端口发布已全部就绪**，本机 `127.0.0.1` 上 RakNet PONG + 信令 HTTP 均正常。
 
-### 5.3 关键操作经验- MCSM 实例的 `docker.ports` 在 `daemon/data/InstanceConfig/<uuid>.json`；**普通 apikey（权限 1）不能改**（`PUT /api/instance` 需 ADMIN）。
+### 5.3 关键操作经验
+
+- MCSM 实例的 `docker.ports` 在 `daemon/data/InstanceConfig/<uuid>.json`；**普通 apikey（权限 1）不能改**（`PUT /api/instance` 需 ADMIN）。
 - 本次做法：停实例（`POST /api/protected_instance/stop`）→ 改 JSON + Geyser 配置 → `docker restart orzmc-mcsmanager-daemon`（daemon 启动时从磁盘重载 `InstanceConfig`）→ 启实例（`POST /api/protected_instance/open`，不是 `/start`）。
 - 启动/停止路由前缀是 **`/api/protected_instance/*`**（`/open` `/stop` `/restart` `/kill` `/command`）。
 - 实例停掉后容器会被移除，重启时按新 `ports` 重建，端口变更才生效。
 
-### 5.4 生产端「信令通、玩家仍连不上」排障法（2026-11-02 实录）
+### 5.4 生产端「信令通、玩家仍连不上」排障法
 
-现场：生产 `transport: nethernet` + `webrtc-port: 0`（单端口）+ `advertise-addresses: []` + `stun-discovery: true`，启动日志 `Built-in signaling started on http://0.0.0.0:19132`（**单端口模式下日志不会出现 `with NetherNet on UDP port X` 那半句，属正常**），外部实测 TCP 19132 信令 200、Java 25565 正常、**UDP 探测无应答**。
+典型现场（国内服）：`transport: nethernet` + `webrtc-port: 0`（单端口）+ `advertise-addresses: []` + `stun-discovery: true`，启动日志 `Built-in signaling started on http://0.0.0.0:19132`（**单端口模式不会打印 `with NetherNet on UDP port X` 那半句，属正常**），外部实测 TCP 19132 信令 200、Java 25565 正常、**UDP 探测无应答**。
 
 判定顺序（照这个走，别先怀疑平台/版本）：
 
@@ -146,8 +149,10 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 5. **把 UDP 变成可测**：切成 `both` + `webrtc-port: 19134` 后，`connectivity_check.py` 的 RakNet 探测能直接判定 UDP 19132 是否放通（有 Pong = 通），不必等玩家试。
 6. 需要更细证据时临时开 `advanced.nethernet-debug: true`（重启生效，日志很吵，看完改回）。
 
-**本案结论（2026-11-02）**：生产端 `transport: nethernet` + `webrtc-port: 0` + `advertise-addresses: []`（依赖 STUN）下基岩玩家无法进入；改为显式 `advertise-addresses: ["{SERVER_HOST}:19132"]` 后老板反馈恢复（待玩家实连最终确认）。与测试服的差异不在 TLS（两端都无证书、TLS 探测行为一致），而在**地址下发方式**：测试服写死了公网 IP:端口，生产端交给 STUN 猜。
+**结论**：同是「无证书 + 信令 200」，测试服能进、生产端不能 —— 差异**不在 TLS，而在地址下发方式**：测试服把 `advertise-addresses` 写死成「公网地址:webrtc 端口」，生产端留空交给 STUN 猜。**修复 = 显式写 `advertise-addresses: ["<域名>:<端口>"]`**（单端口填 `19132`，both 填 `webrtc-port`）。凡「信令通、玩家卡住」先比 UDP 转发与 advertise 地址两项，别先怀疑平台或客户端版本。
 **验证方式**：`python3 scripts/conn_watch.py --host {SERVER_HOST}` —— 让玩家实连，Java 在线人数与基岩 `/v1/join` 在线人数任一上升即证明进服成功（不依赖服务端日志权限）。
+
+**后续（同日）切 `both` 实测**：`webrtc-port: 19134` + `transport: both` + `advertise-addresses: ["<域名>:19134"]`，重启后外部实测 **RakNet 39~66ms 应答 / NetherNet 80~116ms / `基岩模式 both ✅`** —— RakNet 一应答就同时**证明 UDP 19132 已放通**（这是 both 模式最大的诊断价值：把 UDP 单向转发变成可外部验证）。要点：`advertise-addresses` 端口必须跟 `webrtc-port` 一致，写成 `port` 会出现「老客户端能进、新客户端进不去」的半瘫。
 
 ## 6. 验证方法（含本机大坑）
 
@@ -164,9 +169,9 @@ python3 .../connectivity_check.py --json                                       #
 
 判读纪律（血泪）：
 - **`RakNet 无应答` ≠ 故障**：`transport: nethernet` 单端口模式本来就不答 RakNet；UDP 未转发也一样表现为无应答 → 必须与配置里的 `transport` 对照再定性。
-- **`HTTPS 信令不可用` = 域名入口必挂**：客户端对域名强制 TLS，明文 HTTP 信令会被断开，玩家卡「加载延迟」且**服务端零日志**；纯 IP 直连不受影响（弹一次 TOFU 信任）。
-- 生产端（2026-11-02 实测 `{SERVER_HOST}`）：Java ✅、NetherNet 信令 HTTP 200 ✅、RakNet 无应答、HTTPS ❌ → 用域名连基岩必失败，用纯 IP 可能可连。**老板确认生产玩家就是用域名** → 必修：给 `signaling.builtin.https` 配证书。
-- **证书签发硬约束（2026-11-02 探测）**：该域 **80/443 对外均关闭**（check-host 0/2 节点）→ HTTP-01 不可用，**必须 DNS-01**；DNS 托管 **DNSPod**（`five/hake.dnspod.net`）→ acme.sh 用 `--dns dns_dp`（需 `DP_Id`/`DP_Key`）；TCP 19132 已通，不用改端口转发。签完放实例 `plugins/Geyser-Spigot/` 并重启，日志由 `http://` 变 `https://`。完整步骤/配置片段/签发脚本：`S:\orzmc-geyser-https\`。
+- **`HTTPS 信令不可用` ≠ 故障**：当前 Geyser/客户端版本下域名连接仍可用（弹一次 TOFU 信任）；脚本已把这项记 ℹ️。判「玩家能不能进」要用实连（§6.3 `conn_watch.py`）+ `advertise-addresses`/UDP 转发核对，而不是看有没有 TLS。
+- 「信令 200 + RakNet 无应答」是 `nethernet` 单端口的**正常组合**；真正的失败信号是「信令 200 但玩家卡住」→ 查 UDP 转发与 `advertise-addresses`（§5.4）。
+- **若确实要配 HTTPS（只为免弹窗）的硬约束**：家宽域 **80/443 对外通常关闭** → HTTP-01 不可用，**必须 DNS-01**；DNS 托管 DNSPod 时 acme.sh 用 `--dns dns_dp`（`DP_Id`/`DP_Key`）。证书放实例 `plugins/Geyser-Spigot/` 并重启，日志由 `http://` 变 `https://`。
 
 ### 6.1 单项工具
 
@@ -176,7 +181,7 @@ python3 .../connectivity_check.py --json                                       #
   1. DoH 查真实公网 IP：`curl -H 'accept: application/dns-json' 'https://1.1.1.1/dns-query?name=<域名>&type=A'`
   2. 用外部节点验证 TCP：`check-host.net/check-tcp?host=<IP>:<port>` 拿 `request_id` → `check-host.net/check-result/<id>`（外部节点一律 `Connection timed out` = 未转发）
   3. UDP 侧 `check-host.net/check-udp` **无意义**（普通 UDP 包 Geyser 不回，只有 RakNet 专有包才 Pong）→ UDP 用本机 `bedrock_ping.py` 拿到真实 PONG 即为通
-### 6.1 双协议连通性验证矩阵（无真实客户端也能判定到哪一层）
+### 6.2 双协议连通性验证矩阵（无真实客户端也能判定到哪一层）
 
 | 层 | 探法 | 判据 |
 |:--|:--|:--|
@@ -194,6 +199,14 @@ python3 .../connectivity_check.py --json                                       #
 
 - 官方自检：用 **Bedrock 26.40+** 客户端实连；失败先看 Geyser 控制台。
 
+### 6.3 玩家入场监听（改完配置后的终极验收）
+
+```bash
+python3 ~/.hermes/scripts/conn_watch.py --host <域名> [--duration 600]
+```
+
+基岩玩家经 Geyser 进服后 **Java 侧在线人数也会 +1**，所以脚本同时采 **Java Status 人数 + 基岩 `/v1/join` 人数**，任一上升即证明进服成功。**不需要服务端日志权限**（面板 apikey 失效也能验）—— 这是「配置改完到底有没有修好」唯一免依赖的实连证据；「信令 200」不算。
+
 ## 7. 官方错误对照表
 
 | 控制台现象 | 原因 | 处置 |
@@ -202,7 +215,7 @@ python3 .../connectivity_check.py --json                                       #
 | `RakNet and NetherNet each need their own UDP port` | `both` 但 `webrtc-port` = 基岩端口 | 设成另一个空闲 UDP |
 | `… is a loopback address` | `bedrock.address` 是 127.0.0.1 | 改 `0.0.0.0` |
 | 玩家弹「trust on first use」 | 信令走明文 HTTP（纯 IP 直连） | 配 HTTPS 或外部信令 |
-| 域名连接卡「加载延迟」、服务端无任何日志 | 客户端对域名强制 HTTPS，明文 HTTP 信令收到 TLS ClientHello 后直接断开 | 给该域名配 HTTPS（内置证书/反代/外部信令）；临时可用纯 IP 直连验证 |
+| 域名连接卡「加载延迟」、服务端无日志 | 多为 **UDP 未转发**（信令走 TCP 所以能 200）或 **`advertise-addresses` 下发了客户端到不了的地址**（`[]` + STUN 猜错，主机出网 IP ≠ 域名 A 记录时必现）；旧版 Geyser/客户端上也曾因「域名强制 TLS」出现 | 先核对 UDP 转发与 `advertise-addresses`（§5.4）；确属 TLS 时代的旧版本再配 HTTPS |
 | `Error while getting Paper ping passthrough: java.lang.reflect.InvocationTargetException` | Geyser 2.12.x 的 `integrated-ping-passthrough` 在 Paper 26.3 上反射失败 → 基岩看到的是 Geyser 自己的 MOTD（`motd.primary/secondary`）而不是 Java 服 MOTD | 要么 `integrated-ping-passthrough: false`（改走 `ping-passthrough-interval` 轮询），要么 `passthrough-motd: false` + 自定 `motd.*`；不影响连接 |
 
 ## 8. 备选路线：GeyserNetherNet 扩展（不推荐用于生产）

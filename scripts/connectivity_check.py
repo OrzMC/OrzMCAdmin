@@ -299,8 +299,6 @@ def check_target(name, cfg, do_external=False, timeout=6):
     # Bedrock 旧协议
     rk = raknet_ping(ip, bport, timeout)
     out["checks"]["raknet"] = rk
-    if not rk.get("ok"):
-        out["warn"].append(f"RakNet(UDP {bport}) 未应答：{rk.get('err')}")
 
     # Bedrock 新协议（信令）
     tls = https_signal(ip, bport, timeout)
@@ -316,10 +314,17 @@ def check_target(name, cfg, do_external=False, timeout=6):
     out["checks"]["nethernet"] = nn
     if not nn.get("ok"):
         out["warn"].append(f"NetherNet 信令(TCP {bport}) 不可用：{nn.get('err')}")
+    # 判读纪律（2026-11-02）：`transport: nethernet` 单端口模式下 RakNet 本就无应答，
+    # 只要 NetherNet 通就属正常，记 INFO 不记 WARN —— 否则周巡检每周都误报。
+    if not rk.get("ok") and nn.get("ok"):
+        out.setdefault("info", []).append(
+            f"RakNet(UDP {bport}) 无应答，但 NetherNet 信令正常 → 与 nethernet 单端口模式一致（正常）；"
+            "若要兼容 26.40 之前的老客户端，需 transport=both + 另开 UDP webrtc-port")
+
     if rk.get("ok") and nn.get("ok"):
         out["checks"]["bedrock_mode"] = "both ✅（新旧客户端都能进）"
     elif nn.get("ok"):
-        out["checks"]["bedrock_mode"] = "NetherNet ✅ / RakNet 无应答（新客户端可进；老客户端需确认 transport=both 且 UDP 已放通）"
+        out["checks"]["bedrock_mode"] = "NetherNet ✅ / RakNet 无应答（nethernet 单端口或 raknet 关闭；26.40+ 新客户端可进，老客户端需 transport=both + UDP webrtc-port）"
     elif rk.get("ok"):
         out["checks"]["bedrock_mode"] = "RakNet ✅ / NetherNet 不可用 ⚠️（26.40+ 新客户端进不来）"
     else:
@@ -354,7 +359,8 @@ def render(results, as_json=False):
             print(f"  RakNet(旧)   ✅ {rk['ms']:.0f}ms | 基岩版本 {rk.get('bedrock_version')} "
                   f"| 协议 {rk.get('protocol')} | {rk.get('players')}/{rk.get('max')}")
         else:
-            print(f"  RakNet(旧)   ⚠️ {rk.get('err')}")
+            nn_ok = c.get("nethernet", {}).get("ok")
+            print(f"  RakNet(旧)   {'ℹ️ 无应答（nethernet 单端口模式属正常）' if nn_ok else '⚠️ ' + str(rk.get('err'))}")
         nn = c.get("nethernet", {})
         if nn.get("ok"):
             print(f"  NetherNet(新)✅ {nn['ms']:.0f}ms | 版本 {nn.get('version')} | 协议 {nn.get('protocol')} "
@@ -372,11 +378,14 @@ def render(results, as_json=False):
     print("=" * 74)
     fails = [(r["name"], f) for r in results for f in r["fail"]]
     warns = [(r["name"], w) for r in results for w in r["warn"]]
+    infos = [(r["name"], i) for r in results for i in r.get("info", [])]
     print(f"汇总: 目标 {len(results)} 个 | FAIL {len(fails)} | WARN {len(warns)}")
     for n, f in fails:
         print(f"  ❌ [{n}] {f}")
     for n, w in warns:
         print(f"  ⚠️ [{n}] {w}")
+    for n, i in infos:
+        print(f"  ℹ️ [{n}] {i}")
 
 
 def main():

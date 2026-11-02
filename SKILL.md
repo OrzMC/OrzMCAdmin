@@ -1,7 +1,7 @@
 ---
 name: orzmc
 description: "Minecraft 运维统一技能（唯一入口）：三端服务器运维/插件构建升级/性能诊断/权限体系/测试/基岩支持（含 NetherNet 迁移），74 份参考文档 + 170+ 脚本。"
-version: 2.2.0
+version: 2.2.1
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux, windows]
@@ -28,7 +28,7 @@ required_commands: [java, curl, tar]
 > | 快速实体统计（paper entity list / Spark / 计分板） | `references/entity-statistics.md` |
 > | 机器人玩家 Mineflayer（运维视角；开发细节见独立技能 `minecraft-bot-mineflayer`；**挂机脚本 stay-with-joker.js：5 bot 跟随真人玩家 + IPv4/IPv6 分流绕 per-IP 限制**） | `references/mineflayer-bot.md` |
 > | DeathChest 回归测试（死亡瞬间下线→物品丢失 ✅fix1；**动画 progress 越界卡服 ✅fix3 已合入 main 71d2571**；复现法见 ref） | `references/deathchest-regression.md` |
-> | **NetherNet 迁移（基岩新传输层：TCP 信令 + WebRTC/UDP；2.12 配置结构反编译实证 / A-B-C 三方案 / HTTPS 三做法 / 官方错误对照表 / 本机 Clash TUN 假阳性验证法；⚠️ 2026-10-27 基岩客户端停用 RakNet）。**关键实测**：域名入口**必须** HTTPS —— 客户端填域名时强制 TLS（`16 03 01` ClientHello，SNI=域名），明文 HTTP 信令被 FIN，玩家卡「加载延迟」且服务端零日志；纯 IP 才回退明文 + 一次性信任弹窗。2026-10-20 纯 IP 全链路（`GET /v1/join` 200 → `POST /v1/join/<id>` 200 → DTLS 建连）在测试服验证通过；动态公网 IP 由 `scripts/nethernet_advertise_sync.py` + cron `orzmc-nethernet-advertise-sync`（15 分钟，静默）自动跟进 `advertise-addresses` | `references/nethernet.md` + `~/OrzMC/proxy/scripts/nethernet_check.py`（已并入 OrzMCProxy main，v1.1.0，退出码 0=可用/1=不可达/2=用法/3=降级；`--signal-port` `--scheme https` `--json` `--self-test` `--no-emoji`）；**2.12.1 权威键名表 / 单端口 vs both 语义 / 双协议验证矩阵（RakNet Pong、`GET /v1/join`、`POST` 401 是预期、匿名 STUN 不可作凭据、日志线程名区分传输层）→ 该文 §3 / §6.1**） |
+> | **NetherNet 迁移（基岩新传输层：TCP 信令 + WebRTC/UDP；2.12 配置结构反编译实证 / A-B-C 三方案 / HTTPS 三做法 / 官方错误对照表 / 本机 Clash TUN 假阳性验证法；⚠️ 2026-10-27 基岩客户端停用 RakNet）。**关键实测（版本相关，勿照抄）**：**域名入口不强制 HTTPS** —— Geyser 2.12.1（build 1280）+ Bedrock 26.60 实测「域名 + `signaling.builtin.https` 留空」可正常进服（仅弹一次 TOFU 信任）；对 19132 做 TLS 探测，两端都是 ClientHello 后 EOF。**基岩连不上的真因优先查三处**：① UDP 端口未转发（TCP 通只说明信令通）② `advertise-addresses: []` 交给 STUN 猜地址（主机出网 IP ≠ 域名 A 记录时必挂）③ `transport: nethernet` 挡掉 26.40 之前的老客户端。配 HTTPS 的收益仅「免掉信任弹窗」。2026-10-20 纯 IP 全链路（`GET /v1/join` 200 → `POST /v1/join/<id>` 200 → DTLS 建连）在测试服验证通过；动态公网 IP 由 `scripts/nethernet_advertise_sync.py` + cron `orzmc-nethernet-advertise-sync`（15 分钟，静默）自动跟进 `advertise-addresses` | `references/nethernet.md` + `~/OrzMC/proxy/scripts/nethernet_check.py`（已并入 OrzMCProxy main，v1.1.0，退出码 0=可用/1=不可达/2=用法/3=降级；`--signal-port` `--scheme https` `--json` `--self-test` `--no-emoji`）；**2.12.1 权威键名表 / 单端口 vs both 语义 / 双协议验证矩阵（RakNet Pong、`GET /v1/join`、`POST` 401 是预期、匿名 STUN 不可作凭据、日志线程名区分传输层）→ 该文 §3 / §6.1**） |
 > | **Geyser 基岩支持（当前 offline 直连模式；floodgate 已回退 2026-08-05）** | `references/geyser-floodgate.md` |
 > | **实例端口模型与审计（docker 实例必须逐条发布 `宿主:容器/协议`；端口以实例实际配置为准而非默认 25565/19132；多实例共享宿主时 UDP 错开 19132/19133；宿主≠容器 时 `clone-remote-port` 必须 false；Cloudflare Tunnel 不支持 UDP；脚本 `scripts/port-audit.py` 核对期望端口 vs 已发布 + 真实协议探测）** | `references/instance-ports.md` |
 > | **公网入口排障（域名+路由器映射+防火墙都"配好了"外网仍连不上）：根因常是本机 Clash TUN 抢默认路由 → 入站应答源地址被定成 198.18.0.1/钻进隧道；修法 = WSL 内加通用策略路由 `ip rule add from <LAN IP> table 100`（任意端口零维护，脚本 `scripts/orzmc-mc-reply-route.sh` + Windows 计划任务 OrzMC-MC-Reply-Route 每 10min 自愈）；⚠️ 老板坚持防火墙/路由器逐端口配置，勿再提 DMZ/端口段；含「ICMP 通但 TCP 全超时」判定法与外部节点验证法（勿在本机测）；**2026-10-29：家宽入站 80/443 被运营商封 → web 入口改映射高位 18443，Caddy 直连 + DNS-01（已弃 Cloudflare Tunnel）；refused=无映射 / timeout=被封** | `references/public-ingress-clash-tun.md` |
@@ -57,7 +57,7 @@ required_commands: [java, curl, tar]
 > | RCON 客户端（`scripts/rcon.py <命令> [端口]`，密码从环境变量 RCON_PASSWORD 读） | `scripts/rcon.py` |
 > | **实例端口审计（`scripts/port-audit.py [DATA_ROOT] [--probe] [--json]`：解析 InstanceConfig docker.ports + server.properties + Geyser config.yml 得出期望端口，标出必发布缺口/宿主端口冲突，可实时探测 Java+基岩双通道；退出码 1=有缺口）** | `scripts/port-audit.py` |
 > | **玩家入场监听（`scripts/conn_watch.py`：改完网络/Geyser 配置后验证“玩家到底能不能进”——同时采 **Java Status 在线人数** + **基岩 `/v1/join` 在线人数**双源，任一 >0 即证明进服成功；自动 DoH 绕本机 TUN；`--duration/--interval/--json`；退出码 0=命中/1=未命中/3=数据源不可用）** | `scripts/conn_watch.py` |
-> | **统一连通性检查（`scripts/connectivity_check.py`：一次跑完 DNS（自动绕 Clash TUN fake-IP，DoH 取真值）→ Java 协议握手/版本/协议号/人数 → 基岩旧协议 RakNet Pong → 基岩新协议 NetherNet 信令 `GET /v1/join` → 基岩端口 HTTPS 信令 → `--external` 公网 TCP 外部节点（check-host.net 3 节点）；内置目标 paper/folia/paper-pub/prod-mcsm，可 `--host --java --bedrock` 自定义；`--json` 供 cron；退出码 0=全通/1=FAIL/3=仅WARN。**判读纪律：`RakNet 无应答` ≠ 故障**（可能是 transport=nethernet-only 或 UDP 未放通，须与配置里 transport 对照）；**`HTTPS 信令不可用` = 域名入口基岩玩家必卡「加载延迟」且服务端零日志**） | `scripts/connectivity_check.py` |
+> | **统一连通性检查（`scripts/connectivity_check.py`：一次跑完 DNS（自动绕 Clash TUN fake-IP，DoH 取真值）→ Java 协议握手/版本/协议号/人数 → 基岩旧协议 RakNet Pong → 基岩新协议 NetherNet 信令 `GET /v1/join` → 基岩端口 HTTPS 信令 → `--external` 公网 TCP 外部节点（check-host.net 3 节点）；内置目标 paper/folia/paper-pub/prod-mcsm，可 `--host --java --bedrock` 自定义；`--json` 供 cron；退出码 0=全通/1=FAIL/3=仅WARN。**判读纪律：`RakNet 无应答` ≠ 故障**（`nethernet` 单端口模式本就不答 RakNet；只要 NetherNet 信令 200 就记 ℹ️，两条通道都挂才 FAIL）；**`HTTPS 信令不可用` 也只是 ℹ️**（当前版本域名连接仍可用，仅弹一次 TOFU 信任），不得据此判「域名入口必挂」） | `scripts/connectivity_check.py` |
 > | **基岩版连通性诊断（`~/OrzMC/proxy/scripts/bedrock_host_check.sh` bash 跨平台 / `.ps1` Win）**：双模式——本机诊断（默认，RakNet 握手+端口监听+进程+防火墙五项）与远程探测（传 host 即可，端口默认 19132，纯数字第一参=端口）；用法 `bash bedrock_host_check.sh [host] [port]`、PS `.\bedrock_host_check.ps1 [-HostAddr x] [-Port n]`；-h/--help 帮助；**定位法：本机 PASS+监听✅ → 问题在外部 UDP 转发；FAIL → Geyser 本身**；使用说明/修复记录文档同目录（基岩诊断脚本_使用说明.md、脚本问题修复记录_平台注意事项.md，v1.1 含 7 条真机坑）；坑：macOS netstat `udp46 *.19132` 格式、BSD pgrep 只出 pid 不能二次 grep（统一 ps aux+grep）、Windows Store python3 stub 检测、PS 需 UTF-8 BOM+`${Var}:` 写法、RakNet Pong MOTD 从偏移 34 到包尾 UTF-8（长度字段不可靠）；**2026-10-19 新增 `nethernet_check.py`（NetherNet 信令探测：UDP RakNet 基线 + TCP 信令 HTTP 探测 + 结论 + 退出码 0/1，`python3 nethernet_check.py [host] [port]`）**；⚠️⚠️ **本机经 Clash TUN 测 TCP 必假阳性**——域名被 fake-IP 成 `198.18.x.x`，TCP 握手被 TUN 本地接管后「接受并立即关闭」（脚本显示 `OPEN_NO_HTTP`，误判为端口可达）→ **必须用真实公网 IP（DoH 查：`https://1.1.1.1/dns-query?name=<域名>&type=A`）+ 外部节点验证**（`check-host.net/check-tcp?host=IP:PORT` 取 request_id 后查 `check-result/<id>`；外部节点一律 `Connection timed out` = TCP 未转发/未监听，若已转发但无监听则为 refused）；UDP 侧 check-udp 无意义（普通 UDP 包 Geyser 不回，只有 RakNet 专有包才 Pong） | `~/OrzMC/proxy/`（OrzMCProxy 子模块） |
 | LP 权限命令清单生成（`scripts/gen_perm_commands.py`：从仓库 `plugin/docs/permission-groups.md` 唯一权威文档解析生成 lp set 命令；方案① 2026-08-12） | `scripts/gen_perm_commands.py` |
 > | LoginSecurity 注册状态查询（`scripts/check_lsdb.py [db路径] [玩家名]`） | `scripts/check_lsdb.py` |
@@ -120,6 +120,7 @@ required_commands: [java, curl, tar]
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.2.1 | 2026-11-02 | **纠正「域名必须 HTTPS」的错误结论**（域名+无证书实测可连；两端 TLS 探测一致）；生产端真因 = STUN 下发地址错，改显式 `advertise-addresses` 后恢复；`connectivity_check.py` 降噪（RakNet 无应答 / 无 HTTPS 信令记 ℹ️ 不记 WARN）；新增 `scripts/conn_watch.py` 玩家入场监听（改完网络配置后验「玩家到底能不能进」）；`both` 模式 `advertise-addresses` 端口必须等于 `webrtc-port` |
 | 2.2.0 | 2026-11-02 | **版本纪律定档：第三方插件只跟 release、核心只升 STABLE/BETA、OrzMC 豁免**（含「先按 version_type 过滤再比版本」坑）；巡检扩为四部分（+健康体检、SSH 直读兜底）；NetherNet 文档按 2.12.1 实装键名重写 + 新增双协议验证矩阵；Exaroton 文件 API 端点纠正 + `exa_sync_plugins.py` |
 | 2.2.0 | 2026-11-02 | 新增**统一连通性检查** `scripts/connectivity_check.py`（Java 协议握手 + 基岩 RakNet 旧协议 + NetherNet 新协议信令 + 基岩端口 HTTPS 信令 + 可选外部节点 TCP；自动绕本机 TUN fake-IP）；巡检扩为五部分；版本纪律定稿（插件只跟 release）；配置审查接 SSH 直读兜底；健康体检 TPS 改读 latest.log（兼容 Folia 分区 TPS）；Exaroton 文件 API 端点纠正 + `exa_sync_plugins.py` |
 | 2.1.1 | 2026-10-20 | NetherNet 实测闭环：`both` 模式双通道验证通过；确认**域名入口必须 HTTPS**（客户端对域名强制 TLS，明文信令被断开 → 卡「加载延迟」且零日志），纯 IP 走 TOFU；新增动态公网 IP 同步脚本 `nethernet_advertise_sync.py` + cron `orzmc-nethernet-advertise-sync`；防火墙放行脚本 `bedrock_nethernet_ports.ps1` |
@@ -140,7 +141,7 @@ required_commands: [java, curl, tar]
 ViaVersion 最新一条是 `5.12.3-SNAPSHOT`，只看「最新一条」会把整项误判为 SNAPSHOT 跳过，而 10-27 发布的 **5.12.2 正式版**就在下面。
 `mc_version_check.py` 已按此改造：✅=最新正式版 / ⚠️=有正式版可升 / 🔵=部署为预发布或高于正式版（应回退）。
 
-## 巡检体系（2026-11-02 扩为四部分）
+## 巡检体系（五部分）
 
 | 部分 | 脚本 | 关键点 |
 |:--|:--|:--|
@@ -161,7 +162,7 @@ ViaVersion 最新一条是 `5.12.3-SNAPSHOT`，只看「最新一条」会把整
 | 端点 | 域名 | 托管方式 | 角色 / 说明 |
 |:--|:--|:--|:--|
 | **本地测试服** | `dev.{SERVER_NAME}.cn` | 本机 MCSM 面板（Win 宿主 `E:/orzmc`；实例 `papermc-test` + `folia-test`） | 升级/插件/基岩/NetherNet 的实测场；家宽动态 IP + DDNS；官网 `show_address=false`（地址隐藏） |
-| **国内服（线上生产）** | `{SERVER_HOST}` | **MCSM 面板托管** | 国内玩家生产环境；运维走 MCSM API |
+| **国内服（线上生产）** | `{SERVER_HOST}` | **MCSM 面板托管** | 国内玩家生产环境；运维走 MCSM API；基岩 **`transport: nethernet` 单端口**（`webrtc-port: 0` → 只需 TCP+UDP 19132），`advertise-addresses` **必须显式写 `<域名>:19132`**（留空靠 STUN 会下发错地址 → 玩家连不上）；26.40 之前的老客户端进不来 |
 | **海外服（线上生产）** | `paper.{SERVER_NAME}.cn` | **Exaroton 托管** | 海外玩家生产环境；核心由面板管理（不能上传核心 jar），插件走 `plugins/update/` |
 
 **已下线**：腾讯云中转机 2 台（正式 + 试用，2026-10-19 老板确认销毁）→ **frps 中转链路不再运行**；`references/cross-carrier-networking.md` 中的方案/工具链仍可复用，重建时按该文顶部清单执行。
@@ -365,6 +366,9 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 - 脚本维护记录：audit 脚本 `Bearer ***` bug 已修（2026-08-12）；version_check Geyser build 号比较已修（2026-08-12）
 
 ## Pitfalls（跨后端通用）
+
+- ⚠️ **对比两端差异时，必须把同一探测也打到「已知可用」的一侧作对照**；两端探测结果一致 → 该维度**不是**根因，立刻换维度。只拿失败端的数据就下结论会把排查带向错误方向（例：把「没配 TLS 证书」当成基岩连不上的根因，实际两端探测行为一致，真因是 `advertise-addresses` 下发了错地址）。定性前先问一句：这个差异在「能用的那端」存在吗？
+- ⚠️ **Geyser 切 `both` 模式：`advertise-addresses` 的端口必须等于 `webrtc-port`**（不是 `port`）。写错会变成「RakNet 老客户端能进、NetherNet 新客户端卡住」的半瘫，且两端日志都不报错 —— 只看日志永远找不到。
 
 - ⚠️ **配置重建升级（OrzMC/EzShops 等）备份必须隔离目录**：旧配置备份与"拉新配置"严禁写同一目录——拉新强制用 `*_new/` 独立目录（2026-08-09 实测教训：复用同一 outdir 导致旧备份被新默认配置覆盖，迁移依据永久丢失；/tmp 无 Time Machine/APFS 快照兜底）。备份后**立即打印内容摘要（key: value）核对**，并二次复制到 `~/backups/`；迁移前先 diff 新旧确认依据完整
 - ⚠️ **破坏性升级（删配置重建）前**：先 `skill_view` 查技能已有脚本/端点结论（mcsm_delete.py 用 `{"targets":[...]}`、MCSM 重启用 `api/protected_instance/restart`、Exaroton 上传用 PUT+UA），不凭记忆手写；备份/迁移清单先列给用户确认（plan-first）
