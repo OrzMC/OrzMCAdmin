@@ -146,6 +146,9 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 5. **把 UDP 变成可测**：切成 `both` + `webrtc-port: 19134` 后，`connectivity_check.py` 的 RakNet 探测能直接判定 UDP 19132 是否放通（有 Pong = 通），不必等玩家试。
 6. 需要更细证据时临时开 `advanced.nethernet-debug: true`（重启生效，日志很吵，看完改回）。
 
+**本案结论（2026-11-02）**：生产端 `transport: nethernet` + `webrtc-port: 0` + `advertise-addresses: []`（依赖 STUN）下基岩玩家无法进入；改为显式 `advertise-addresses: ["{SERVER_HOST}:19132"]` 后老板反馈恢复（待玩家实连最终确认）。与测试服的差异不在 TLS（两端都无证书、TLS 探测行为一致），而在**地址下发方式**：测试服写死了公网 IP:端口，生产端交给 STUN 猜。
+**验证方式**：`python3 scripts/conn_watch.py --host {SERVER_HOST}` —— 让玩家实连，Java 在线人数与基岩 `/v1/join` 在线人数任一上升即证明进服成功（不依赖服务端日志权限）。
+
 ## 6. 验证方法（含本机大坑）
 
 ### 6.0 一键体检（2026-11-02 起首选）
