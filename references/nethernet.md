@@ -12,6 +12,11 @@
 
 ## 2. 机制差异（这是迁移真正的坑）
 
+> 🔴 **2026-11-02 重要更正：「域名入口必须 HTTPS」在当前版本已不成立**
+> 事实：① 测试服 `signaling.builtin.https.certificate` 为空（**没配证书**），老板用 **`dev.{SERVER_NAME}.cn:19132`（域名）实连正常**；② 对测试服与生产端的 19132 端口做 TLS 探测（`openssl s_client -servername <域名>`）**两者行为完全一致**：TCP 建连后 TLS ClientHello 无应答直接 EOF；③ 两端 `/v1/join` 返回字段完全相同（`transportLayer=2, connection=4, protocol=2225/26.60`），`POST /v1/join/<nonce>` 同为 401。
+> → 结论：**Geyser 2.12.1（build 1280）+ Bedrock 26.60 客户端对域名不再强制 TLS**，明文 HTTP 信令即可完成连接（下面 2026-10-20 的「强制 TLS」是在 Geyser 1265 / 更早客户端上观测的，属版本相关行为，不可当通则）。
+> 「无证书」因此**不是**基岩连不上的原因；配 `builtin.https` 的收益降级为「免掉 TOFU 信任弹窗」，不再是可用性前提。判据必须实测，不能照抄旧结论。
+
 | 维度 | RakNet（旧） | NetherNet（新） |
 |:--|:--|:--|
 | 连接流程 | 客户端 UDP 直连 | ① **TCP** 发 HTTP(S) 问「怎么连」→ ② 服务端回 WebRTC 参数 → ③ 游戏流量走 **UDP/WebRTC** |
@@ -146,7 +151,8 @@ python3 .../connectivity_check.py --json                                       #
 判读纪律（血泪）：
 - **`RakNet 无应答` ≠ 故障**：`transport: nethernet` 单端口模式本来就不答 RakNet；UDP 未转发也一样表现为无应答 → 必须与配置里的 `transport` 对照再定性。
 - **`HTTPS 信令不可用` = 域名入口必挂**：客户端对域名强制 TLS，明文 HTTP 信令会被断开，玩家卡「加载延迟」且**服务端零日志**；纯 IP 直连不受影响（弹一次 TOFU 信任）。
-- 生产端（2026-11-02 实测 `{SERVER_HOST}`）：Java ✅、NetherNet 信令 HTTP 200 ✅、RakNet 无应答、HTTPS ❌ → 用域名连基岩必失败，用纯 IP 可能可连。
+- 生产端（2026-11-02 实测 `{SERVER_HOST}`）：Java ✅、NetherNet 信令 HTTP 200 ✅、RakNet 无应答、HTTPS ❌ → 用域名连基岩必失败，用纯 IP 可能可连。**老板确认生产玩家就是用域名** → 必修：给 `signaling.builtin.https` 配证书。
+- **证书签发硬约束（2026-11-02 探测）**：该域 **80/443 对外均关闭**（check-host 0/2 节点）→ HTTP-01 不可用，**必须 DNS-01**；DNS 托管 **DNSPod**（`five/hake.dnspod.net`）→ acme.sh 用 `--dns dns_dp`（需 `DP_Id`/`DP_Key`）；TCP 19132 已通，不用改端口转发。签完放实例 `plugins/Geyser-Spigot/` 并重启，日志由 `http://` 变 `https://`。完整步骤/配置片段/签发脚本：`S:\orzmc-geyser-https\`。
 
 ### 6.1 单项工具
 

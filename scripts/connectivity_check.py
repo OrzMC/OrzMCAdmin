@@ -306,9 +306,11 @@ def check_target(name, cfg, do_external=False, timeout=6):
     tls = https_signal(ip, bport, timeout)
     out["checks"]["tls_signal"] = tls
     if not tls.get("ok"):
-        out["warn"].append(
-            "基岩端口无 HTTPS 信令（%s）→ 玩家用**域名**连会卡「加载延迟」且服务端零日志；"
-            "纯 IP 直连不受影响（会弹一次信任）" % (tls.get("hint") or "TLS 不可用"))
+        # 2026-11-02 更正：Geyser 2.12.1 + Bedrock 26.60 实测「域名 + 无证书」可正常连（测试服 dev.{SERVER_NAME}.cn 即为证）
+        # → 无 TLS 只影响体验（会弹一次 TOFU 信任框），不是可用性前提，故记 INFO 不记 WARN
+        out.setdefault("info", []).append(
+            "基岩端口无 HTTPS 信令（%s）→ 玩家域名连接仍可用，但会弹一次「信任此服务器」；配证书可免弹窗"
+            % (tls.get("hint") or "TLS 不可用"))
 
     nn = nethernet_join(ip, bport, timeout)
     out["checks"]["nethernet"] = nn
@@ -360,7 +362,7 @@ def render(results, as_json=False):
         else:
             print(f"  NetherNet(新)⚠️ {nn.get('err')}")
         tls = c.get("tls_signal", {})
-        print(f"  HTTPS 信令  {'✅ 可用（域名入口 OK）' if tls.get('ok') else '⚠️ 不可用（' + str(tls.get('hint') or tls.get('err')) + '）'}")
+        print(f"  HTTPS 信令  {'✅ 可用（域名连接无信任弹窗）' if tls.get('ok') else 'ℹ️ 无（域名仍可连，会弹一次 TOFU 信任）'}")
         if c.get("dns_tun_bypass"):
             print(f"  DNS 修正    {c['dns_tun_bypass']}")
         print(f"  基岩模式  {c.get('bedrock_mode')}")
