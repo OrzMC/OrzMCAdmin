@@ -13,7 +13,30 @@ import os
 import re
 import sys
 
-import yaml
+try:  # PyYAML 不是所有解释器都装（本机 /usr/bin/python3 就没有）
+    import yaml
+
+    def parse_frontmatter(text):
+        return yaml.safe_load(text)
+
+except ImportError:  # 退化解析：只处理 frontmatter 用到的 key: value / [a, b] / 引号串
+    def parse_frontmatter(text):
+        out = {}
+        for raw in text.splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or ":" not in line:
+                continue
+            k, v = line.split(":", 1)
+            k, v = k.strip(), v.strip()
+            if v.startswith("[") and v.endswith("]"):
+                out[k] = [x.strip().strip("'\"") for x in v[1:-1].split(",") if x.strip()]
+            elif len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+                out[k] = v[1:-1]
+            elif v.lower() in ("true", "false"):
+                out[k] = v.lower() == "true"
+            else:
+                out[k] = v
+        return out
 
 os.chdir(os.path.expanduser("~/.hermes/skills/gaming/orzmc"))
 txt = open("SKILL.md", encoding="utf-8").read()
@@ -24,7 +47,7 @@ mentioned = set(re.findall(r"references/([A-Za-z0-9_\-\.]+\.md)", txt))
 ok = True
 print("① frontmatter")
 m = re.match(r"---\n(.*?)\n---\n", txt, re.S)
-d = yaml.safe_load(m.group(1))
+d = parse_frontmatter(m.group(1))
 print(f"   name={d['name']} version={d['version']} desc={len(d['description'])}字符")
 if not d.get("version"):
     ok = False
