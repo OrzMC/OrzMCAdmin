@@ -359,8 +359,9 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 
 | 任务 | job_id | 计划 | 脚本 | 模式 | 行为 |
 |:--|:--|:--|:--|:--|:--|
-| MC 三端版本巡检 | `0b4298821a86` | 每日 10:00 | `~/.hermes/scripts/mc_version_check.py` | 脚本输出 + agent 解读（skills=orzmc, toolsets=terminal/file/web）| 查核心+19 插件最新版 vs 本地部署 → 有差异发飞书询问用户 |
-| 三端配置审查 | `ab06b886c39f` | 每周一 9:15 | `~/.hermes/scripts/orzmc_config_audit.sh` | 同上（toolsets=terminal/file）| 只审查不重启：Exa+MCSM 并发拉取 77 配置 → cmp3 对比 → 报告落盘 references/ |
+| ~~MC 三端版本巡检~~ | ~~`0b4298821a86`~~ | ~~每日 10:00~~ | `~/.hermes/scripts/mc_version_check.py` | — | **已停用，并入周巡检 d81c8325fe8b 第③部分**（2026-11-06 核对 cron 列表确认不存在） |
+| ~~三端配置审查~~ | ~~`ab06b886c39f`~~ | ~~每周一 9:15~~ | `~/.hermes/scripts/orzmc_config_audit.sh` | — | **已停用，并入周巡检 d81c8325fe8b 第①部分**（同上） |
+| **orzmc MC 每周巡检（唯一入口）** | `d81c8325fe8b` | 每周一 9:00 | 五部分脚本（配置审查/插件质量/版本巡检/健康体检/连通性体检） | agent（skills=orzmc；toolsets=terminal/file/web） | 只读巡检 + 报告落盘 + 汇报；不自动升级/重启 |
 | **NetherNet advertise 同步** | `8582a0f31644`（**跑在 Windows 端 Hermes**，不是 Mac） | 每 15 分钟 | `%LOCALAPPDATA%\hermes\scripts\nethernet_advertise_sync.py` | no_agent watchdog | DoH 查真 A 记录 → 与 paper/folia 的 `advertise-addresses` 比对 → 变更时改写 + `geyser reload`；无变化静默（日志 `%LOCALAPPDATA%\hermes\logs\nethernet-advertise-sync.log`） |
 
 > ⚠️ **跨端查 cron 必须两端都看**：Windows 那台也跑着独立 Hermes（`gateway run` 进程 + `%LOCALAPPDATA%\hermes\cron\jobs.json`），Mac 端 `jobs.json` 里看不到它的任务。
