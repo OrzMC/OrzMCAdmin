@@ -100,7 +100,7 @@ bedrock:
 | 测试服 paper | `both` | 19132 → webrtc **19134** | `["<公网IP>:19134"]`（写死，因宿主 Clash） | RakNet ✅ / NetherNet ✅ |
 | 测试服 folia | `both` | 19132（宿主 19133）→ webrtc **19135** | `["<公网IP>:19135"]` | RakNet ✅ / NetherNet ✅ |
 | 国内服生产 | `both` | 19132 → webrtc **19134** | `["<域名>:19134"]` | RakNet 39~66ms ✅ / NetherNet 80~116ms ✅ |
-| 海外服 Exaroton | `nethernet` | 对外 `{SERVER_NAME}.exaroton.me:39742` | `["<域名>:39742"]`（应显式写） | 待切：**Exaroton 只分配单端口 → `both` 不可行**，只能 `nethernet` 单端口 + `clone-remote-port: true`（让 bedrock 端口跟随 Java 对外端口）；当前 `port: 19132` + `clone-remote-port: false` = 外部根本到不了 19132，基岩必然连不上 |
+| 海外服 Exaroton | `nethernet` | 对外 `{SERVER_NAME}.exaroton.me:39742` | `["{SERVER_NAME}.exaroton.me:39742"]`（已改） | **2026-11-09 已按单端口修正**：`clone-remote-port: true` + `webrtc-port: 0` + 显式 advertise 对外端口；原因 = **Exaroton 只分配单端口，`both` 不可行**，且原先 `port: 19132` + `clone-remote-port: false` 导致外部根本到不了 19132。待启动验证 |
 
 **每次都要问的 3 个问题**：① `transport` 是啥（`nethernet` 时 RakNet 无应答属正常）② UDP 端口实际放行了哪些（TCP 通 ≠ 玩家能玩）③ `advertise-addresses` 下发的地址客户端真的能到吗（宿主机有代理时优先怀疑这里）。
 
