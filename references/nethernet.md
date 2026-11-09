@@ -100,7 +100,7 @@ bedrock:
 | 测试服 paper | `both` | 19132 → webrtc **19134** | `["<公网IP>:19134"]`（写死，因宿主 Clash） | RakNet ✅ / NetherNet ✅ |
 | 测试服 folia | `both` | 19132（宿主 19133）→ webrtc **19135** | `["<公网IP>:19135"]` | RakNet ✅ / NetherNet ✅ |
 | 国内服生产 | `both` | 19132 → webrtc **19134** | `["<域名>:19134"]` | RakNet 39~66ms ✅ / NetherNet 80~116ms ✅ |
-| 海外服 Exaroton | `nethernet` | 对外 `{SERVER_NAME}.exaroton.me:39742` | `["{SERVER_NAME}.exaroton.me:39742"]`（已改） | **2026-11-09 已按单端口修正**：`clone-remote-port: true` + `webrtc-port: 0` + 显式 advertise 对外端口；原因 = **Exaroton 只分配单端口，`both` 不可行**，且原先 `port: 19132` + `clone-remote-port: false` 导致外部根本到不了 19132。待启动验证 |
+| 海外服 Exaroton | `nethernet`（平台强制） | **Java `{SERVER_NAME}.exaroton.me:39742` / 基岩 同域名:19132** | 平台环境变量注入（手改无效） | **已启动实测 2026-11-09**：`:19132/tcp` → 308 重定向到 `https://<域名>/v1/join` → 200（protocol 2225/26.60, transportLayer 2）；Java :39742 ✅。⚠️ 用 :39742 测基岩必失败（那是 Java 端口），详见 §5.6 |
 
 **每次都要问的 3 个问题**：① `transport` 是啥（`nethernet` 时 RakNet 无应答属正常）② UDP 端口实际放行了哪些（TCP 通 ≠ 玩家能玩）③ `advertise-addresses` 下发的地址客户端真的能到吗（宿主机有代理时优先怀疑这里）。
 
@@ -179,6 +179,33 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 **自检（在服务器主机上跑）**：`Resolve-DnsName <域名>` 必须回真实公网 IP；`curl -s https://ifconfig.me` 必须等于该域名的 A 记录。任一不符 → 用 IP 写法。
 
 **测试服现有守护（勿重复造轮子）**：Windows 端 Hermes cron `8582a0f31644`（`orzmc-nethernet-advertise-sync`，**每 15 分钟**，no_agent watchdog，无变化静默）→ 跑 `scripts/nethernet_advertise_sync.py`：DoH 取真 A 记录 → 比对 paper/folia 两份 config 的 `advertise-addresses` → 不同则改写 + `geyser reload`（不重启服务器、不踢 Java 玩家）。日志 `%LOCALAPPDATA%\hermes\logs\nethernet-advertise-sync.log`。注意：Windows 上也有独立 Hermes（gateway 进程 + `%LOCALAPPDATA%\hermes\cron\jobs.json`），跨端查 cron 不要只看 Mac。
+
+### 5.6 Exaroton 平台特例（2026-11-09 启动实测）
+
+Exaroton（Aternos 系）**自己托管 NetherNet**，会强制覆盖 Geyser 配置，手改 `advertise-addresses` / 端口无效：
+
+| 启动日志（平台注入） | 含义 |
+|:--|:--|
+| `Config option [bedrock, signaling, advertise-addresses] set from environment variable GEYSER_BEDROCK_SIGNALING_ADVERTISE_ADDRESSES` | advertise 由平台下发 |
+| `Transport set from system property: nethernet` | transport 强制 nethernet |
+| `Port set from system property to match Java server` | bedrock 端口跟随 Java 端口 |
+| `NetherNet (WebRTC) port set from system property: 19132` | WebRTC 固定在容器内 19132 |
+| `Built-in signaling started on http://0.0.0.0:19132` | 信令容器内起在 19132 |
+| `webrtc-proxy-protocol-relays` / `signaling-trusted-proxies` 也由环境变量注入 | 平台用 PROXY protocol 中继 |
+| `Signaling response headers ... X-Aternos-WebRTC-Proxy-Protocol` | 信令应答带平台专用头 |
+
+**玩家该填什么**：
+
+| 版本 | 地址 | 实测 |
+|:--|:--|:--|
+| Java | `{SERVER_NAME}.exaroton.me:39742`（端口动态，以面板为准） | ✅ 协议握手正常 |
+| **基岩** | **`{SERVER_NAME}.exaroton.me:19132`**（固定 19132，不是 Java 端口） | ✅ 308 → `https://<域名>/v1/join` → 200（2225/26.60） |
+
+**判定口径**：
+1. 用 Java 端口（39742）测基岩必定失败（TCP 只认 Minecraft 协议，HTTP 直接 0 字节断开；UDP 无 RakNet/STUN 应答）——**不要拿它当故障**。
+2. 基岩正确探法：`TCP <公网IP>:19132` 发 `GET /v1/join` → 期待 **308 + Location: https://<域名>/v1/join**，跟随该 URL 应得 200 JSON。
+3. 启动日志出现 `Geyser is configured to expect PROXY protocol on the WebRTC port` **属正常**（平台中继设计，不是配置错），别按官方提示去清空 `webrtc-proxy-protocol-relays`（那是自建服的建议）。
+4. 服务器离线时改配置文件虽然成功（PUT 200），但**运行时仍以平台环境变量为准**。
 
 ## 6. 验证方法（含本机大坑）
 
