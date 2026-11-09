@@ -78,6 +78,7 @@ required_commands: [java, curl, tar]
 > | 主题 | 文档 | 内容 |
 > |:--|:--|:--|
 > | 巡检报告与案例复盘 | `references/config-drift-report-20261019.md` | 两端配置漂移报告 · 2026-10-19（周巡检） |
+> | 巡检报告与案例复盘 | `references/config-drift-report-20261109.md` | 两端配置漂移报告 · 2026-11-09（周巡检）：面板 `files/list` 正常但 `files/download` 100% 失败（404/拉流失败）→ SSH 直读 66/66 兜底；一致 32 / 差异 27 / 运行时 8（与 11-02 同批，无新增无闭环）；**新发现国内服生产 `{SERVER_HOST}` 基岩入口不可用**（本机 TUN 探测不可信 → check-host 外部三节点 `19132/tcp` 全部 Connection refused，对照 25565 OK）；**解析修正：Geyser `advertise-addresses` 实为 `["{HOME_IP}:19134"/":19135"]`，审计工具多行 YAML 假阴性**；paper 核心 237→244 STABLE、Exa OrzMC 1.0.29→1.0.30 Release 可升；健康两项 WARN 系日志跨日轮转假阳性；8 项待决策 |
 > | 巡检报告与案例复盘 | `references/config-drift-report-20261102.md` | 两端配置漂移报告 · 2026-11-02（周巡检）：**面板 `/download` 通道全量 502 → SSH 直读兜底**（66 件全量：核心 7 + 插件 59）；一致 31 / 差异 26 / 运行时 8；新增「生产端 prison cell_location 仍是空中示例值」；4 项待决策（脚本 SSH 兜底、生产牢房坐标、GetMeHome/EzShops 差异、Geyser transport） |
 > | 巡检报告与案例复盘 | `references/config-drift-report-20261026.md` | 两端配置漂移报告 · 2026-10-26（周巡检 · **补跑全量版**）：58 件全量对比（核心 7 + 插件 51）、**SSH 直读 Windows 实例目录取证法**、17 项插件差异（10 值差异 + 7 生产缺插件：Geyser transport/EzShops game-mode/WE 黑名单/bStats 等）、7 项待决策；晨间降级版存档 `config-drift-report-20261026-0942-degraded.md`（含 apiKey 轮换假阴性教训） |
 > | 巡检报告与案例复盘 | `references/config-drift-report-20261026-0942-degraded.md` | 两端配置漂移报告 · 2026-10-26 **晨间 09:42 降级版存档**（面板 apiKey 被轮换 → 插件配置仅覆盖 3 件；含「假阴性/静默空转」根因与内存层密钥覆盖应急法，已被晚间补跑版取代） |
@@ -120,6 +121,7 @@ required_commands: [java, curl, tar]
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.3.1 | 2026-11-09 | **巡检工具三缺陷修复**（均实测验证）：① `orzmc_config_audit.sh` 的 `$MCSM_N）` 全角括号在 bash 3.2 下 unbound → 全脚本改为 `${VAR}` 形式（脚本化扫描拦截）② `nethernet_advertise_sync.py` 的 `advertise-addresses` 正则只认单行，而 Geyser 重启会把值重写成「键一行、值一行」→ 每轮误判为漂移；改为 `read_advertised()/set_advertised()` 兼容单行 flow / 分行 flow / 块列表（4 形态单测通过）③ `orzmc_quality_report.py`：单测失败会连带 `integrationTest` 不跑（实测只剩 test 目录）、缺 jacoco 报告时 `trend(None, prev)` 抛 TypeError、`jacocoTestReport` 依赖 `:test` 导致覆盖率永远刷新不了 → 拆成三段独立跑（`-x test -x integrationTest` 断开依赖）+ None 保护 + 陈旧数据标注；实测输出「单测 ❌ · 集成 ✅ · 覆盖率 ✅」，覆盖率从陈旧 77% 刷新为真实 81.9%。另：**Exaroton 只分配单端口** → `both` 模式在 Exa 不可行，只能 `nethernet` 单端口 + `clone-remote-port: true` + advertise 写「对外端口」 |
 | 2.3.0 | 2026-11-02 | **技能整理 + NetherNet 生产端定案**：生产端从 `nethernet` 单端口切到 **`both`**（`webrtc-port: 19134`，`advertise-addresses: ["<域名>:19134"]`），实测 RakNet 39~66ms + NetherNet 80~116ms 双通；新增 §5.0 三端现状速查表、§5.5 IP/域名/留空三写法取舍（**宿主机跑 Clash 时必须写数字 IP**）；§5.2 端口清单转为「已放通核对表」；清理变更记录重复行（两条 2.2.0 合并）；三端拓扑/定时任务清单补 Windows 端 Hermes（job `8582a0f31644`） |
 | 2.2.1 | 2026-11-02 | **纠正「域名必须 HTTPS」的错误结论**（域名+无证书实测可连；两端 TLS 探测一致）；生产端真因 = STUN 下发地址错，改显式 `advertise-addresses` 后恢复；`connectivity_check.py` 降噪（RakNet 无应答 / 无 HTTPS 信令记 ℹ️ 不记 WARN）；新增 `scripts/conn_watch.py` 玩家入场监听（改完网络配置后验「玩家到底能不能进」）；`both` 模式 `advertise-addresses` 端口必须等于 `webrtc-port` |
 | 2.2.0 | 2026-11-02 | **版本纪律定档**（插件只跟 release / 核心只升 STABLE+BETA / OrzMC 豁免，含「先按 version_type 过滤再比版本」坑）；**巡检扩为五部分**（+健康体检 +统一连通性体检）；`connectivity_check.py`（Java + 基岩 RakNet/NetherNet 双协议 + HTTPS 信令 + 外部节点，自动绕 TUN fake-IP）与 `conn_watch.py`（玩家入场监听）；配置审查接 SSH 直读兜底；TPS 改读 `latest.log`（兼容 Folia 分区）；NetherNet 文档按 2.12.1 实装键名重写；Exaroton 文件 API 端点纠正 + `exa_sync_plugins.py` |
@@ -156,6 +158,7 @@ ViaVersion 最新一条是 `5.12.3-SNAPSHOT`，只看「最新一条」会把整
 **脚本双副本纪律**：cron 用的权威副本在 `~/.hermes/scripts/`，技能 `scripts/` 下的同源副本仅供分发——**只改一边会导致下次巡检跑旧逻辑**；改完必须 `md5` 比对两份一致（或只改 cron 副本并在技能里标注版本）。
 
 > 巡检纪律：**只读**；每部分必须给「数据有效性证据」（文件数/条目数/实例数），数据源不可达时显式写「本次无效」，禁止输出假绿结论。
+> **落盘前脱敏（2026-11-09 起强制）**：报告/脚本/docstring 里的公网 IP 一律写成 `<公网IP>` / `<生产公网IP>`（域名可写）；`secret_guard` 会在 bisync 前拦截，命中即中止推送 —— 先脱敏再推送，不要绕过门禁。
 
 ## 三端拓扑（2026-10-19 老板确认，权威）
 

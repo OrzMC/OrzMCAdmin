@@ -73,10 +73,10 @@
 
 - **核心**：`papermc-test` = **Paper 26.3-223**（= fill 最新 STABLE ✅）；`folia-test` = **Folia 26.2-7**（最新 26.3-5 渠道 = **ALPHA**，按「只升 STABLE」纪律不动）
 - **待升插件（MCSM paper 实例）**：Geyser-Spigot build 1265 → **1271（2.12.0）**；LuckPerms **5.5.87 → 5.5.88**；voicechat **2.6.24 → 2.6.25**
-- **待升插件（folia-test）**：EssentialsC **4.3.4 → 4.3.5**；GriefPrevention3D **18.4.14 → 19.0.1（跨大版本）**；SCore **5.26.10.17 → 5.26.10.20**
+- **待升插件（folia-test）**：EssentialsC **4.3.4 → 4.3.5**；GriefPrevention3D **18.4.14 → 19.0.1（跨大版本）**；SCore **<公网IP> → <公网IP>**
 - 未识别 jar：**0**（映射表无需补）
 - ⚠️ **Exaroton 侧 jar 版本本轮仍无法自动盘点**：Exa v1 API 的 `/files`、`/files/list`、`/logs`、`/files/logs/latest.log` 全部 **403 Forbidden**（实测；只有已知路径的文件内容可读）→ **本节数据有效性 = MCSM 侧有效（SSH 实测 jar 清单）；Exa 侧无效/不可得**，仍属已知缺口（2026-10-12 首次记录），需面板 UI 人工盘点。
-- 其余 20 项 ✅ 一致（OrzMC 1.0.29-dev.427、WE 7.4.6、WG 7.0.20、Via 5.12.1、packetevents 2.14.0、GrimAC 2.3.74、Essentials 2.22.0、F3F4Perms 1.3.0、SkinsRestorer 15.12.6、GriefPrevention 16.18.7、AxGraves 1.32.1、ExecutableEvents 3.26.10.17、SimpleLogin 1.16.7、VaultUnlocked 2.20.3 等）
+- 其余 20 项 ✅ 一致（OrzMC 1.0.29-dev.427、WE 7.4.6、WG 7.0.20、Via 5.12.1、packetevents 2.14.0、GrimAC 2.3.74、Essentials 2.22.0、F3F4Perms 1.3.0、SkinsRestorer 15.12.6、GriefPrevention 16.18.7、AxGraves 1.32.1、ExecutableEvents <公网IP>、SimpleLogin 1.16.7、VaultUnlocked 2.20.3 等）
 
 ## 六、第二部分：插件质量周报（gradle 全量测试）
 
@@ -90,6 +90,6 @@ commit `211c203` · 测试类 226 · **用例 2094 / 通过率 100% / 0 跳过 /
 4. **EzShops `game-mode` smp/prison + `language` en/zh**：① 登记为刻意（生产 prison 经济）② 生产改回 smp/en
 5. **测试服三插件升级**（Geyser 1271 / LuckPerms 5.5.88 / voicechat 2.6.25）：① 全部批准（按 SOP 升级并验证）② 只升 Geyser ③ 暂缓
 6. **巡检数据源改 SSH 直读**（files API 已两次致降级/假阴性）：① 批准我改 `orzmc_config_audit.sh` + `mc_version_check.py` 的 MCSM 侧走 SSH（面板兜底）② 维持现状
-7. **folia 三插件升级**（EssentialsC 4.3.5 / SCore 5.26.10.20 / GriefPrevention3D 19.0.1 跨大版本）：① 全部批准（GP3D 先备份+回滚预案）② 只升前两项 ③ 暂缓
+7. **folia 三插件升级**（EssentialsC 4.3.5 / SCore <公网IP> / GriefPrevention3D 19.0.1 跨大版本）：① 全部批准（GP3D 先备份+回滚预案）② 只升前两项 ③ 暂缓
 
 > 工具链：`cmp3_configs.py` + `cmp3_report.py`（基准 /tmp/mcsm_configs2 58 件 / 对比 /tmp/exa_configs2 50 件）；部署版本 = SSH 直读 jar 清单；质量 = `orzmc_quality_report.py`；证据 JSON `/tmp/scan_partial.json`（26 次 list 耗时）+ `/tmp/fetch_prio_ev.json`（签发/拉流失败清单）。

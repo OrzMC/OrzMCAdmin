@@ -80,30 +80,81 @@ def config_path(uuid: str) -> str:
     return f"{MCSM_DIR}/daemon/data/InstanceData/{uuid}/plugins/Geyser-Spigot/config.yml"
 
 
-def current_advertised(path: str) -> str | None:
+_ADV_KEY = re.compile(r"^(\s*)advertise-addresses:[ \t]*(.*)$", re.MULTILINE)
+
+
+def _advertise_body(lines: list[str], i: int) -> str:
+    """取 advertise-addresses 的值体：兼容单行 flow list / 下一行 flow list / 块列表。"""
+    rest = _ADV_KEY.match(lines[i]).group(2).strip()
+    if rest.startswith("[") and "]" in rest:
+        return rest
+    parts: list[str] = []
+    for line in lines[i + 1:]:
+        s = line.strip()
+        if not s or s.startswith("#"):
+            break
+        parts.append(s)
+        if s.startswith("[") and "]" in s:
+            break
+        if not s.startswith("-"):
+            break  # 已经不是列表续行
+    return " ".join(parts)
+
+
+def read_advertised(path: str) -> str | None:
+    """返回 advertise-addresses 的第一个地址（如 `<公网IP>:19134`）。
+    兼容 Geyser 重写配置后的三种形态：`[]`、`["ip:port"]` 单行、以及 key 与值分行的 flow/块列表。
+    返回 None = 没找到该键；返回 "" = 键存在但为空列表。"""
     with open(path, encoding="utf-8") as f:
-        text = f.read()
-    m = re.search(r"^\s*advertise-addresses:\s*\[(.*?)\]", text, re.MULTILINE)
-    if not m:
+        lines = f.read().splitlines()
+    for i, line in enumerate(lines):
+        if not _ADV_KEY.match(line):
+            continue
+        body = _advertise_body(lines, i)
+        m = re.search(r'"([^"]+)"', body) or re.search(r"'([^']+)'", body)
+        if m:
+            return m.group(1).strip()
+        m = re.search(r"[0-9A-Za-z\.\-]+:\d+", body)
+        return m.group(0) if m else ""
+    return None
+
+
+def current_advertised(path: str) -> str | None:
+    """兼容旧接口：返回当前 advertise 的端口。"""
+    addr = read_advertised(path)
+    if not addr:
         return None
-    first = m.group(1).split(",")[0].strip().strip('"\'')
-    return re.search(r":(\d+)$", first).group(1) if re.search(r":(\d+)$", first) else ""
+    m = re.search(r":(\d+)$", addr)
+    return m.group(1) if m else ""
 
 
 def set_advertised(path: str, value: str) -> None:
+    """改写 advertise-addresses 为单行 flow list，并清掉原来的续行（避免残留旧值）。"""
     with open(path, encoding="utf-8") as f:
-        text = f.read()
-    new, n = re.subn(
-        r'^(\s*advertise-addresses:\s*).*$',
-        lambda m: f'{m.group(1)}["{value}"]',
-        text,
-        count=1,
-        flags=re.MULTILINE,
-    )
-    if n != 1:
-        raise RuntimeError(f"未找到 advertise-addresses 行：{path}")
-    with open(path, "w", encoding="utf-8", newline="") as f:
-        f.write(new)
+        lines = f.read().splitlines()
+    for i, line in enumerate(lines):
+        m = _ADV_KEY.match(line)
+        if not m:
+            continue
+        indent, rest = m.group(1), m.group(2).strip()
+        lines[i] = f'{indent}advertise-addresses: ["{value}"]'
+        if not (rest.startswith("[") and "]" in rest):
+            j = i + 1
+            while j < len(lines):
+                s = lines[j].strip()
+                if not s or s.startswith("#"):
+                    break
+                if s.startswith("-") or s.startswith("["):
+                    j += 1
+                    if s.startswith("[") and "]" in s:
+                        break
+                    continue
+                break
+            del lines[i + 1:j]
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            f.write("\n".join(lines) + "\n")
+        return
+    raise RuntimeError(f"未找到 advertise-addresses 行：{path}")
 
 
 def mcsm_credentials() -> tuple[str, str]:
@@ -169,10 +220,7 @@ def main() -> int:
         cur_port = current_advertised(path)
         if args.verbose:
             log(f"{name}: 当前 advertise 端口={cur_port} 目标={want}")
-        with open(path, encoding="utf-8") as f:
-            head = f.read()
-        m = re.search(r'^\s*advertise-addresses:\s*\["(.*?)"\]', head, re.MULTILINE)
-        cur = m.group(1) if m else None
+        cur = read_advertised(path)
         if cur == want:
             log(f"✅ {name}: {want}（无变化）")
             continue
