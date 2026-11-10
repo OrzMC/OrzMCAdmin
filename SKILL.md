@@ -121,6 +121,7 @@ required_commands: [java, curl, tar]
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.3.3 | 2026-11-10 | **ViaVersion block-versions 安全基线落地**（堵 1.20.5～1.21.4 可利用协议）：测试服 paper/folia + Exa 已改并重启验证（`Done 108.7s / 102.4s`，Exa 无错），国内服 MCSM 待老板手动（含片段）；同轮新 Pitfalls：Geyser 报 ViaVersion outdated 不跟升（最新仅 beta）、PowerShell 下发禁非 ASCII |
 | 2.3.2 | 2026-11-09 | **第七轮升级完成（三端）**：测试服 paper = Paper **26.3-246** + Geyser **b1298** + LuckPerms **5.5.91** + WorldGuard **7.0.21**；测试服 folia = Folia **26.2-7（不动）** + Geyser b1298 + LP 5.5.91（WG 保持 7.0.19）；Exa = Paper 26.3-246 + Geyser b1298 + LP 5.5.91 + OrzMC **1.0.30**（6/6 jar sha256 一致，三端 `Done` 无 SEVERE无效）；同轮二批：folia 独有 3 件升 AxGraves **1.32.2** / ExecutableEvents **3.26.11.2** / SCore **5.26.11.2**（均 Modrinth release；升级前实读旧 SCore 为 **5.26.10.20** 而非报告写的 10.17 —— **升前必须 ls 实读文件名，勿信报告**），`Done (99.0s)`；同轮另含：国内服基岩恢复实测 both 双通、paper 备份 135.9MB 清空、Exaroton 基岩入口机制定案（nethernet.md §5.6）；S: 交付包 `orzmc-upgrade-20261109`（8 jar / 111MB zip）|
 | 2.3.1 | 2026-11-09 | **巡检工具三缺陷修复**（均实测验证）：① `orzmc_config_audit.sh` 的 `$MCSM_N）` 全角括号在 bash 3.2 下 unbound → 全脚本改为 `${VAR}` 形式（脚本化扫描拦截）② `nethernet_advertise_sync.py` 的 `advertise-addresses` 正则只认单行，而 Geyser 重启会把值重写成「键一行、值一行」→ 每轮误判为漂移；改为 `read_advertised()/set_advertised()` 兼容单行 flow / 分行 flow / 块列表（4 形态单测通过）③ `orzmc_quality_report.py`：单测失败会连带 `integrationTest` 不跑（实测只剩 test 目录）、缺 jacoco 报告时 `trend(None, prev)` 抛 TypeError、`jacocoTestReport` 依赖 `:test` 导致覆盖率永远刷新不了 → 拆成三段独立跑（`-x test -x integrationTest` 断开依赖）+ None 保护 + 陈旧数据标注；实测输出「单测 ❌ · 集成 ✅ · 覆盖率 ✅」，覆盖率从陈旧 77% 刷新为真实 81.9%。另：**Exaroton 只分配单端口** → `both` 模式在 Exa 不可行，只能 `nethernet` 单端口 + `clone-remote-port: true` + advertise 写「对外端口」（2026-11-09 已按此改 Exa：`clone-remote-port: true`、`advertise-addresses: ["{SERVER_NAME}.exaroton.me:39742"]`，改前备份在 `~/.hermes/tmp/exa-bak-20261109/`）；同日 Exa `OrzMC prison.cell_location` 对齐测试服值。**国内服生产基岩 2026-11-09 已恢复并实测**：`both` 模式 RakNet 75ms + NetherNet 117ms 双通、外部 TCP 3/3、FAIL 0；paper 的 3 份 `upgrade-bak`（135.9MB）已清空，folia 保留 2 份 | |
 | 2.3.0 | 2026-11-02 | **技能整理 + NetherNet 生产端定案**：生产端从 `nethernet` 单端口切到 **`both`**（`webrtc-port: 19134`，`advertise-addresses: ["<域名>:19134"]`），实测 RakNet 39~66ms + NetherNet 80~116ms 双通；新增 §5.0 三端现状速查表、§5.5 IP/域名/留空三写法取舍（**宿主机跑 Clash 时必须写数字 IP**）；§5.2 端口清单转为「已放通核对表」；清理变更记录重复行（两条 2.2.0 合并）；三端拓扑/定时任务清单补 Windows 端 Hermes（job `8582a0f31644`） |
@@ -376,6 +377,17 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 
 ## Pitfalls（跨后端通用）
 
+- ⚠️ **ViaVersion `block-versions` 安全基线（2026-11-10 定）**：ViaVersion 5.12.x 启动会警告「The Vanilla protocol of Minecraft 1.20.5-1.21.4 is easily exploitable」。正确解法 = 在 `plugins/ViaVersion/config.yml` 把 `block-versions: []` 改为块列表，4 个区间必须齐（缺一段等于没堵）：
+  ```yaml
+  block-versions:
+    - "1.20.5-1.20.6"
+    - "1.21-1.21.1"
+    - "1.21.2-1.21.3"
+    - "1.21.4"
+  ```
+  改完需**重启**（`/viaversion reload` 在装了 ProtocolLib 的服会踢人）。代价：这些版本的 Java 客户端会被踢（默认提示 `You are using an unsupported Minecraft version!`），**基岩不受影响**（走 Geyser 通道）。默认 `logging.log-blocked-joins: false`，要留痕得显式改 true。已落地：测试服 paper/folia + Exaroton；**国内服 MCSM 因 apikey 403 待老板手动**。
+- ⚠️ **Geyser 报 `You are using an outdated version of ViaVersion` 时不要跟着升**：ViaVersion 目前最新只有 `5.12.3-SNAPSHOT`（beta，无正式版），按「只跟 release」纪律保持 **5.12.2**，该提示属正常噪音（测试服 folia 实测）。
+- ⚠️ **PowerShell 脚本经 SSH 下发时禁止非 ASCII 字符（含 `…` `→` 中文标点）**：Windows 默认 GBK 读 UTF-8 文件 → 字符串引号失衡，报一串 `表达式或语句中包含意外的标记`，根因看起来毫无关联。脚本一律纯 ASCII + 单引号包双引号。
 - ⚠️ **对比两端差异时，必须把同一探测也打到「已知可用」的一侧作对照**；两端探测结果一致 → 该维度**不是**根因，立刻换维度。只拿失败端的数据就下结论会把排查带向错误方向（例：把「没配 TLS 证书」当成基岩连不上的根因，实际两端探测行为一致，真因是 `advertise-addresses` 下发了错地址）。定性前先问一句：这个差异在「能用的那端」存在吗？
 - ⚠️ **Geyser 切 `both` 模式：`advertise-addresses` 的端口必须等于 `webrtc-port`**（不是 `port`）。写错会变成「RakNet 老客户端能进、NetherNet 新客户端卡住」的半瘫，且两端日志都不报错 —— 只看日志永远找不到。
 - ⚠️ **服务器主机跑着 Clash/代理（TUN 模式）时，`advertise-addresses` 只能写数字公网 IP**：系统 DNS 被劫持成 `198.18.x` 假 IP（连指定公共 DNS 也一样），`stun-discovery` 探到的是**代理出口地址**（实测返回代理机 IP + 随机源端口）→ 域名写法与留空都会把玩家导到死地址。自检：主机上 `Resolve-DnsName <域名>` 必须回真公网 IP、`curl -s https://ifconfig.me` 必须等于该域名 A 记录；任一不符 → 写 IP。动态 IP 变化交给 `nethernet_advertise_sync.py` 守护。
