@@ -35,12 +35,12 @@
 
 - **Paper 26.2 与 EssentialsX 2.22 不兼容**：unsupported server version + /spawn 未注册 + op 权限全拒；排查铁律：LP 权限即时生效 / Unknown=命令未注册≠权限问题 / 本地复现须同核心构建 / 优先回退核心到插件支持版
 - **dispatchCommand 必须主线程**：异步线程调抛 `IllegalStateException: Asynchronous Command Dispatched Async`——runSync 回主线程
-- **LP API 集成三连坑**（implementation→Provider 副本 NotLoadedException / compileOnly+旧 softdepend→ClassNotFoundException / `track.promote()` 必须 `saveUser().get()` 落库）→ references/luckperms-api-integration.md
+- **LP API 集成三连坑**（implementation→Provider 副本 NotLoadedException / compileOnly+旧 softdepend→ClassNotFoundException / `track.promote()` 必须 `saveUser().get()` 落库）→ references/permission-impl.md
 - **LoginSecurity 拦截未登录玩家命令**（op 也不能免）：mineflayer 测试 spawn 后必须先 `/login <密码>`
 - **mockStatic 泄漏**：每个测试 try-with-resources 包住
 - **markAlwaysSave 配置停服后改**：运行中改会被关服保存的内存态覆盖
 - **read_file 误判中文注释 .java 为 binary**：用 sed/grep 看
-- **新增模板键 = 4 处注册清单 / 删除 = 8 处联动（见 references/orzmc-review-framework.md）**
+- **新增模板键 = 4 处注册清单 / 删除 = 8 处联动（见 references/review-framework.md）**
 - **新增模板变量（非键）也要注册白名单**：`TemplatePlaceholderValidator.allowedVarsByTemplateKey()` 必须加新变量，否则 `ConfigHealthCheck`/`ConfigBackwardCompatTest` 挂（报「模板变量未知: templates.<key> {<var>}」）。实例：PR #171 加 `duration_human` 漏注册 → 2 个测试失败
 
 ## 支持文件（references/）
@@ -48,15 +48,15 @@
 - `ezshops-maven-build.md`：EzShops 构建（jaker macOS 大小写坑）
 - `loginsecurity-build.md`：LoginSecurity 构建（Gradle 非 Maven、26.2 迁移）+ AuthModeChangedEvent name-null 报错与 null 防御修复
 - `deathchest-fix.md`：DeathChest 修复案例
-- `luckperms-api-integration.md`：LP API 直调（类加载三连坑/saveUser/AMBIGUOUS_CALL）
-- `rank-lp-integration.md`：LP 晋升幂等（promoted 标记）
-- `rank-status-display.md`：权限状态动态化
-- `orzmc-review-framework.md`：通用审核框架 + 模板键注册
-- `orzmc-review-acceptance.md`：审核框架验收
-- `orzmc-e2e-robot-testing.md`：RCON+orzdebug+Mineflayer 自动化测试
-- `orzmc-bot-command-testing.md`：Bot 命令测试
+- `permission-impl.md`：LP API 直调（类加载三连坑/saveUser/AMBIGUOUS_CALL）
+- `permission-impl.md`：LP 晋升幂等（promoted 标记）
+- `permission-impl.md`：权限状态动态化
+- `review-framework.md`：通用审核框架 + 模板键注册
+- `review-framework.md`：审核框架验收
+- `testing.md`：RCON+orzdebug+Mineflayer 自动化测试
+- `testing.md`：Bot 命令测试
 - `orzmc-entity-teleport-tnt.md`：实体传送/TNT
-- `rank-playtime-data-source.md`：在线时长数据源（stats 文件）
+- `permission-impl.md`：在线时长数据源（stats 文件）
 
 ## 脚本（scripts/）
 

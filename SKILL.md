@@ -1,7 +1,7 @@
 ---
 name: orzmc
 description: "Minecraft 运维统一技能（唯一入口）：三端服务器运维/插件构建升级/性能诊断/权限体系/测试/基岩支持（含 NetherNet 迁移），74 份参考文档 + 170+ 脚本。"
-version: 2.4.0
+version: 2.5.0
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux, windows]
@@ -47,7 +47,7 @@ required_commands: [java, curl, tar]
 > | **性能诊断（Spark 五步法、实体审计、Aikar Flags、修复方案）** | `references/performance.md` |
 > | **MCA 级世界工具链（槽位粒度合并 `scripts/merge_worlds.py` / 加速命令方块扫描 `scripts/mca_scan_fast.py` / 区块高度分析 `scripts/mca_height_scan.py`；上游 OrzMCBackup 权威实现对应关系）** | `references/mca-toolchain.md` |
 > | **插件 Bug 排查（本地复现、命令/权限分离、实体事件、版本兼容）** | `references/plugin-debugging.md` |
-> | **测试体系（分层原则、三大通道、Paper 26 陷阱、跨服 transfer；**2026-09-03 迁 MCSM 本机栈后拓扑/五连坑/启停规范见该文头部与「MCSM 本地栈」节**）** | `references/testing.md` |
+> | **测试体系（分层原则 / 三大通道 / 跨服 transfer；**附：Bot 命令测试 + 机器人 E2E + Paper 26 踩坑明细**；迁 MCSM 本机栈后拓扑/五连坑/启停规范见该文头部）** | `references/testing.md` |
 > | **LuckPerms 权限体系（API 集成、审计验收、三端同步、Bootstrap；四组增量规划与 gamemode 真值见 `permission-system.md`）** | `references/permission.md` + `references/permission-system.md` |
 > | **实体/传送门行为（事件继承、原版规则、白名单策略）** | `references/entity-portal.md` |
 > | OrzMC 统一代码仓库（submodule 资产地图：插件源码/配置库/备份工具/世界瘦身；**Bot 命令调试 orzdebug + $e 输出捕获机制 + Log4J 坑**） | `references/orzmc-repo.md` |
@@ -81,19 +81,8 @@ required_commands: [java, curl, tar]
 > | 巡检报告与案例复盘 | `references/config-drift-report-20261109.md`、`references/config-drift-report-20261102.md`、`references/config-drift-report-20261026.md`、`references/config-drift-report-20261026-0942-degraded.md`、`references/config-drift-report-20261019.md` | 周巡检漂移报告存档（最新 `-20261109`；历史版只作对比基线） |
 > | 巡检报告与案例复盘 | `references/context-trap-case-study.md` | 上下文脏数据根因链（joker / TestMember 案例实录） |
 > | 巡检报告与案例复盘 | `references/deathchest-fix.md` | DeathChest 3.0.1 修复案例（死亡瞬间下线 → 物品永久丢失） |
-> | Rank 与权限体系 | `references/lp-api-bootstrap-correction.md` | LuckPermsBootstrap 校正模式 + 权限名核实（2026-08-08 实战） |
-> | Rank 与权限体系 | `references/luckperms-api-integration.md` | LuckPerms API 软依赖集成（2026-08-07 权限链重构实战） |
-> | Rank 与权限体系 | `references/luckperms-track-api.md` | LuckPerms track API 与权限链设计（2026-08-07 决策记录） |
-> | Rank 与权限体系 | `references/orzmc-rank-system.md` | OrzMC 权限系统（rank-promotion 二期）细节 |
-> | Rank 与权限体系 | `references/perm-group-config.md` | 权限组配置（指针版 — 2026-08-12 方案①收敛） |
-> | Rank 与权限体系 | `references/plugin-default-perms.md` | 插件默认开启权限盘点（2026-08-08） |
-> | Rank 与权限体系 | `references/rank-lp-integration.md` | OrzMC Rank 模块 LP 集成：幂等与状态验证（2026-08-07 实测） |
-> | Rank 与权限体系 | `references/rank-playtime-data-source.md` | OrzMC Rank 玩家在线时长数据源调研（2026-08-07 实测，最终方案已验证） |
-> | Rank 与权限体系 | `references/rank-status-display.md` | 权限状态展示动态化 + LP track 数据卫生（2026-08-07 权限二期收尾实测） |
+> | Rank 与权限体系 | `references/permission-impl.md` | 权限体系实现细节（LP Bootstrap 校正 / API 软依赖集成 / track 与权限链设计 / Rank 模块与幂等验证 / 权限组收敛 / 默认权限盘点 / 在线时长数据源 / 权限状态展示），**9 篇合并** |
 > | Bot 与测试 | `references/easybot-delivery-verify.md` | 验证 EasyBot 通知发送（API，0.0.33+） |
-> | Bot 与测试 | `references/orzmc-bot-command-testing.md` | OrzMC Bot 命令测试 & 控制台注入（2026-08-06 实测） |
-> | Bot 与测试 | `references/orzmc-e2e-robot-testing.md` | OrzMC 权限审核框架 · 机器人自动化 E2E 测试（2026-08-07） |
-> | Bot 与测试 | `references/papermc-26-testing-pitfalls.md` | Paper 26 测试踩坑明细（2026-08-07 权限系统二期 E2E 实测） |
 > | 构建与升级 | `references/dependency-upgrade-audit.md` | 插件依赖升级核查（发版前审计，2026-08-07 实测方法） |
 > | 构建与升级 | `references/ezshops-maven-build.md` | EzShops 本地构建与部署（2026-08-09） |
 > | 构建与升级 | `references/loginsecurity-build.md` | LoginSecurity 构建与 AuthModeChangedEvent 排查（2026-08-10） |
@@ -103,9 +92,7 @@ required_commands: [java, curl, tar]
 > | 实体 / 传送门 / 传送弓 | `references/teleport-bow-chunk-analysis.md` | 传送弓「未加载区块无法传送」根因分析（2026-08-08 实测定案） |
 > | 插件来源与发布 | `references/orzmc-plugin-hangar.md` | OrzMC 插件版本渠道与升级（2026-08-04 实测，本地测试服） |
 > | 插件来源与发布 | `references/plugin-sources.md` | 插件发布渠道清单（Modrinth / Hangar 覆盖情况） |
-> | 代码审查与验收 | `references/orzmc-review-acceptance.md` | OrzMC 审核框架本地验收（2026-08-07，已全部闭环） |
-> | 代码审查与验收 | `references/orzmc-review-framework.md` | OrzMC 通用审核框架（权限系统二期，2026-08-07 落地） |
-> | 代码审查与验收 | `references/pr-review-checklist.md` | OrzMC 插件 PR 代码审查清单（2026-08-07 PR #160 review 沉淀） |
+> | 代码审查与验收 | `references/review-framework.md` | 审核框架 + 本地验收记录 + 插件 PR 审查清单，**3 篇合并** |
 >
 > | 版本 / 历史 | `references/version-baseline-history.md` | 逐轮版本基线快照（09-20→11-02）+ 协议生态演进；**历史快照，不作口径** |
 > | 版本 / 历史 | `references/changelog-archive.md` | 技能变更记录存档（< 2.3.2） |
@@ -124,6 +111,7 @@ required_commands: [java, curl, tar]
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.5.0 | 2026-11-10 | **专题文档合并（15 → 3）**：① 权限/LP/Rank 9 篇 → `permission-impl.md`（696 行，原文未改写，按 9 节分区）② 审核/PR 清单 3 篇 → `review-framework.md`（262 行）③ Bot 命令测试 + 机器人 E2E + Paper 26 踩坑 3 篇 → 并入 `testing.md`（552 行）；references **83 → 70 篇**，SKILL.md 索引行同步去重（9+3+3 行 → 3 行）；跨文件引用 15 处自动改指向；自检 70/70、0 死链 0 孤儿 PASS |
 | 2.4.0 | 2026-11-10 | **技能整理（瘦身 + 去矛盾）**：SKILL.md **91KB/416 行 → 60KB/389 行**；外置 5 份新文档（`version-baseline-history`、`orzmc-plugin-features`、`version-check-pitfalls`、`site-manual`、`changelog-archive`）；删掉 6 条互相矛盾的「当前权威」历史基线、5 份漂移报告合并为 1 行；修正 4 处与现状冲突的口径：① 投递 `download_from_url` → **scp 直投** ② ExecutableEvents「Folia 不可行」→ **3.26.11.2 已正常运行** ③ 中转/FRP → **标废弃（中转机已销毁）** ④ 版本巡检 cron → **已并入周巡检**；自检 83/83 引用、0 死链 0 孤儿 0 超长行 |
 | 2.3.4 | 2026-11-10 | **Minecraft 知识沉淀轮（文档为主）**：新增 `references/domestic-mcsm-log-runbook.md`（国内服启动日志期望值/常态告警/需留意项/Velocity 转发行/外部实测基线）；`mcsm-backend.md` 新增「调用姿势三处硬坑」（`/api/instance` 必带 uuid、列表走 POST body、command 拼 query、status 端点不存在）+ 启停耗时实测；`test-server-upgrade-sop.md` 新增 §2j 第七轮实录 + 6 条真踩过的坑（**备份必须 Move 不能 Copy**、Modrinth 无 sha256、报告版本号不可信、OrzMC 自更新、PowerShell 禁非 ASCII、Exa 不必重配 Geyser） |
 | 2.3.3 | 2026-11-10 | **ViaVersion block-versions 安全基线落地**（堵 1.20.5～1.21.4 可利用协议）：测试服 paper/folia + Exa 已改并重启验证（`Done 108.7s / 102.4s`，Exa 无错），国内服 MCSM 待老板手动（含片段）；同轮新 Pitfalls：Geyser 报 ViaVersion outdated 不跟升（最新仅 beta）、PowerShell 下发禁非 ASCII |

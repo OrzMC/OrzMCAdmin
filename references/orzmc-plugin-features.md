@@ -1,7 +1,7 @@
 # OrzMC 插件功能事实库（行为/配置语义，源码实证）
 
 > 从 `SKILL.md` 外置（2026-11-10 整理）。这些都是**插件内部行为与配置语义**，改动前先读；SKILL.md 只留索引。
-> 相关：`plugin-baseline-legacy.md`（历史版本演进）、`permission-system` 细节见 `permission.md`、`plugin-default-perms.md`。
+> 相关：`plugin-baseline-legacy.md`（历史版本演进）、`permission-system` 细节见 `permission.md`、`permission-impl.md`。
 
 ## 1. GeoIP 内网误拦截（2026-08-06 修复，OrzMC 1.0.15）
 

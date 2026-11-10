@@ -57,7 +57,7 @@
 
 - 四组增量配置（admin→builder→member→default，只配增量）；**高危节点任何组都不授**：`*`、`luckperms.*`、`minecraft.command.op`、`bukkit.command.op`、`essentials.stop/reload`
 - 双实现注意：用 GetMeHome 当家插件时 Essentials home 权限不给——家功能用 **`getmehome.user` 父权限**（2026-08-08 起合并，替代 5 个 `command.*` 分列）
-- 完整节点清单（唯一权威）：仓库 `docs/permission-groups.md`（执行清单由 `scripts/gen_perm_commands.py` 生成）；插件默认权限 → `references/plugin-default-perms.md`
+- 完整节点清单（唯一权威）：仓库 `docs/permission-groups.md`（执行清单由 `scripts/gen_perm_commands.py` 生成）；插件默认权限 → `references/permission-impl.md`
 
 ## LP 命令语法速记
 
@@ -87,12 +87,12 @@
 
 ## 支持文件
 
-- `references/perm-group-config.md`：权限组配置指针版（权威源=仓库 docs/permission-groups.md，含生成/同步流程）
+- `references/permission-impl.md`：权限组配置指针版（权威源=仓库 docs/permission-groups.md，含生成/同步流程）
 - `scripts/gen_perm_commands.py`：从权限权威文档生成 LP 命令清单（方案①：文档唯一权威）
-- `references/plugin-default-perms.md`：插件默认开启权限盘点清单
-- `references/lp-api-bootstrap-correction.md`：Bootstrap 校正模式（LP 5.5 API 细节）
+- `references/permission-impl.md`：插件默认开启权限盘点清单
+- `references/permission-impl.md`：Bootstrap 校正模式（LP 5.5 API 细节）
 - `references/context-trap-case-study.md`：上下文陷阱完整根因链
-- `references/luckperms-api-integration.md`：LP API 直调（类加载三连坑/saveUser/AMBIGUOUS_CALL——从 paper-plugin-development 迁入）
+- `references/permission-impl.md`：LP API 直调（类加载三连坑/saveUser/AMBIGUOUS_CALL——从 paper-plugin-development 迁入）
 - `scripts/scan_default_perms.py`：扫描 default:true 权限
 - `scripts/rcon_batch.js`：RCON 批量执行（2 字节 padding 协议，85 条 ≈ 30 秒）
 - `scripts/rcon_cmd.js`：RCON 单条命令
