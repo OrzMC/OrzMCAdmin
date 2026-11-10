@@ -341,6 +341,30 @@ orzmc-upgrade-YYYYMMDD/
 3. 🟡 **无版本号文件名的插件（`GriefPrevention.jar`）顺手改成 `<名>-<版本>.jar`**，让 `mc_version_check.py` 的前缀映射能识别，避免下轮报「未识别 jar」漏报升级。
 4. 🟢 面板本轮响应好（stop 20s 到位、status 查询 5~15s）；**同一面板时快时慢，脚本仍需重试 + 超时容忍**。
 
+## 2j. 2026-11-09 实录（第七轮：Paper 246 + Geyser 1298 + LP 5.5.91 + WG 7.0.21 + OrzMC 1.0.30；folia 二批三件）
+
+> 触发：老板按巡检报告批复 #2/#3/#4「纳下轮」，另追加 folia 独有三件。
+
+| 端 | 升级项 | 验证 |
+|:--|:--|:--|
+| papermc-test | Paper **237 → 246（STABLE，11-09 发布）**、Geyser **1280 → 1298**、LuckPerms **5.5.90 → 5.5.91**、WorldGuard **7.0.20 → 7.0.21** | ✅ `Paper 26.3-246-main@b31b4b5`、`Done (94.1s)`、Geyser `Done (5.49s)` |
+| folia-test | Geyser **1298**、LuckPerms **5.5.91**（WG 保持 7.0.19） | ✅ `Done (106.9s)` |
+| folia-test（二批） | AxGraves **1.32.1 → 1.32.2**、ExecutableEvents **3.26.10.17 → 3.26.11.2**、SCore **5.26.10.20 → 5.26.11.2**（三件均 Modrinth release，**SCore↔EE 必须成对升**） | ✅ 三件 `Enabling` 均出现在日志、`Done (99.0s)`、无 SEVERE |
+| Exaroton | Paper 246（平台自带）+ Geyser **1298**、LuckPerms **5.5.91**、OrzMC **1.0.29 → 1.0.30（Release）** | ✅ `Done (37.4s)`，回读 sha256 3/3 |
+
+- 交付包：`~/Downloads/orzmc-upgrade-20261109/`（8 jar / 目录 117MB / zip **111MB** / `SHA256SUMS.txt` 8 条，`unzip -t` 无错）
+- 校验链：本地 `unzip -t` 5/5 + `plugin.yml` 版本 → 测试服远端 sha256 **6/6** 一致 → Exa PUT 后回读 **3/3** 一致
+
+### 本轮新增坑（都是真踩过的）
+
+0. 🔴 **备份必须「移出目录」（Move-Item），不能只 Copy**：旧 jar 留在 `plugins/` 会与新 jar **同时被加载**（Geyser、LuckPerms 这种同 plugin 名双份尤其危险）。本轮起流程改为：`Move-Item` 到 `upgrade-bak-<日期>/` → 目录里只剩新版。
+1. 🔴 **Modrinth 只提供 `sha512` / `sha1`，不提供 `sha256`**：脚本按 `hashes["sha256"]` 取会得到 `None`，随后比对必然「不一致」→ 误判下载损坏。正确做法：把 API 返回的**所有** hash 逐项比对（`hashlib.new(alg, data)`）。
+2. 🟡 **报告里的旧版本号不可信**：本轮 SCore 实为 `5.26.10.20`（巡检报告写 `5.26.10.17`），按报告名去 Move 直接 `[skip missing]` → **升前一律 `ls` 实读文件名**。
+3. 🟡 **OrzMC 有启动自更新**：paper 侧 `1.0.29-dev.427` 启动后自动升到 `1.0.30`，不必手工投递；Exaroton 端不会自更新（平台无更新源），**必须手工上传**。
+4. 🔴 **PowerShell 脚本一律纯 ASCII**（一天内踩两次）：`…` `→` 全角括号等字符经 SSH 下发后按 GBK 解析 → 字符串引号失衡，报一串 `表达式或语句中包含意外的标记`，报错位置与真正原因毫无关系。脚本里不要输出中文。
+5. 🟢 冷启动基线更新：paper **94–109s**、folia **102–107s**、Exa **37s**（判定 `Done (` 要用本次新落的日志，别看滚动缓冲）。
+6. 🟢 **Exaroton 升级后不必改 Geyser 配置**：平台用环境变量覆盖 `transport` / 端口 / `advertise-addresses`（详见 `nethernet.md §5.6`），文件里的值只是静态声明；验收以「`<域名>:19132` 返回 308 → 跟随 HTTPS 得 `/v1/join` 200」为准。
+
 ## 3. 机制与坑
 
 1. **MCSM 面板/API stop 会置 `eventTask.ignore=true` 并落盘** → `autoRestart` 名存实亡（下次 daemon 重启内存复位，但磁盘仍 true）。测试实例本就手动启停，影响可控；如需恢复须改 Windows 侧 `InstanceConfig/<uuid>.json`。

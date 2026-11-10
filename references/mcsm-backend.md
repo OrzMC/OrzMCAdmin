@@ -75,6 +75,23 @@
 
 `-1`=忙碌 / `0`=停止 / `1`=停止中 / `2`=启动中 / `3`=运行中
 
+## 调用姿势的三处硬坑（2026-11-10 实测，全部踩过）
+
+写自动化脚本（升级/巡检）时按「直觉」拼参数会连环 400，正确姿势如下：
+
+| 目标 | 错误写法（实测报错） | 正确写法 |
+|:--|:--|:--|
+| 查实例状态 | `GET /api/instance?apikey&daemonId` → `400 Validator failed: "uuid" is required!` | `GET /api/instance?apikey&daemonId&uuid=`（**uuid 必填**，返回单实例对象，`data.status` + `data.info.currentPlayers`） |
+| 实例列表 | `GET /api/instance?apikey&daemonId&page=1&page_size=20` → 同上 400 | 列表走 **POST** `/api/instance`，`daemonId` 必须放在 **JSON body**（放 query 会报 `"daemonId" is required!`） |
+| 发控制台命令 | `POST /api/protected_instance/command` body `{"command":"list"}` → `400 Validator failed: "command" is required!` | `POST /api/protected_instance/command?apikey&daemonId&uuid&command=list`（**command 拼在 query**，不是 body） |
+| 状态查询专用端点 | `GET /api/protected_instance/status` → **404** | 该端点不存在；状态一律从 `GET /api/instance?uuid=` 的 `data.status` 读 |
+
+补充实测（同轮）：
+
+- `POST /api/protected_instance/stop` / `open` 带 `?apikey&daemonId&uuid`、body 给 `{}` 即 200；`status` 从 3 → 0 的实测耗时约 **20s**，启动到 3 约 **6s**（真正 `Done` 还要再等 90–110s 读日志）。
+- 判定「实例真的停了」要用 `status == 0` 轮询，别用固定 sleep。
+- 实例运行中日志可在 `GET /api/protected_instance/outputlog` 看，但**这是滚动缓冲区，会残留上一轮输出**（见 SKILL.md Pitfalls）——只适合粗看尾部。
+
 ## 面板「重启」卡死：服务停了不再起来（2026-10-26 实测定位）
 
 **现象（老板报障）**：面板点「重启」→ 服务关闭 → 面板一直转圈/不响应，再点「启动」也不动 → **只有点「终止」才恢复**。
