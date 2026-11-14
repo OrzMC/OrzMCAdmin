@@ -104,6 +104,8 @@ bedrock:
 
 **每次都要问的 3 个问题**：① `transport` 是啥（`nethernet` 时 RakNet 无应答属正常）② UDP 端口实际放行了哪些（TCP 通 ≠ 玩家能玩）③ `advertise-addresses` 下发的地址客户端真的能到吗（宿主机有代理时优先怀疑这里）。
 
+> ⚠️ **上表是 2026-11-02 的双实例直连形态，已被 ADR-036 取代（2026-11-12 起）**：现在唯一入口是容器 **`orzmc-velocity`**（Velocity 4.3.1 + Geyser-Velocity + EaglerXServer），宿主只发布 **25565/tcp + 19132/tcp + 19132/udp**；paper/folia 变成后端，**不再发布游戏端口、也不再承担基岩**（后端留 Geyser-Spigot 会导致 "running behind a Velocity proxy" 警告，应移除）。基岩现在是 **`transport: nethernet` 单端口**（`webrtc-port: 0` → 信令与媒体都走 19132），所以 **RakNet 老客户端（<26.60）连不上**，要兼容需改 `both` + 另开 UDP。advertise 的唯一权威文件 = `E:/orzmc/eagler/proxy/plugins/Geyser-Velocity/config.yml`。部署文档 `E:/OrzMCDeploy/docs/eaglercraft-deploy.md`、切回/回滚记录 `E:/orzmc/eagler/CUTOVER-20261112.md`。
+
 ### 5.1 已落地（2026-10-19，本地测试服 dev.{SERVER_NAME}.cn，both 模式）
 
 | 项 | paper（716c2f…） | folia（8A932D…） |
@@ -178,7 +180,13 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 
 **自检（在服务器主机上跑）**：`Resolve-DnsName <域名>` 必须回真实公网 IP；`curl -s https://ifconfig.me` 必须等于该域名的 A 记录。任一不符 → 用 IP 写法。
 
-**测试服现有守护（勿重复造轮子）**：Windows 端 Hermes cron `8582a0f31644`（`orzmc-nethernet-advertise-sync`，**每 15 分钟**，no_agent watchdog，无变化静默）→ 跑 `scripts/nethernet_advertise_sync.py`：DoH 取真 A 记录 → 比对 paper/folia 两份 config 的 `advertise-addresses` → 不同则改写 + `geyser reload`（不重启服务器、不踢 Java 玩家）。日志 `%LOCALAPPDATA%\hermes\logs\nethernet-advertise-sync.log`。注意：Windows 上也有独立 Hermes（gateway 进程 + `%LOCALAPPDATA%\hermes\cron\jobs.json`），跨端查 cron 不要只看 Mac。
+**测试服现有守护（勿重复造轮子）**：Windows 端 Hermes cron `8582a0f31644`（`orzmc-nethernet-advertise-sync`，**每 15 分钟**，no_agent watchdog，无变化静默）→ 跑 `%LOCALAPPDATA%\hermes\scripts\nethernet_advertise_sync.py`（**v4，2026-11-15 重写**）：
+- **只认数字 IP**：`advertise-addresses` 归一成 `["<局域网IP>", "<公网IP>:<信令端口>"]`（信令端口 = `webrtc-port`>0 时取它，否则取 `port`；nethernet 单端口即 19132）。不写域名——理由见上（Clash fake-ip 随时可能回归，2026-11-15 实测容器内 `getent hosts dev.{SERVER_NAME}.cn` 目前回真 IP，但不能当契约）。
+- **公网 IP 来源**：DoH（AliDNS 优先）解析 `dev.{SERVER_NAME}.cn`，绕开系统解析器。
+- **config 路径自动判定**：`ENABLE_VELOCITY=true` → `E:/orzmc/eagler/proxy/plugins/Geyser-Velocity/config.yml`（ADR-036 后的真实入口，容器 `orzmc-velocity`）；否则回落 MCSM 实例的 `plugins/Geyser-Spigot/config.yml`。
+- **生效方式**：Geyser 只在信令启动时读 advertise，Velocity 无 RCON → `docker restart orzmc-velocity`；**有玩家在线时不改不重启**，只报警（同一批待办只报一次，state 文件去重），等空档自动修。
+- 日志 `%LOCALAPPDATA%\hermes\logs\nethernet-advertise-sync.log`；state `hermes\state\nethernet-advertise.json`。
+- 注意：Windows 上也有独立 Hermes（gateway 进程 + `%LOCALAPPDATA%\hermes\cron\jobs.json`），跨端查 cron 不要只看 Mac。
 
 ### 5.6 Exaroton 平台特例（2026-11-09 启动实测）
 
