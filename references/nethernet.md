@@ -102,9 +102,9 @@ bedrock:
 | 国内服生产 | `both` | 19132 → webrtc **19134** | `["<域名>:19134"]` | RakNet 39~66ms ✅ / NetherNet 80~116ms ✅ |
 | 海外服 Exaroton | `nethernet`（平台强制） | **Java `{SERVER_NAME}.exaroton.me:39742` / 基岩 同域名:19132** | 平台环境变量注入（手改无效） | **已启动实测 2026-11-09**：`:19132/tcp` → 308 重定向到 `https://<域名>/v1/join` → 200（protocol 2225/26.60, transportLayer 2）；Java :39742 ✅。⚠️ 用 :39742 测基岩必失败（那是 Java 端口），详见 §5.6 |
 
-**每次都要问的 3 个问题**：① `transport` 是啥（`nethernet` 时 RakNet 无应答属正常）② UDP 端口实际放行了哪些（TCP 通 ≠ 玩家能玩）③ `advertise-addresses` 下发的地址客户端真的能到吗（宿主机有代理时优先怀疑这里）。
+**每次都要问的 3 个问题**：① `transport` 是啥（`nethernet` 时 RakNet 无应答属正常）② UDP 端口实际放行了哪些（TCP 通 ≠ 玩家能玩；`nethernet` 单端口只认 19132）③ `advertise-addresses` 下发的地址客户端真的能到吗（宿主机有代理时优先怀疑这里）。
 
-> ⚠️ **上表是 2026-11-02 的双实例直连形态，已被 ADR-036 取代（2026-11-12 起）**：现在唯一入口是容器 **`orzmc-velocity`**（Velocity 4.3.1 + Geyser-Velocity + EaglerXServer），宿主只发布 **25565/tcp + 19132/tcp + 19132/udp**；paper/folia 变成后端，**不再发布游戏端口、也不再承担基岩**（后端留 Geyser-Spigot 会导致 "running behind a Velocity proxy" 警告，应移除）。基岩现在是 **`transport: nethernet` 单端口**（`webrtc-port: 0` → 信令与媒体都走 19132），所以 **RakNet 老客户端（<26.60）连不上**，要兼容需改 `both` + 另开 UDP。advertise 的唯一权威文件 = `E:/orzmc/eagler/proxy/plugins/Geyser-Velocity/config.yml`。部署文档 `E:/OrzMCDeploy/docs/eaglercraft-deploy.md`、切回/回滚记录 `E:/orzmc/eagler/CUTOVER-20261112.md`。
+> ⚠️ **上表是 2026-11-02 的双实例直连形态，已被 ADR-036 取代（2026-11-12 起）**：现在唯一入口是容器 **`orzmc-velocity`**（Velocity 4.3.1 + Geyser-Velocity + EaglerXServer），宿主只发布 **25565/tcp + 19132/tcp + 19132/udp**；paper/folia 变成后端，**不再发布游戏端口、也不再承担基岩**。后端保留 Geyser-Spigot 是**设计如此、不用处理**：Geyser 自检到 Velocity 会 `Enabling Geyser-Spigot` → 立刻 `Disabling Geyser-Spigot` 自我停用（2026-11-15 实测，两后端均如此），代理模式用 Geyser-Velocity、非代理模式用 Geyser-Spigot，同一套配置两种拓扑都能跑。**基岩定案：全量 `transport: nethernet` 单端口**（`webrtc-port: 0` → 信令与媒体都走 19132），**不再考虑 `both`**（已明确：不为 26.60 以下老客户端保留 RakNet）。advertise 的唯一权威文件 = `E:/orzmc/eagler/proxy/plugins/Geyser-Velocity/config.yml`。部署文档 `E:/OrzMCDeploy/docs/eaglercraft-deploy.md`、切回/回滚记录 `E:/orzmc/eagler/CUTOVER-20261112.md`。
 
 ### 5.1 已落地（2026-10-19，本地测试服 dev.{SERVER_NAME}.cn，both 模式）
 
@@ -173,6 +173,7 @@ NetherNet WebRTC listening on UDP 19134 (or 19135 for folia)
 **关键陷阱：宿主机跑着 Clash/代理时，域名写法会废掉。** 测试服那台 Windows 实测：`dev.{SERVER_NAME}.cn` → **`198.18.1.7`（Clash TUN 假 IP）**，即使指定 `-Server 223.5.5.5` 仍是假 IP（TUN 劫持全部 DNS）；出口 IP 是**代理节点地址**而非家宽公网 IP。后果：域名解析成假 IP → advertise 玩家连不到的地址；`stun-discovery` 同样会探到代理出口 IP → 也错。该机**必须写死公网 IP**，且不能依赖 STUN。
 
 | 写法 | 适用 | 风险 |
+|:--|:--|:--|
 |:--|:--|:--|
 | `["<公网IP>:<webrtc端口>"]` | 宿主机无代理、IP 稳定（家宽 NAT） | IP 变了要改配置重启 |
 | `["<域名>:<webrtc端口>"]` | 宿主机 DNS 干净、IP 常变 | 宿主机有代理/TUN → 解析成假 IP → 全挂；启动时解析失败 → 信令不起 |
