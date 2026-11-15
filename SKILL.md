@@ -339,11 +339,15 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 |:--|:--|:--|:--|:--|:--|
 | ~~MC 三端版本巡检~~ | ~~`0b4298821a86`~~ | ~~每日 10:00~~ | `~/.hermes/scripts/mc_version_check.py` | — | **已停用，并入周巡检 d81c8325fe8b 第③部分**（2026-11-06 核对 cron 列表确认不存在） |
 | ~~三端配置审查~~ | ~~`ab06b886c39f`~~ | ~~每周一 9:15~~ | `~/.hermes/scripts/orzmc_config_audit.sh` | — | **已停用，并入周巡检 d81c8325fe8b 第①部分**（同上） |
-| **orzmc MC 每周巡检（唯一入口）** | `d81c8325fe8b` | 每周一 9:00 | 五部分脚本（配置审查/插件质量/版本巡检/健康体检/连通性体检） | agent（skills=orzmc；toolsets=terminal/file/web） | 只读巡检 + 报告落盘 + 汇报；不自动升级/重启 |
-| **NetherNet advertise 同步** | `8582a0f31644`（**跑在 Windows 端 Hermes**，不是 Mac） | 每 15 分钟 | `%LOCALAPPDATA%\hermes\scripts\nethernet_advertise_sync.py` | no_agent watchdog | DoH 查真 A 记录 → 与**当前入口**（`ENABLE_VELOCITY=true` 时为代理 `eagler/proxy/plugins/Geyser-Velocity/config.yml`，否则回落实例内 Geyser-Spigot）的 `advertise-addresses` 比对 → 变更时改写 + **`docker restart orzmc-velocity`**（有玩家在线只报警不重启；代理无 RCON，不能 `geyser reload`）；局域网条目取 `.env` 的 `LAN_HOST_IP`；无变化静默（日志 `%LOCALAPPDATA%\hermes\logs\nethernet-advertise-sync.log`） |
+| ~~orzmc MC 每周巡检（Mac 端）~~ | ~~`d81c8325fe8b`~~ | ~~每周一 9:00~~ | 五部分脚本（配置审查/插件质量/版本巡检/健康体检/连通性体检） | agent | **仅存在于 Mac 端 `~/.hermes/cron/jobs.json`，Windows 本机没有这套脚本**；测试服已整体迁到 Windows（`E:/orzmc`），Mac 那套现在盯的是空机器 —— 本机替代品见下方 `9d625c27db6d` |
+| **NetherNet advertise 同步** | `8582a0f31644`（**跑在 Windows 端 Hermes**，不是 Mac） | 每 5 分钟（2026-11-15 由 15m 收紧，缩短 `orzmc.sh up` 后基岩裸域名窗口） | `%LOCALAPPDATA%\hermes\scripts\nethernet_advertise_sync.py` | no_agent watchdog | DoH 查真 A 记录 → 与**当前入口**（`ENABLE_VELOCITY=true` 时为代理 `eagler/proxy/plugins/Geyser-Velocity/config.yml`，否则回落实例内 Geyser-Spigot）的 `advertise-addresses` 比对 → 变更时改写 + **`docker restart orzmc-velocity`**（有玩家在线只报警不重启；代理无 RCON，不能 `geyser reload`）；局域网条目取 `.env` 的 `LAN_HOST_IP`；无变化静默（日志 `%LOCALAPPDATA%\hermes\logs\nethernet-advertise-sync.log`） |
+| **入口存活探针** | `f198dd2a7e95` | 每 30 分钟 | `%LOCALAPPDATA%\hermes\scripts\orzmc_entry_probe.py` | no_agent watchdog | 6 项：`orzmc-velocity`/`orzmc-caddy` 容器状态、Java 状态包 25565、NetherNet `GET /v1/join`、网页入口 18443（TLS+SNI，期望 404 且 `Server: EaglercraftXServer`）、paper/folia 两口 RCON 认证；**全绿静默**，故障仅在新增/集合变化/每 6 小时复述，恢复发一条 ✅。**只报警不重启**（老板要求入口处置人工拍板）；日志 `%LOCALAPPDATA%\hermes\logs\orzmc-entry-probe.log` |
+| **本机周巡检** | `9d625c27db6d` | 每周一 09:15 | `%LOCALAPPDATA%\hermes\scripts\orzmc_weekly_patrol.py` | no_agent | 容器/三通道连通性/后端 TPS+人头/advertise 一致性/Paper·Folia·Geyser 版本 diff（Fill API + Modrinth）/近 7 天 ERROR·WARN+Top/磁盘·世界体积·备份新鲜度 → 末尾「需要动手」清单；只读不重启 |
 
 > ⚠️ **跨端查 cron 必须两端都看**：Windows 那台也跑着独立 Hermes（`gateway run` 进程 + `%LOCALAPPDATA%\hermes\cron\jobs.json`），Mac 端 `jobs.json` 里看不到它的任务。
 
+- 本机（Windows）现有 6 个任务：advertise 同步 5m、入口探针 30m、route-guard 10m、gateway-session-guard 5m、bisync 60m、周巡检（周一 09:15）
+- ⚠️ **实例 `eventTask.autoStart=false` + `autoRestart=false`，但容器 policy 是 unless-stopped**：断电重启后代理会自己起来、Paper/Folia 不会 → 玩家进不去。2026-11-15 老板明确要求**不要**开自动拉起，靠探针报警 + 人工处置
 - 两者脚本均读 `~/.hermes/.env` 凭据；cron 精简 PATH 实测通过（2026-08-12 全量体检）
 - 脚本维护记录：audit 脚本 `Bearer ***` bug 已修（2026-08-12）；version_check Geyser build 号比较已修（2026-08-12）
 
