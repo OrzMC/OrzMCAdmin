@@ -31,6 +31,7 @@ required_commands: [java, curl, tar]
 > | DeathChest 回归测试（死亡瞬间下线→物品丢失 ✅fix1；**动画 progress 越界卡服 ✅fix3 已合入 main 71d2571**；复现法见 ref） | `references/deathchest-regression.md` |
 > | **NetherNet 迁移（基岩新传输层：TCP 信令 + WebRTC/UDP；2.12 配置结构反编译实证 / A-B-C 三方案 / HTTPS 三做法 / 官方错误对照表 / 本机 Clash TUN 假阳性验证法；⚠️ 2026-10-27 基岩客户端停用 RakNet）。**关键实测（版本相关，勿照抄）**：**域名入口不强制 HTTPS** —— Geyser 2.12.1（build 1280）+ Bedrock 26.60 实测「域名 + `signaling.builtin.https` 留空」可正常进服（仅弹一次 TOFU 信任）；对 19132 做 TLS 探测，两端都是 ClientHello 后 EOF。**基岩连不上的真因优先查三处**：① UDP 端口未转发（TCP 通只说明信令通）② `advertise-addresses: []` 交给 STUN 猜地址（主机出网 IP ≠ 域名 A 记录时必挂）③ `transport: nethernet` 挡掉 26.40 之前的老客户端。配 HTTPS 的收益仅「免掉信任弹窗」。2026-10-20 纯 IP 全链路（`GET /v1/join` 200 → `POST /v1/join/<id>` 200 → DTLS 建连）在测试服验证通过；动态公网 IP 由 `scripts/nethernet_advertise_sync.py` + cron `orzmc-nethernet-advertise-sync`（15 分钟，静默）自动跟进 `advertise-addresses` | `references/nethernet.md` + `~/OrzMC/proxy/scripts/nethernet_check.py`（已并入 OrzMCProxy main，v1.1.0，退出码 0=可用/1=不可达/2=用法/3=降级；`--signal-port` `--scheme https` `--json` `--self-test` `--no-emoji`）；**2.12.1 权威键名表 / 单端口 vs both 语义 / 双协议验证矩阵（RakNet Pong、`GET /v1/join`、`POST` 401 是预期、匿名 STUN 不可作凭据、日志线程名区分传输层）→ 该文 §3 / §6.1**） |
 > | **Geyser 基岩支持（当前 offline 直连模式；floodgate 已回退 2026-08-05）** | `references/geyser-floodgate.md` |
+> | **「客户端能进哪些版本」判定（老板/玩家问版本范围时）：范围由入口插件而非服务端核心决定；三通道各读哪份真值（Java=ViaVersion/ViaRewind 协议类 + 减掉 block-versions、基岩=Geyser jar 版本串表 + `/v1/join`、网页=listeners.toml `[protocols]`）；回答模板与「上限=服务端版本」铁律** | `references/client-version-range.md` |
 > | **实例端口模型与审计（docker 实例必须逐条发布 `宿主:容器/协议`；端口以实例实际配置为准而非默认 25565/19132；多实例共享宿主时 UDP 错开 19132/19133；宿主≠容器 时 `clone-remote-port` 必须 false；Cloudflare Tunnel 不支持 UDP；脚本 `scripts/port-audit.py` 核对期望端口 vs 已发布 + 真实协议探测）** | `references/instance-ports.md` |
 > | **公网入口排障（域名+路由器映射+防火墙都"配好了"外网仍连不上）：根因常是本机 Clash TUN 抢默认路由 → 入站应答源地址被定成 198.18.0.1/钻进隧道；修法 = WSL 内加通用策略路由 `ip rule add from <LAN IP> table 100`（任意端口零维护，脚本 `scripts/orzmc-mc-reply-route.sh` + Windows 计划任务 OrzMC-MC-Reply-Route 每 10min 自愈）；⚠️ 老板坚持防火墙/路由器逐端口配置，勿再提 DMZ/端口段；含「ICMP 通但 TCP 全超时」判定法与外部节点验证法（勿在本机测）；**2026-10-29：家宽入站 80/443 被运营商封 → web 入口改映射高位 18443，Caddy 直连 + DNS-01（已弃 Cloudflare Tunnel）；refused=无映射 / timeout=被封** | `references/public-ingress-clash-tun.md` |
 > | **插件源码构建/开发（构建工具选择、Gradle/Maven 坑、PR 流程、发布规范；**2026-09-12 并入 paper-26-plugin-dev**：Paper 26.x Brigadier 命令注册（LifecycleEvents.COMMANDS）、幽灵命令/greedyString 参数类型等迁移 8 坑、deprecation 零警告清理）** | `references/plugin-build.md` |
@@ -352,6 +353,11 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 - 脚本维护记录：audit 脚本 `Bearer ***` bug 已修（2026-08-12）；version_check Geyser build 号比较已修（2026-08-12）
 
 ## Pitfalls（跨后端通用）
+
+- ⚠️ **手写 RCON 客户端必须循环解析「所有完整包」，不能只取首包**：一次 `recv` 里常同时带回 auth 应答 + 命令应答，只读一包会拿到上一个响应；同时返回体长度要读满（截到 80 字会把 `tps` 这类长行截残 → 字段解析恒失败，误判成「服务器没响应」）。有 `scripts/rcon.py` 就别手搓。同理：`docker ps --format '{{.Ports}}'` 会把 `0.0.0.0:` 与 `[::]:` 各报一遍，展示/比对前先去重。
+- ⚠️ **核心版本串只写在 `logs/latest.log` 头部**（`Loading Paper 26.3-246@...`）——服务跑久后日志尾部 grep 不到它，别因此判「版本读不出来」；读前 n 行再剥 ANSI。
+- ⚠️ **版本比对端点会漂移，别用记忆里的 URL**：`api.papermc.io/v2` 已 sunset（返回非 JSON / exit 23）→ 用 `https://fill.papermc.io/v3/projects/{paper,folia,velocity}/versions/<ver>/builds` 并带 `User-Agent`；Geyser 不发 GitHub release（`api.github.com/repos/GeyserMC/Geyser/releases/latest` 恒 404）→ 走 `https://api.modrinth.com/v2/project/geyser/version?loaders=["velocity"]`。单源失败只在报告里标「查询失败」，不能让整份巡检挂掉。
+- ⚠️ **探针/巡检脚本的输出纪律（老板定）**：全绿**静默**（空输出），故障靠状态文件去重（同一故障集合只在新增/变化或复述窗口到点时才说话，默认 6 小时），恢复发一条 ✅；**一律只报警、不自动重启容器/实例**——入口故障由老板人工拍板。写这类脚本时把 `REALERT_SECONDS` 和 `STATE` 文件路径做成常量，别在告警分支里塞重启命令。
 
 - ⚠️ **ViaVersion `block-versions` 安全基线（2026-11-10 定）**：ViaVersion 5.12.x 启动会警告「The Vanilla protocol of Minecraft 1.20.5-1.21.4 is easily exploitable」。正确解法 = 在 `plugins/ViaVersion/config.yml` 把 `block-versions: []` 改为块列表，4 个区间必须齐（缺一段等于没堵）：
   ```yaml
