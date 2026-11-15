@@ -75,6 +75,19 @@ sleep 120 && docker ps -a --format '{{.Names}}' | grep MCSM- || echo '实例未�
 
 → 想让「设备重启后全自动恢复」，只能二选一：配自动登录（需存密码，家庭 7×24 机器可接受），或重启后人为登录一次。不要指望以 SYSTEM 在 Session 0 启 Docker Desktop：GUI 进程落 Session 0 会白屏/GPU 崩（见 `windows-session-isolation`）。
 
+### 4b. Docker Desktop 整体停机后的恢复层次（实测形状）
+
+Docker VM 挂掉再恢复时，各层回来的方式不同，别看到域名 200 就以为「都好了」：
+
+| 层 | 停机后 | 判据 |
+|:--|:--|:--|
+| 入口容器（`orzmc-velocity` / `orzmc-caddy`） | ✅ 自动回来（`unless-stopped`） | `docker ps` 有 Up |
+| MCSM 实例（`MCSM-716c2f` / `MCSM-8A932D`） | ❌ 不回来，且 `docker ps -a` 里**连容器都没有**（daemon 以 `--rm` 跑实例） | 需人工在面板启动 |
+
+- 「实例容器消失了」不是误删，见 §3 的 `--rm` 说明；但**别只看容器**——要确认实例到底停没停干净，看实例 `logs/latest.log` 尾部：`Saving all player data` → `All RegionFile I/O tasks to complete` → `Awaiting termination of worker pool` = **优雅停机、数据安全**；有栈/`OutOfMemory` 才是崩溃。
+- Docker 停机时刻从 `%LOCALAPPDATA%/Docker/log/vm/init.log*` 的轮转时间反推；先用 `LastBootUpTime` 排除「整机重启」这个先入为主的假设（实测出现过整机未重启、只有 Docker 挂 2 小时的情况）。
+- 恢复动作是**人工**的：实例 `autoStart=false`（见 §3/§7），代理起来 ≠ 玩家能进。告诉老板三件事：入口是否绿、实例是否在跑、数据是否完好。
+
 ## 5. easybot SQLite 降级坑（属主不对 → 内存库 → 报错风暴）
 
 > **上游已修（2026-09-11）**：EasyBot #121 的 [PR #122](https://github.com/EasyIndie/EasyBot/pull/122)（chmod 失败只 warn、不再中止）与 [PR #123](https://github.com/EasyIndie/EasyBot/pull/123)（内存回退不再静默：`/ready` 报 `message_storage: ephemeral` + 503）均已合入并发布到 `:latest`。
