@@ -12,12 +12,20 @@
   ⑥ 公网可达  check-host.net 外部节点 TCP 探测（--external，需公网 IP:端口）
 
 用法:
-  python3 connectivity_check.py                      # 默认：测试服双实例（LAN）+ 生产两端
-  python3 connectivity_check.py --only paper          # 只测 paper
+  python3 connectivity_check.py                      # 默认：测试服（自动识别代理/直连模式）+ 生产端
+  python3 connectivity_check.py --only proxy          # 只测统一代理入口（proxy 模式下的目标名）
   python3 connectivity_check.py --external           # 追加外部节点 TCP 探测
   python3 connectivity_check.py --json               # 机器可读（周巡检用）
   python3 connectivity_check.py --host example.com --java 25565 --bedrock 19132   # 自定义单目标
   python3 connectivity_check.py -h
+
+测试服运行模式（2026-11-16 起自动识别，无需手改目标）:
+  proxy  = 统一代理入口（ADR-036）：25565/19132 由 orzmc-velocity 持有，
+           Paper/Folia 后端不再发布 Java/基岩端口（只剩 RCON 25575/25576）→
+           目标集 = proxy(LAN) + proxy-pub(域名) + prod-mcsm，**不再探测 25566/19133 旧端口**；
+           后端存活另用 RCON 端口 TCP 可连性表示（只测连通，不认证）。
+  direct = 旧双实例直连（回退）：paper=25565/19132、folia=25566/19133。
+  覆盖方式：ORZMC_TEST_MODE=proxy|direct 强制指定。
 
 退出码: 0=全部通过 / 1=有 FAIL / 3=仅 WARN（降级/不可判定）
 
@@ -41,14 +49,68 @@ LAN_HOST = os.environ.get("ORZMC_LAN_HOST", "192.168.0.33")
 PUBLIC_HOST = os.environ.get("ORZMC_PUBLIC_HOST", "")  # 留空则用域名 + DoH 取真值
 PUBLIC_DOMAIN = os.environ.get("ORZMC_PUBLIC_DOMAIN", "dev.{SERVER_NAME}.cn")
 
-TARGETS = {
-    # name: host, java_port, bedrock_port, webrtc_port, note
-    "paper": dict(host=LAN_HOST, java=25565, bedrock=19132, webrtc=19134, note="测试服 Paper（LAN）"),
-    "folia": dict(host=LAN_HOST, java=25566, bedrock=19133, webrtc=19135, note="测试服 Folia（LAN）"),
-    "paper-pub": dict(host=PUBLIC_HOST or PUBLIC_DOMAIN, java=25565, bedrock=19132, webrtc=19134,
-                      note="测试服 Paper（公网，域名经 DoH 解真 IP）"),
-    "prod-mcsm": dict(host="{SERVER_HOST}", java=25565, bedrock=19132, webrtc=None, note="国内服生产 MCSM"),
-}
+# 代理模式下后端唯一可见的宿主端口 = RCON（实例配置 enable-rcon 25575/25576）
+BACKEND_RCON = {"paper": 25575, "folia": 25576}
+
+
+def tcp_open(host, port, timeout=2.5):
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
+def detect_test_mode(lan=None):
+    """自动识别测试服运行模式（2026-11-16 ADR-036）
+
+    proxy  = 统一代理入口：25565/19132 由 orzmc-velocity 容器持有，两个 MCSM 实例
+             **不再发布 Java/基岩端口**（只留 RCON 25575/25576 + 语音 24454）
+    direct = 旧双实例直连：paper=25565 / folia=25566（另有 19132/19133 基岩）
+
+    判据：25566 是否可连。proxy 模式下该端口根本没发布 → 关闭。
+    两者都不可连时按当前拓扑（proxy）判定，避免因入口停机退回旧端口误报。
+    """
+    forced = os.environ.get("ORZMC_TEST_MODE", "auto").strip().lower()
+    if forced in ("proxy", "direct"):
+        return forced, "环境变量 ORZMC_TEST_MODE 强制"
+    lan = lan or LAN_HOST
+    j65 = tcp_open(lan, 25565)
+    j66 = tcp_open(lan, 25566)
+    if j65 and j66:
+        return "direct", "LAN 25565/25566 均可连 → 旧双实例直连"
+    if j65 and not j66:
+        return "proxy", "LAN 25565 可连、25566 关闭 → 统一代理入口（实例不发布 Java 端口）"
+    if not j65 and j66:
+        return "direct", "LAN 25566 可连 → 旧双实例直连"
+    return "proxy", "LAN 25565/25566 均不可连 → 入口/后端可能停机，按当前拓扑(proxy)判定"
+
+
+def build_targets(mode):
+    """按运行模式生成目标集；proxy 模式下不再出现 25566 / 19133 旧端口"""
+    prod = dict(host="{SERVER_HOST}", java=25565, bedrock=19132, webrtc=None, note="国内服生产 MCSM")
+    if mode == "proxy":
+        return {
+            "proxy": dict(host=LAN_HOST, java=25565, bedrock=19132, webrtc=None,
+                          backends=BACKEND_RCON, backends_host=LAN_HOST,
+                          note="测试服统一代理入口 Velocity（LAN；lobby=Paper / survival=Folia 经代理）"),
+            "proxy-pub": dict(host=PUBLIC_HOST or PUBLIC_DOMAIN, java=25565, bedrock=19132, webrtc=None,
+                              backends=BACKEND_RCON, backends_host=LAN_HOST,
+                              note="测试服统一代理入口（公网域名，经 DoH 解真 IP）"),
+            "prod-mcsm": prod,
+        }
+    return {
+        "paper": dict(host=LAN_HOST, java=25565, bedrock=19132, webrtc=19134, note="测试服 Paper（LAN，直连模式）"),
+        "folia": dict(host=LAN_HOST, java=25566, bedrock=19133, webrtc=19135, note="测试服 Folia（LAN，直连模式）"),
+        "paper-pub": dict(host=PUBLIC_HOST or PUBLIC_DOMAIN, java=25565, bedrock=19132, webrtc=19134,
+                          note="测试服 Paper（公网，域名经 DoH 解真 IP）"),
+        "prod-mcsm": prod,
+    }
+
+
+TEST_MODE = "proxy"
+TEST_MODE_BASIS = ""
+TARGETS = build_targets(TEST_MODE)  # main() 会按自动识别的模式重建
 
 RAKNET_MAGIC = bytes([0x00, 0xFF, 0xFF, 0x00, 0xFE, 0xFE, 0xFE, 0xFE,
                       0xFD, 0xFD, 0xFD, 0xFD, 0x12, 0x34, 0x56, 0x78])
@@ -331,6 +393,19 @@ def check_target(name, cfg, do_external=False, timeout=6):
         out["checks"]["bedrock_mode"] = "不可用 ❌"
         out["fail"].append("基岩两条通道都不通")
 
+    # 后端存活（代理模式）：实例不再发布 Java/基岩端口，RCON 端口是唯一可见信号
+    backends = cfg.get("backends") or {}
+    if backends:
+        bhost = cfg.get("backends_host") or LAN_HOST
+        bres = {b: tcp_open(bhost, p) for b, p in backends.items()}
+        out["checks"]["backends"] = bres
+        down = [b for b, ok in bres.items() if not ok]
+        if down:
+            out.setdefault("info", []).append(
+                "后端 %s 未启动（RCON %s 关闭）→ 玩家经代理进入会连接失败；测试服手动启停属预期，"
+                "持续告警由入口探针负责" % ("/".join(down),
+                                        "/".join(str(backends[b]) for b in down)))
+
     # 外部节点
     if do_external:
         out["checks"]["external_tcp"] = external_tcp(ip, jport)
@@ -339,10 +414,15 @@ def check_target(name, cfg, do_external=False, timeout=6):
     return out
 
 
-def render(results, as_json=False):
+def render(results, as_json=False, mode=None, basis=None):
     if as_json:
-        print(json.dumps(results, ensure_ascii=False, indent=1))
+        payload = results
+        if mode:
+            payload = dict(test_mode=mode, test_mode_basis=basis, targets=results)
+        print(json.dumps(payload, ensure_ascii=False, indent=1))
         return
+    if mode:
+        print(f"测试服运行模式: {mode}（{basis}）")
     for r in results:
         c = r["checks"]
         print("=" * 74)
@@ -372,6 +452,10 @@ def render(results, as_json=False):
         if c.get("dns_tun_bypass"):
             print(f"  DNS 修正    {c['dns_tun_bypass']}")
         print(f"  基岩模式  {c.get('bedrock_mode')}")
+        bk = c.get("backends")
+        if bk:
+            parts = [f"{k} {'✅' if v else '❌'}" for k, v in bk.items()]
+            print(f"  后端存活  {' / '.join(parts)}（RCON 端口 TCP 可连性，不认证）")
         ex = c.get("external_tcp")
         if ex:
             print(f"  公网 TCP  {'✅ ' + str(ex.get('ok_nodes')) + '/' + str(ex.get('total')) + ' 节点可达' if ex.get('ok') else '❌ ' + str(ex.get('err'))}")
@@ -400,9 +484,17 @@ def main():
     ap.add_argument("--timeout", type=float, default=6.0)
     a = ap.parse_args()
 
+    global TEST_MODE, TEST_MODE_BASIS, TARGETS
+    mode_basis = None
+    if not a.host:
+        TEST_MODE, TEST_MODE_BASIS = detect_test_mode()
+        TARGETS = build_targets(TEST_MODE)
+        mode_basis = (TEST_MODE, TEST_MODE_BASIS)
+
     if a.list:
+        print(f"测试服运行模式: {TEST_MODE}（{TEST_MODE_BASIS}）")
         for k, v in TARGETS.items():
-            print(f"{k:<12} {v['note']:<24} {v['host']}:{v['java']} / 基岩 {v['bedrock']}")
+            print(f"{k:<12} {v['note']:<40} {v['host']}:{v['java']} / 基岩 {v['bedrock']}")
         return 0
 
     if a.host:
@@ -418,7 +510,7 @@ def main():
         targets = TARGETS
 
     results = [check_target(n, c, a.external, a.timeout) for n, c in targets.items()]
-    render(results, a.json)
+    render(results, a.json, *(mode_basis or (None, None)))
     if any(r["fail"] for r in results):
         return 1
     if any(r["warn"] for r in results):
