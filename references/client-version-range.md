@@ -58,6 +58,8 @@ Geyser 2.12.1 的表覆盖 **Bedrock 1.20.0 → 1.26.6x**（`/v1/join` 通告的
 
 ### 网页：读 listeners.toml 的 `[protocols]`
 
+> 网页入口本身该怎么搭（有没有代理层、EaglerXPaper vs Velocity 插件、双栈与 TLS）见 `references/eagler-client-access.md`；本文只答「范围」。
+
 ```bash
 grep -nE '^\[|min_minecraft_protocol|max_minecraft_protocol' eagler/proxy/plugins/eaglerxserver/listeners.toml
 ```
