@@ -365,6 +365,26 @@ orzmc-upgrade-YYYYMMDD/
 5. 🟢 冷启动基线更新：paper **94–109s**、folia **102–107s**、Exa **37s**（判定 `Done (` 要用本次新落的日志，别看滚动缓冲）。
 6. 🟢 **Exaroton 升级后不必改 Geyser 配置**：平台用环境变量覆盖 `transport` / 端口 / `advertise-addresses`（详见 `nethernet.md §5.6`），文件里的值只是静态声明；验收以「`<域名>:19132` 返回 308 → 跟随 HTTPS 得 `/v1/join` 200」为准。
 
+## 2k. 跨大版本线 + 代理侧 Geyser 的一轮（**实例保持停止**时的验收口径）
+
+> 形态区别于 §2d–§2j：老板明确要「后端保持停止，自用验证再起」→ 本轮**只做文件层升级**，不起服验收。
+> 适用场景：入口已迁统一代理（ADR-036）后，三块要一起动 —— 实例内 Geyser-Spigot、代理侧 Geyser-Velocity、Exaroton 侧 Geyser。
+
+| 端 | 升级项 | 验收证据（无启动日志时） |
+|:--|:--|:--|
+| papermc-test（停止态） | Paper STABLE 新版 + Geyser-Spigot 新版 | 远端 `Get-FileHash` = 本地 sha256；根目录只剩单一版本化核心 jar |
+| folia-test（停止态） | Folia 跨线（26.2→26.3 STABLE）+ Geyser + EE + SCore 成对 | 同上（逐件比对） |
+| orzmc-velocity（运行中） | Geyser-Velocity 新版 | 重启后日志 `Loaded plugin geyser <版本>` + `Built-in signaling started on ...` + `Done (Xs)` |
+| Exaroton（OFFLINE） | Geyser-Spigot + WorldGuard | `PUT` 后 `GET` 回读 sha256 一致 → `DELETE` 旧 jar → `files/info/plugins/.` 确认只剩单版本 |
+
+**不起服时验收链 = 三层证据**：① 上游→本地哈希直验 ② 远端 `Get-FileHash` 与本地逐字节一致 ③ 目录里只剩目标版本（旧件已 Move 出 `plugins/`）。**启动验收留给老板自用时做**，交付包 `SYNC-GUIDE.md` 里必须写清「串行启动 + 首启会做世界数据升级 + 重点看哪几个插件 Enabling」。
+
+**代理侧 jar 换版顺序（唯一可行写法）**：备份旧 jar 到 `E:/orzmc/tmp/` → `docker stop orzmc-velocity` → `scp` 覆盖 `E:/orzmc/eagler/proxy/plugins/Geyser-Velocity.jar` → `Get-FileHash` 校验 → `docker start` → 看日志。原因见 SKILL.md Pitfalls「运行中容器的 bind mount jar 无法覆盖」。
+
+**跨大版本线（Folia 26.2 → 26.3）必须同时给出回滚路径**：`start.sh` 取 `sort -V | tail -1`，所以回滚 = 删新版核心 jar + 把 `upgrade-bak-<日期>/<旧核心>.jar` 移回根目录，无需改启动命令。跨线前用 Modrinth `game_versions` 逐件核对 folia 侧插件是否声明新版本线；查不到声明的（如 GP3D / EssentialsC / SimpleLogin）单独列成「启动时重点观察项」，不要默认它们能用。
+
+**Exaroton 写文件的定型流程**（离线校验写在脚本里，别靠记忆）：脚本开头断言 `GET /v1/servers/{id}` 的 `status == 0`，否则直接退出不写；`PUT /files/data/plugins/<name>.jar/`（body=裸字节）→ `GET` 回读 sha256 比对 → `DELETE /files/data/plugins/<旧名>.jar/` → `GET /files/info/plugins/.` 复核列表。
+
 ## 3. 机制与坑
 
 1. **MCSM 面板/API stop 会置 `eventTask.ignore=true` 并落盘** → `autoRestart` 名存实亡（下次 daemon 重启内存复位，但磁盘仍 true）。测试实例本就手动启停，影响可控；如需恢复须改 Windows 侧 `InstanceConfig/<uuid>.json`。

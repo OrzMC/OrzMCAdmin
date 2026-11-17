@@ -15,18 +15,67 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
-PLUGIN_DIR = os.path.expanduser("~/OrzMC/plugin")
-STATE_FILE = os.path.expanduser("~/.hermes/state/orzmc_quality.json")
+try:  # Windows 控制台默认 GBK：统一转 UTF-8，避免 emoji/中文触发 UnicodeEncodeError 中断巡检
+    import sys as _sys
+    _sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    _sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
+def _hermes_home():
+    """Hermes 配置目录（Windows %LOCALAPPDATA%\\hermes 优先，回退 ~/.hermes）"""
+    la = os.environ.get("LOCALAPPDATA")
+    if la:
+        cand = os.path.join(la, "hermes")
+        if os.path.isdir(cand):
+            return cand
+    return os.path.expanduser("~/.hermes")
+
+
+def _plugin_dir():
+    """插件仓路径候选（Windows 迁移后本机克隆在 E:/orzmc/src/OrzMC/plugin）"""
+    cands = [os.environ.get("ORZMC_PLUGIN_DIR", ""),
+             "E:/orzmc/src/OrzMC/plugin",
+             os.path.expanduser("~/OrzMC/plugin")]
+    for c in cands:
+        if c and os.path.isdir(c):
+            return c
+    return "E:/orzmc/src/OrzMC/plugin"
+
+
+def _gradlew():
+    """返回可直接 exec 的 gradle 入口（**必须绝对路径**：Windows CreateProcess
+    不会在 child 的 cwd 里找 `gradlew.bat`，传相对名会 FileNotFoundError WinError 2）"""
+    if os.name == "nt":
+        for c in (os.path.join(PLUGIN_DIR, "gradlew.bat"),
+                  r"E:\orzmc\tools\gradle\bin\gradle.bat"):
+            if os.path.isfile(c):
+                return c
+        return "gradle.bat"
+    for c in (os.path.join(PLUGIN_DIR, "gradlew"), "./gradlew"):
+        if os.path.exists(c):
+            return c
+    return "./gradlew"
+
+
+PLUGIN_DIR = _plugin_dir()
+STATE_FILE = os.path.join(_hermes_home(), "state", "orzmc_quality.json")
 JACOCO_XML = os.path.join(PLUGIN_DIR, "build/reports/jacoco/test/jacocoTestReport.xml")
 RUN_START = 0.0
 JACOCO_STALE = False
 
 
 def _java_env():
-    java_home = subprocess.run(
-        ["/usr/libexec/java_home", "-v", "25"], capture_output=True, text=True
-    ).stdout.strip()
+    """JAVA_HOME：Windows 用本机 Temurin 25（E:/orzmc/tools/jdk25），Mac 走 java_home"""
     env = dict(os.environ)
+    if os.name == "nt":
+        jh = env.get("JAVA_HOME") or r"E:\orzmc\tools\jdk25"
+        env["JAVA_HOME"] = jh
+        env["PATH"] = os.path.join(jh, "bin") + os.pathsep + env.get("PATH", "")
+        return env
+    java_home = subprocess.run(
+        ["/usr/libexec/java_home", "-v", "25"], capture_output=True, text=True, encoding="utf-8", errors="replace"
+    ).stdout.strip()
     if java_home:
         env["JAVA_HOME"] = java_home
     return env
@@ -34,17 +83,17 @@ def _java_env():
 
 def _gradle(*tasks, timeout=900):
     """跑一组 gradle 任务；--continue 保证同组内互不连坐。"""
-    cmd = ["./gradlew", *tasks, "--no-daemon", "-q", "--continue"]
+    cmd = [_gradlew(), *tasks, "--no-daemon", "-q", "--continue"]
     r = subprocess.run(cmd, cwd=PLUGIN_DIR, env=_java_env(),
-                       capture_output=True, text=True, timeout=timeout)
-    return r.returncode, (r.stdout[-1500:] + r.stderr[-1500:])
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
+    return r.returncode, ((r.stdout or "")[-1500:] + (r.stderr or "")[-1500:])
 
 
 def _task_exists(name):
     """任务不存在时不能硬跑（会整体失败），先探测。"""
     try:
-        r = subprocess.run(["./gradlew", "-q", "tasks", "--all"], cwd=PLUGIN_DIR,
-                           env=_java_env(), capture_output=True, text=True, timeout=300)
+        r = subprocess.run([_gradlew(), "-q", "tasks", "--all"], cwd=PLUGIN_DIR,
+                           env=_java_env(), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
         return name in r.stdout
     except Exception:
         return False
@@ -136,7 +185,7 @@ def parse_jacoco():
 def git_short_sha():
     try:
         r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=PLUGIN_DIR,
-                           capture_output=True, text=True, timeout=10)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
         return r.stdout.strip() if r.returncode == 0 else "?"
     except Exception:
         return "?"

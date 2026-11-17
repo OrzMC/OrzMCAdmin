@@ -10,6 +10,7 @@
 """
 import glob
 import os
+import pathlib
 import re
 import sys
 
@@ -38,7 +39,9 @@ except ImportError:  # 退化解析：只处理 frontmatter 用到的 key: value
                 out[k] = v
         return out
 
-os.chdir(os.path.expanduser("~/.hermes/skills/gaming/orzmc"))
+# 技能目录随平台而异（Mac ~/.hermes/skills，Windows %LOCALAPPDATA%\hermes\skills），
+# 一律按脚本自身位置定位，不写死 home 路径（原写法在 Windows 上直接 FileNotFoundError）。
+os.chdir(str(pathlib.Path(__file__).resolve().parents[1]))
 txt = open("SKILL.md", encoding="utf-8").read()
 refs = {os.path.basename(p) for p in glob.glob("references/*.md")}
 scripts = {os.path.basename(p) for p in glob.glob("scripts/*")}

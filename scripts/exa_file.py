@@ -11,12 +11,28 @@
 import urllib.request, json, os, time
 
 def _load_env():
+    """读 Hermes .env；跨平台（2026-11-16 迁移 Windows 后修复 FileNotFoundError）
+
+    顺序：%LOCALAPPDATA%\\hermes\\.env（Windows）→ ~/.hermes/.env（Mac）。
+    都不存在时返回空 dict（**不再抛异常**——调用方若已显式传 api_key/sid 就不该因为找不到 .env 而失败）。
+    """
+    import pathlib
+    cands = []
+    la = os.environ.get("LOCALAPPDATA")
+    if la:
+        cands.append(pathlib.Path(la) / "hermes" / ".env")
+    cands.append(pathlib.Path.home() / ".hermes" / ".env")
     env = {}
-    for line in open(os.path.expanduser("~/.hermes/.env")):
-        line = line.strip()
-        if line and "=" in line and not line.startswith("#"):
-            k, v = line.split("=", 1)
-            env[k.strip()] = v.strip()
+    for p in cands:
+        if p.is_file():
+            for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = line.strip()
+                if line and "=" in line and not line.startswith("#"):
+                    k, v = line.split("=", 1)
+                    env[k.strip()] = v.strip().strip('"').strip("'")
+            break
+    for k, v in env.items():
+        os.environ.setdefault(k, v)
     return env
 
 def get_exa_config():

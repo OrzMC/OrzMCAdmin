@@ -1,41 +1,60 @@
 #!/usr/bin/env python3
-"""NetherNet 公网地址自动同步（OrzMC 本地测试服）。
+"""NetherNet 公网地址守护（OrzMC 测试服）。
 
-背景：本机公网 IP 来自动态域名（家宽 NAT，路由器重启会变）→ 必须有人盯着 A 记录变化并改写配置。
-为何不用域名/留空（2026-11-02 实测，见 references/nethernet.md §5.5）：
-  · 域名写法：本机 Clash TUN 把 dev.{SERVER_NAME}.cn 解析成 198.18.1.7（假 IP），指定 223.5.5.5 也一样
-  · 留空（靠 STUN）：实测回的是 Clash 代理出口地址（非家宽公网 IP）+ 随机源端口，完全不可用
-  · 故本机只能写死数字公网 IP（2.12.0 反编译确认 EndpointAddress 只收数字 IP；2.12.1 虽支持域名但要求启动时解析成功）
+背景：基岩 26.60+ 走 NetherNet，客户端必须能直达服务端 advertise 的地址。
+本机跑 Clash TUN，`stun-discovery` 会探到代理出口（不是家宽 IP），所以必须显式配置
+`bedrock.signaling.advertise-addresses`；家宽 IP 动态（DDNS），所以要有人盯着。
 
-本脚本：DoH 解析域名 → 与两个实例的 advertise-addresses 比对 → 不同则改配置并
-`geyser reload`（只重载 Geyser，不踢 Java 玩家）。
+本脚本不再依赖"域名自动生效"：本机/容器的 DNS 随时可能被 Clash fake-ip 劫持成
+198.18.x（skill nethernet.md §5.5 的实测坑），所以 advertise 只写**数字 IP**：
+  局域网 IP（给家里设备，保持原值） + 公网 IP:信令端口（由 DoH 解析域名得到）。
 
-用法：
-  python nethernet_advertise_sync.py          # 检查并自动修正（cron 用）
-  python nethernet_advertise_sync.py --dry    # 只报告
-  python nethernet_advertise_sync.py -v       # 打印详细过程
-退出码：0 正常（含"无变化"）；1 出错。
+行为（ADR-036 之后入口 = orzmc-velocity 容器里的 Geyser-Velocity，旧拓扑回落 MCSM 实例）：
+  1. 读当前在用的 Geyser 配置，算出 advertise 应是什么；
+  2. 不一致：
+     - 无人在线 → 改写配置 + 重启入口容器（Geyser 只在信令启动时读 advertise）
+     - 有玩家在线 → 不改不重启，只报警，等人工挑空档
+  3. 一致 → 静默退出。
+
+用法：python nethernet_advertise_sync.py [--dry] [-v]
+退出码：0 正常/无变化；3 需要人工处理；1 出错。
 """
 from __future__ import annotations
+try:  # Windows console/pipe defaults to cp936: lock UTF-8 or emoji print raises
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 import argparse
 import glob
 import json
 import os
 import re
+import socket
+import struct
+import subprocess
 import sys
 import time
 import urllib.parse
 import urllib.request
 
 DOMAIN = "dev.{SERVER_NAME}.cn"
-MCSM_DIR = r"E:/orzmc/mcsmanager"
-INSTANCES = [
-    # (昵称, 实例 UUID, Geyser advertise 用的宿主端口)
-    ("papermc-test", "716c2fb712154c36ba5ab0f1480d3f87", 19134),
-    ("folia-test", "8A932DD47F4D42AAAD6A6A9A5FAD2A91", 19135),
+DATA_ROOT = "E:/orzmc"
+PROXY_GEYSER_GLOB = f"{DATA_ROOT}/eagler/proxy/plugins/Geyser-*/config.yml"
+MCSM_INSTANCES = [
+    ("papermc-test", "716c2fb712154c36ba5ab0f1480d3f87"),
+    ("folia-test", "8A932DD47F4D42AAAD6A6A9A5FAD2A91"),
 ]
-LOG = os.path.join(os.environ.get("LOCALAPPDATA", ""), "hermes", "logs", "nethernet-advertise-sync.log")
+ENTRY_CONTAINER = "orzmc-velocity"   # Velocity + Geyser-Velocity 入口（ADR-036）
+JAVA_STATUS = ("127.0.0.1", 25565)
+
+HERMES_DIR = os.path.join(os.environ.get("LOCALAPPDATA", ""), "hermes")
+LOG = os.path.join(HERMES_DIR, "logs", "nethernet-advertise-sync.log")
+STATE = os.path.join(HERMES_DIR, "state", "nethernet-advertise.json")
+
+DRY = False
+VERBOSE = False
 
 
 def log(msg: str) -> None:
@@ -49,26 +68,31 @@ def log(msg: str) -> None:
         pass
 
 
-def resolve_a(domain: str, verbose: bool = False) -> str:
-    """DoH 查 A 记录。Clash TUN 会把普通 DNS 变成 198.18.x 假 IP，必须走 DoH。"""
+def vlog(msg: str) -> None:
+    if VERBOSE:
+        log(msg)
+
+
+# ---------------------------------------------------------------- DNS
+def resolve_a(domain: str) -> str:
+    """DoH 查 A 记录（不走系统解析器，避开 Clash TUN fake-ip）。"""
     endpoints = [
-        ("https://1.1.1.1/dns-query", {"name": domain, "type": "A"}),
         ("https://dns.alidns.com/resolve", {"name": domain, "type": "1"}),
+        ("https://1.1.1.1/dns-query", {"name": domain, "type": "A"}),
     ]
     last = ""
     for url, params in endpoints:
         try:
             req = urllib.request.Request(
                 url + "?" + urllib.parse.urlencode(params),
-                headers={"accept": "application/dns-json", "User-Agent": "nethernet-sync/1.0"},
+                headers={"accept": "application/dns-json", "User-Agent": "nethernet-sync/4.0"},
             )
-            with urllib.request.urlopen(req, timeout=15) as r:
+            with urllib.request.urlopen(req, timeout=12) as r:
                 data = json.loads(r.read().decode())
             ips = [a["data"] for a in data.get("Answer", []) if a.get("type") == 1]
             ips = [ip for ip in ips if not ip.startswith("198.18.")]
             if ips:
-                if verbose:
-                    log(f"DoH {url} -> {ips[0]}")
+                vlog(f"DoH {url} -> {ips[0]}")
                 return ips[0]
             last = f"{url} 无 A 记录"
         except Exception as exc:  # noqa: BLE001
@@ -76,169 +100,243 @@ def resolve_a(domain: str, verbose: bool = False) -> str:
     raise RuntimeError(f"DNS 解析失败：{last}")
 
 
-def config_path(uuid: str) -> str:
-    return f"{MCSM_DIR}/daemon/data/InstanceData/{uuid}/plugins/Geyser-Spigot/config.yml"
-
-
-_ADV_KEY = re.compile(r"^(\s*)advertise-addresses:[ \t]*(.*)$", re.MULTILINE)
-
-
-def _advertise_body(lines: list[str], i: int) -> str:
-    """取 advertise-addresses 的值体：兼容单行 flow list / 下一行 flow list / 块列表。"""
-    rest = _ADV_KEY.match(lines[i]).group(2).strip()
-    if rest.startswith("[") and "]" in rest:
-        return rest
-    parts: list[str] = []
-    for line in lines[i + 1:]:
-        s = line.strip()
-        if not s or s.startswith("#"):
-            break
-        parts.append(s)
-        if s.startswith("[") and "]" in s:
-            break
-        if not s.startswith("-"):
-            break  # 已经不是列表续行
-    return " ".join(parts)
-
-
-def read_advertised(path: str) -> str | None:
-    """返回 advertise-addresses 的第一个地址（如 `<公网IP>:19134`）。
-    兼容 Geyser 重写配置后的三种形态：`[]`、`["ip:port"]` 单行、以及 key 与值分行的 flow/块列表。
-    返回 None = 没找到该键；返回 "" = 键存在但为空列表。"""
-    with open(path, encoding="utf-8") as f:
-        lines = f.read().splitlines()
-    for i, line in enumerate(lines):
-        if not _ADV_KEY.match(line):
-            continue
-        body = _advertise_body(lines, i)
-        m = re.search(r'"([^"]+)"', body) or re.search(r"'([^']+)'", body)
-        if m:
-            return m.group(1).strip()
-        m = re.search(r"[0-9A-Za-z\.\-]+:\d+", body)
-        return m.group(0) if m else ""
-    return None
-
-
-def current_advertised(path: str) -> str | None:
-    """兼容旧接口：返回当前 advertise 的端口。"""
-    addr = read_advertised(path)
-    if not addr:
-        return None
-    m = re.search(r":(\d+)$", addr)
-    return m.group(1) if m else ""
-
-
-def set_advertised(path: str, value: str) -> None:
-    """改写 advertise-addresses 为单行 flow list，并清掉原来的续行（避免残留旧值）。"""
-    with open(path, encoding="utf-8") as f:
-        lines = f.read().splitlines()
-    for i, line in enumerate(lines):
-        m = _ADV_KEY.match(line)
-        if not m:
-            continue
-        indent, rest = m.group(1), m.group(2).strip()
-        lines[i] = f'{indent}advertise-addresses: ["{value}"]'
-        if not (rest.startswith("[") and "]" in rest):
-            j = i + 1
-            while j < len(lines):
-                s = lines[j].strip()
-                if not s or s.startswith("#"):
-                    break
-                if s.startswith("-") or s.startswith("["):
-                    j += 1
-                    if s.startswith("[") and "]" in s:
-                        break
-                    continue
-                break
-            del lines[i + 1:j]
-        with open(path, "w", encoding="utf-8", newline="") as f:
-            f.write("\n".join(lines) + "\n")
-        return
-    raise RuntimeError(f"未找到 advertise-addresses 行：{path}")
-
-
-def mcsm_credentials() -> tuple[str, str]:
-    """返回 (panel_base, apikey)：apikey 取面板用户文件里第一个非空 apiKey。"""
-    key = ""
-    for p in glob.glob(f"{MCSM_DIR}/web/data/User/*.json"):
-        try:
-            d = json.load(open(p, encoding="utf-8"))
-        except Exception:  # noqa: BLE001
-            continue
-        if d.get("apiKey"):
-            key = d["apiKey"]
-            break
-    if not key:
-        raise RuntimeError("找不到可用的面板 apikey")
-    daemons = glob.glob(f"{MCSM_DIR}/web/data/RemoteServiceConfig/*.json")
-    if not daemons:
-        raise RuntimeError("找不到 RemoteServiceConfig（daemonId）")
-    daemon_id = os.path.splitext(os.path.basename(daemons[0]))[0]
-    return key, daemon_id
-
-
-def send_command(key: str, daemon_id: str, uuid: str, command: str) -> str:
-    url = "https://mcs.{SERVER_NAME}.cn/api/protected_instance/command?" + urllib.parse.urlencode(
-        {"daemonId": daemon_id, "uuid": uuid, "command": command, "apikey": key}
-    )
-    req = urllib.request.Request(
-        url,
-        data=b"{}",
-        method="POST",
-        headers={
-            "User-Agent": "Mozilla/5.0",
-            "Content-Type": "application/json; charset=utf-8",
-            "X-Requested-With": "XMLHttpRequest",
-        },
-    )
+# ---------------------------------------------------------------- config
+def live_configs() -> list[tuple[str, str]]:
+    env = ""
     try:
-        with urllib.request.urlopen(req, timeout=60) as r:
-            return f"HTTP {r.status} {r.read()[:120].decode(errors='replace')}"
+        env = open(f"{DATA_ROOT}/.env", encoding="utf-8", errors="replace").read()
+    except OSError:
+        pass
+    proxy_cfgs = sorted(glob.glob(PROXY_GEYSER_GLOB))
+    if re.search(r"(?m)^ENABLE_VELOCITY\s*=\s*true", env) and proxy_cfgs:
+        return [("velocity", c) for c in proxy_cfgs]
+    out: list[tuple[str, str]] = []
+    for name, uuid in MCSM_INSTANCES:
+        for c in sorted(glob.glob(f"{DATA_ROOT}/mcsmanager/daemon/data/InstanceData/{uuid}/plugins/Geyser-*/config.yml")):
+            out.append((name, c))
+    return out
+
+
+def read_text(path: str) -> str:
+    return open(path, encoding="utf-8", errors="replace").read()
+
+
+def yaml_scalar(text: str, key: str, default: str = "") -> str:
+    m = re.search(rf"(?m)^\s*{re.escape(key)}:\s*([^\s#]+)", text)
+    return m.group(1).strip("\"'") if m else default
+
+
+def signaling_port(text: str) -> int:
+    """both/nethernet 下媒体端口 = webrtc-port（0 表示与 port 相同）。"""
+    port = int(yaml_scalar(text, "port", "19132") or 19132)
+    try:
+        webrtc = int(yaml_scalar(text, "webrtc-port", "0") or 0)
+    except ValueError:
+        webrtc = 0
+    return webrtc if webrtc > 0 else port
+
+
+def parse_advertised(text: str) -> list[str]:
+    m = re.search(r"(?m)^(\s*advertise-addresses:\s*)\[(.*?)\]", text, re.S)
+    if not m:
+        return []
+    return [s.strip().strip("\"'") for s in m.group(2).split(",") if s.strip().strip("\"'")]
+
+
+def is_ip(host: str) -> bool:
+    return bool(re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", host))
+
+
+def is_private(host: str) -> bool:
+    return bool(re.fullmatch(r"(10|192\.168|172\.(1[6-9]|2\d|3[01]))\.\d+\.\d+", host))
+
+
+def split_host(entry: str) -> str:
+    m = re.match(r"^\[(.+)\](?::\d+)?$", entry)  # IPv6
+    if m:
+        return m.group(1)
+    if entry.count(":") == 1:
+        host, port = entry.rsplit(":", 1)
+        if port.isdigit():
+            return host
+    return entry
+
+
+def env_lan_ip() -> str:
+    """宿主局域网地址以 .env 的 LAN_HOST_IP 为真值（DHCP 换 IP 后配置里的旧值会失效）。"""
+    try:
+        env = open(f"{DATA_ROOT}/.env", encoding="utf-8", errors="replace").read()
+    except OSError:
+        return ""
+    m = re.search(r"(?m)^LAN_HOST_IP\s*=\s*([0-9.]+)", env)
+    return m.group(1) if m and is_ip(m.group(1)) else ""
+
+
+def desired_entries(text: str, public_ip: str) -> list[str]:
+    """局域网条目取 .env 的 LAN_HOST_IP；公网/域名条目一律归一成 <IP>:<信令端口>。"""
+    port = signaling_port(text)
+    lan = env_lan_ip()
+    if not lan:
+        cur = [e for e in parse_advertised(text) if is_private(split_host(e))]
+        lan = cur[0] if cur else ""
+    return ([lan] if lan else []) + [f"{public_ip}:{port}"]
+
+
+def rewrite_advertised(path: str, entries: list[str]) -> None:
+    text = read_text(path)
+    new = "advertise-addresses: [" + ", ".join(f'"{e}"' for e in entries) + "]"
+    text2, n = re.subn(r"(?m)^\s*advertise-addresses:.*$", "    " + new, text, count=1)
+    if n != 1:
+        raise RuntimeError("找不到 advertise-addresses 行")
+    if DRY:
+        return
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text2)
+
+
+# ---------------------------------------------------------------- state
+def load_state() -> dict:
+    try:
+        return json.load(open(STATE, encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(state: dict) -> None:
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    with open(STATE, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+# ---------------------------------------------------------------- players
+def java_players(host: str = JAVA_STATUS[0], port: int = JAVA_STATUS[1], timeout: float = 5.0) -> int | None:
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as s:
+            def varint(n: int) -> bytes:
+                out = b""
+                while True:
+                    b = n & 0x7F
+                    n >>= 7
+                    out += bytes([b | (0x80 if n else 0)])
+                    if not n:
+                        return out
+
+            def read_varint() -> int:
+                num = shift = 0
+                while True:
+                    chunk = s.recv(1)
+                    if not chunk:
+                        raise EOFError("连接中断")
+                    v = chunk[0]
+                    num |= (v & 0x7F) << shift
+                    if not v & 0x80:
+                        return num
+                    shift += 7
+
+            addr = host.encode()
+            body = b"\x00" + varint(767) + varint(len(addr)) + addr + struct.pack(">H", port) + b"\x01"
+            s.sendall(varint(len(body)) + body)
+            s.sendall(b"\x01\x00")
+            read_varint()
+            read_varint()
+            slen = read_varint()
+            data = b""
+            while len(data) < slen:
+                chunk = s.recv(slen - len(data))
+                if not chunk:
+                    break
+                data += chunk
+            return int(json.loads(data.decode("utf-8", "replace")).get("players", {}).get("online", 0))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def restart_entry() -> str:
+    try:
+        r = subprocess.run(["docker", "restart", ENTRY_CONTAINER], capture_output=True, text=True, timeout=240)
+        return f"docker restart {ENTRY_CONTAINER} rc={r.returncode}"
     except Exception as exc:  # noqa: BLE001
-        return f"失败: {exc}"
+        return f"重启失败: {exc}"
 
 
+# ---------------------------------------------------------------- main
 def main() -> int:
+    global DRY, VERBOSE
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dry", action="store_true", help="只检查不改写")
+    ap.add_argument("--dry", action="store_true")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
+    DRY, VERBOSE = args.dry, args.verbose
+
+    state = load_state()
+    targets = live_configs()
+    if not targets:
+        log("🔴 找不到任何在用 Geyser 配置")
+        return 1
+    vlog(f"目标配置：{[c for _, c in targets]}")
 
     try:
-        ip = resolve_a(DOMAIN, args.verbose)
+        public_ip = resolve_a(DOMAIN)
     except Exception as exc:  # noqa: BLE001
-        log(f"❌ {exc}")
+        log(f"🔴 {exc}")
         return 1
+    vlog(f"{DOMAIN} → {public_ip}")
 
-    changed: list[tuple[str, str]] = []
-    for name, uuid, port in INSTANCES:
-        path = config_path(uuid)
-        if not os.path.isfile(path):
-            log(f"❌ {name}: 配置不存在 {path}")
-            return 1
-        want = f"{ip}:{port}"
-        cur_port = current_advertised(path)
-        if args.verbose:
-            log(f"{name}: 当前 advertise 端口={cur_port} 目标={want}")
-        cur = read_advertised(path)
+    changes: list[tuple[str, str, list[str], list[str]]] = []
+    errors = 0
+    for label, cfg in targets:
+        try:
+            text = read_text(cfg)
+        except OSError as exc:
+            log(f"🔴 {label}: 读配置失败 {cfg}: {exc}")
+            errors += 1
+            continue
+        cur = parse_advertised(text)
+        if not cur:
+            log(f"🔴 {label}: advertise-addresses 为空 → STUN 会探到代理出口，新客户端拿不到可达地址")
+            errors += 1
+            continue
+        want = desired_entries(text, public_ip)
         if cur == want:
-            log(f"✅ {name}: {want}（无变化）")
+            vlog(f"✅ {label}: {cur} 已是最新")
             continue
-        changed.append((name, uuid))
-        if args.dry:
-            log(f"🟡 {name}: {cur} → {want}（dry-run 未改）")
-            continue
-        set_advertised(path, want)
-        log(f"✏️ {name}: {cur} → {want}")
+        log(f"🔁 {label}: advertise 需更新 {cur} → {want}")
+        changes.append((label, cfg, cur, want))
 
-    if not changed or args.dry:
+    if not changes:
+        if state.pop("pending_alert", None) is not None:
+            save_state(state)
+        return 0 if errors == 0 else 1
+
+    players = java_players()
+    if args.dry:
+        log(f"🟡 dry-run：{len(changes)} 处待改，在线玩家 {players}")
         return 0
+    if players is None:
+        log("⚠️ 查不到在线人数，保守处理：不改不重启，请人工确认")
+        return 3
+    if players > 0:
+        sig = "|".join(f"{label}:{','.join(want)}" for label, _cfg, _cur, want in changes)
+        if state.get("pending_alert") == sig:
+            vlog("（同一批待办已报过，静默）")
+            return 0
+        state["pending_alert"] = sig
+        save_state(state)
+        log(f"🔴 配置过期但当前有 {players} 人在线，未改动；等无人在线时脚本会自动修（或人工重启 {ENTRY_CONTAINER}）")
+        return 3
 
-    key, daemon_id = mcsm_credentials()
-    for name, uuid in changed:
-        res = send_command(key, daemon_id, uuid, "geyser reload")
-        log(f"🔄 {name}: geyser reload → {res}")
-    return 0
+    for label, cfg, _cur, want in changes:
+        try:
+            rewrite_advertised(cfg, want)
+            log(f"✏️ {label}: 已写入 {want}")
+        except Exception as exc:  # noqa: BLE001
+            log(f"🔴 {label}: 写入失败 {exc}")
+            errors += 1
+    if errors == 0:
+        state.pop("pending_alert", None)
+        save_state(state)
+        log(f"🔄 无人在线，重启入口让 Geyser 重新读取 advertise：{restart_entry()}")
+    return 0 if errors == 0 else 1
 
 
 if __name__ == "__main__":

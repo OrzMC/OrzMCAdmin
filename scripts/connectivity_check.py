@@ -34,6 +34,13 @@
 """
 from __future__ import annotations
 
+try:  # Windows 控制台默认 GBK：统一转 UTF-8，避免 emoji/中文触发 UnicodeEncodeError 中断巡检
+    import sys as _sys
+    _sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    _sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 import argparse
 import json
 import os
@@ -43,6 +50,28 @@ import sys
 import time
 import urllib.error
 import urllib.request
+
+def _load_hermes_env():
+    """补齐 Hermes .env（Windows: %LOCALAPPDATA%\\hermes\\.env；Mac: ~/.hermes/.env）
+    已存在的环境变量优先（便于手测覆盖）。2026-11-16 迁移 Windows 后新增。
+    """
+    import pathlib as _pl
+    cands = []
+    la = os.environ.get("LOCALAPPDATA")
+    if la:
+        cands.append(_pl.Path(la) / "hermes" / ".env")
+    cands.append(_pl.Path.home() / ".hermes" / ".env")
+    for p in cands:
+        if p.is_file():
+            for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+            break
+
+
+_load_hermes_env()
 
 # ---------------- 默认目标 ----------------
 LAN_HOST = os.environ.get("ORZMC_LAN_HOST", "192.168.0.33")

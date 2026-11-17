@@ -91,6 +91,40 @@ mc.example.com {
 
 证书走 **DNS-01**（国内机房/家宽 80 端口验证常不通，未备案 443 也可能被拦）；Cloudflare **橙云代理不了 25565**，只能当 DNS + 证书源，流量走自己的 443。
 
+### 证书从哪来（只知道域名、无 APIKey、只能面板手维的生产服）
+
+先按 **NS 归属**定证书来源，别再猜：
+
+```bash
+nslookup -type=NS <域名> 223.5.5.5
+# hake.dnspod.net / five.dnspod.net → DNSPod（腾讯云）；dns*.hichina.com → 阿里云
+```
+
+两条路，按「能接受多久一次人工」选：
+
+| | 手动签（控制台 DV） | 自动签（lego） |
+|:--|:--|:--|
+| 怎么做 | 云厂商免费 DV，DNS 验证加一条 `_dnsauth.<子域>` TXT，下载 **nginx 格式** → 改名 `fullchain.pem` / `privatekey.pem` | `lego --dns dnspod --domains <域名> --accept-tos run`，`DNSPOD_API_KEY` 只走环境变量 |
+| 续期 | 免费 DV 通常 **90 天**，到期重签 = 每季一次人工（没有 APIKey 就必然落在人身上） | `lego renew --days 30 --renew-hook <复制脚本>` + `schtasks /create /tn lego-renew /sc daily /st 03:30` |
+| 产物 | 注意别下成 IIS/PEM 包，nginx 格式才自带完整链 | `.crt` 已含完整链、`.key` 本身就是 PKCS#8，可直接用 |
+
+落盘与格式三条硬检查：
+
+- 证书放**服务器工作目录**（与 `server.properties` 同级），**不是** `plugins/EaglercraftXServer/`；`tls_public_chain_file` / `tls_private_key_file` 写相对工作目录的文件名。
+- `fullchain.pem` 里必须有**两段** `BEGIN CERTIFICATE`（缺中间证书 = 部分客户端/手机浏览器握手失败，本机 curl 却看不出问题）。
+- 私钥若是 PKCS#1（`BEGIN RSA PRIVATE KEY`）必须转 PKCS#8：`openssl pkcs8 -topk8 -nocrypt -in old.key -out privatekey.pem`。
+- **不要用 Cloudflare Origin 证书**：只被 Cloudflare 信任，玩家浏览器直连到 25565 会报不受信。
+- 走插件自带 TLS 时 `forward_ip` 必须 **false** —— 没有反代就不会有 `X-Real-IP` 头，置 true 会直接把连接拒掉。
+
+签完的验证（**不加 `-k`**，加了等于没验）：
+
+```bash
+curl.exe -i https://<域名>:25565/          # 期望 404/101，而不是证书错误
+openssl s_client -connect <域名>:25565 -servername <域名> </dev/null 2>&1 | grep 'Verify return code'   # 期望 0
+```
+
+别忘端口：`25565/tcp` 要在防火墙/安全组单独放行，只开 443 是本机自测通、玩家进不来的经典假绿。
+
 ## 上线验证（顺序固定）
 
 ```bash

@@ -60,6 +60,37 @@ when(mock.getOnlinePlayers()).thenReturn(online);  // ⚠️ 警告发生在这�
 
 **注意**：`@SuppressWarnings("removal")` / `("deprecation")` 的既有注解不是问题；只清本次新增的 unchecked/rawtypes。
 
+## 跑单个测试类（多模块工程必踩）
+
+```bash
+./gradlew test --tests "*WorldMaintenanceServiceTest*"        # ❌ 多模块下会失败
+./gradlew :test --tests "*WorldMaintenanceServiceTest*"       # ✅ 只跑根项目
+```
+
+**机制**：`--tests` 过滤器会应用到**每一个**子项目，子项目（如 `:orzmc-api`）里没有该测试类 → 报
+`Execution failed for task ':orzmc-api:test' > No tests found for given includes: [...]` → **BUILD FAILED**。
+这句报错极易误读为「测试类不存在/被删」，实际只是过滤器越界。跑单类定位红测时一律带模块限定任务名。
+
+## 跨平台断言：别把 `/` 写死进断言
+
+**症状**：某个测试在 Linux/macOS CI 上全绿，在 Windows 上必挂，报 `expected: <false> but was: <true>`。
+
+**根因形态**：断言里拿路径分隔符做后缀判断，如 `msg.trim().endsWith("/world")` —— Windows 的上报路径是 `...\world`，`endsWith("/world")` 恒 false，判据被静默翻转。
+
+**修复（判据看语义不看分隔符）**：取上报路径的**最后一段**再比名字，两种分隔符都兼容：
+
+```java
+String reported = msg.trim();
+String tail = reported.substring(reported.lastIndexOf('/') + 1);
+tail = tail.substring(tail.lastIndexOf('\\') + 1);
+inputIsContainer.set(!"world".equals(tail));
+```
+
+**修这类测试的验证纪律（缺一条都不算通过）**：
+1. **原失败环境**实跑该测试类（Windows）→ 绿；
+2. **POSIX 端**实跑同一测试类（macOS/Linux）→ 仍绿（证明没把原意图改掉）；
+3. 查**同 commit 的 CI**：全绿 ⇒ 说明这是「测试可移植性问题」而不是产品回归，PR 描述里写清这一点，别让人误以为是功能 bug。
+
 ## 验证步骤
 
 ```bash

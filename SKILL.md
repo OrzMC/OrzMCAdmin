@@ -1,7 +1,7 @@
 ---
 name: orzmc
 description: "Minecraft 运维统一技能（唯一入口）：三端服务器运维/插件构建升级/性能诊断/权限体系/测试/基岩支持（含 NetherNet 迁移），74 份参考文档 + 170+ 脚本。"
-version: 2.5.0
+version: 2.6.14
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux, windows]
@@ -82,7 +82,10 @@ required_commands: [java, curl, tar]
 > | 主题 | 文档 | 内容 |
 > |:--|:--|:--|
 > | 巡检报告与案例复盘 | `references/config-drift-report-20261116.md`、`references/config-drift-report-20261109.md`、`references/config-drift-report-20261102.md` | 周巡检漂移报告存档（最新 `-20261116`；历史版只作对比基线，只留最近 3 份） |
+> | 巡检报告与案例复盘 | `references/config-drift-report-20261026.md`、`references/config-drift-report-20261026-0942-degraded.md`、`references/config-drift-report-20261019.md` | 更早的漂移报告存档（2026-11-16 从 Windows 端合并回来，补全历史链） |
+> | 网页客户端 | `references/eaglerxpaper.md` | EaglerXPaper 后端接入要点（注入地址/forward_ip/X-Real-IP，2026-11-16 从 Windows 端合并） |
 > | 巡检报告与案例复盘 | `references/context-trap-case-study.md` | 上下文脏数据根因链（joker / TestMember 案例实录） |
+> | **运维端（Hermes 侧）落 Windows** | `references/hermes-ops-endpoint.md` | **职责边界 / 8 条 cron（含已退役）/ 本地适配器取代面板 API / 在 Windows 做脚本手术的 6 条纪律（编码、guard、编译、告警自测、误伤救援、PS 串行）/ 交付验收 / 回滚** |
 > | 巡检报告与案例复盘 | `references/deathchest-fix.md` | DeathChest 3.0.1 修复案例（死亡瞬间下线 → 物品永久丢失） |
 > | Rank 与权限体系 | `references/permission-impl.md` | 权限体系实现细节（LP Bootstrap 校正 / API 软依赖集成 / track 与权限链设计 / Rank 模块与幂等验证 / 权限组收敛 / 默认权限盘点 / 在线时长数据源 / 权限状态展示），**9 篇合并** |
 > | Bot 与测试 | `references/easybot-delivery-verify.md` | 验证 EasyBot 通知发送（API，0.0.33+） |
@@ -108,12 +111,28 @@ required_commands: [java, curl, tar]
 > - `~/.hermes/scripts/…` = **主机级 cron 脚本**（版本巡检 `mc_version_check.py`、配置审查 `orzmc_config_audit.sh`、`grim_kick_ban.py` 等），不在技能目录内
 > - `~/OrzMC/proxy/scripts/…` = **OrzMCProxy 仓库**脚本（`bedrock_host_check.sh/.ps1`、`bedrock_ping.py`、`nethernet_check.py`、`relay-monitor.sh` 等）
 > - `~/minecraft-bot/…` = 机器人测试脚本（mineflayer）
-> - `scripts/skill_self_check.py` = **本技能自检**（frontmatter / 死链 / 孤儿文档 / 超长行 / 私有信息计数），改完技能跑一次，期望 `结果: PASS`
+> - `scripts/skill_self_check.py` = **本技能自检**（frontmatter / 死链 / 孤儿文档 / 超长行 / 私有信息计数），改完技能跑一次，期望 `结果: PASS`。**删/改名脚本或 reference 前先 `grep -rl "<名字>" SKILL.md references/`**，把所有引用改完再删（否则自检会把旧路径报成死链——而它报的只是症状，真因是引用面没扫完）
+> - `scripts/fix_utf8_guard.py --dir <脚本目录>` = **给一批 Python 脚本补/修模块级 UTF-8 guard**（字节安全、幂等；`--check` 只体检，退出码 1=有不合格）——移植或修改 Windows 脚本后必跑，否则 emoji 告警会在 cp936 下变成 traceback
 >
 ## 最近变更（v2.x）
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.6.14 | 2026-11-17 | **4 条高频守卫合并成 1 条 `orzmc-watchdog`（`330d431ac384`，每 5 分钟），cron 8 条 → 5 条**：合并 `orzmc-entry-probe`(30m)/`orzmc-route-guard`(10m)/`orzmc-nethernet-advertise-sync`(15m)/`gateway-session-guard`(5m)。**做法是薄包装 + tick 计数，不重写任何判定逻辑**：`%LOCALAPPDATA%\hermes\scripts\orzmc_watchdog.py` 用状态文件 `state\orzmc_watchdog.json` 记 tick（只增不减），每 tick 跑 advertise-sync + session-guard，`tick%2==0` 跑 route-guard，`tick%6==0` 跑 entry-probe；每段**独立子进程 + 独立 try/except**（venv python + 绝对路径，`PYTHONPATH=""` 防污染），一段崩不影响其余段；告警按段名分节聚合（`## entry-probe` + 原文，emoji 文案不改），**全绿 stdout 为空 + 退出码 0**（沿用四条旧 job 的既成约定）；任一段 exit≠0 → 退出码 1 且其余段仍跑完；日志 `logs\orzmc-watchdog.log` 每段一行。四个原脚本**保留不删**（watchdog 要调、也是回滚路径）。这条修改**取代** 2.6.13 前「高频看守一律不合并」的结论——那条结论防的是「合成一个会把三类监控一起吞掉」，本设计的段间隔离（子进程 + 独立告警分节）正是对这个风险的正面处理，不是无视它。三条实跑自证：① 连跑 6 次 → `route-guard` 只在 tick 2/4/6、`entry-probe` 只在 tick 6、其余每 tick 都跑，6 次 stdout 全空、退出码全 0；② 临时把 `orzmc_route_guard.py` 换成 `raise SystemExit(3)` → 输出 `## route-guard ⚠️ 退出码 3`、其余段照跑、退出码 1，还原后 sha256 与备份一致 + `py_compile` 通过；③ 用**假 `docker.exe`（PATH 前置 shim）**注入真故障 → watchdog 输出带 `## entry-probe` 分节且含 `🔴` 原文，其余段正常。教训：**cron 脚本只能放 `%LOCALAPPDATA%\hermes\scripts\`**（`cron/scheduler_script.py` 硬校验路径必须在该目录内，技能目录里的副本根本不会被解析）；**验证故障路径时优先注入环境故障（PATH shim），不要去改"已验证"的脚本**——本技能旧版 entry-probe 并没有 `PROBE_SELFTEST` 开关，别照抄不存在的开关。 |
+| 2.6.13 | 2026-11-17 | **配置审查交付改成「latest 覆盖 + 快照滚动 3 份」**：原来每跑一次就落一份带时间戳报告，一天跑 6 次就积 6 份。改法：① `config-audit-latest.md` 每次运行**无条件覆盖**（latest 永远是最新结论，不会停在旧结论上）；② `config-audit-<yyyyMMdd-HHmm>.md` 快照**每次也写**（配置审查每次都有差异，不能像 selfcheck 那样只留告警那次），按文件名时间戳降序**只留最近 3 份**，第 4 份起删最旧；③ **两个落点各滚一遍** —— `E:/orzmc/reports/` 与 `deliver_dir()`（`S:` 优先；SSH/服务会话看不到 `S:` 时按 `orzmc_paths` 既有逻辑降级 `E:/orzmc/deliver`，不报错、不判失败）；④ 报告内容、比对逻辑、基线来源、`--no-save` 行为**一律不动**；⑤ 实跑自证：连跑两次 → `reports` 与 `S:` 各为 latest 1 份 + 快照 3 份，11-16/11-17 的 6 份历史副本已滚动删除，`head -6 config-audit-latest.md` 内容正常，`hermes cron list` 8 条 job 名称与 enabled 状态未变（全程未碰 cron、未启停任何容器/实例）。⑥ **顺手堵住一个真漏洞（硬约束「报告不许出现密钥」vs「报告内容不动」的冲突，取前者）**：差异表原本把「值」原样打出来，实测 latest 里出现过明文 `paper-global` 的 `secret`、easybot 的 `api_key`、`im.yml` 的 `app_id/app_secret` —— 落盘前加 `mask_secrets()`：按 key 名（`secret|api[_-]?key|token|passw|app[_-]?id`）把差异项的值替换成 `<已脱敏>`，**只动值不动 key 名与差异条数**（比对/基线/表格结构完全不变）。同时清掉历史明文副本：`reports/` 与 `S:` 各 1 份改前快照、`E:/orzmc/deliver/` 3 份旧副本。教训：**差异报告天然会泄漏密钥** —— 比对的是「值」，一打印就上报告，脱敏必须在落盘口做、不能指望源配置。教训：**「每次都有差异」的报告不能只留告警快照，但也不能无限累积** —— latest 固定名给人看，快照滚动 3 份给回溯，两件事一起做才既不误读也不爆目录。 |
+| 2.6.12 | 2026-11-17 | **自检第 7 项假红灯修复（变量原文 vs 展开绝对路径）**：报「❌ 用户 Path 未见 `%JAVA_HOME%\bin`」而注册表里 `Path=%JAVA_HOME%\bin;…`、`JAVA_HOME=E:\orzmc\tools\jdk25` 两项都在 —— 根因是判定只按**展开后的绝对路径**（`E:\orzmc\tools\jdk25\bin`）去比对，注册表存的是**变量原文** `%JAVA_HOME%\bin`；本进程（网关/cron 宿主）没继承 `JAVA_HOME` 时 `os.path.expandvars` 展不开，绝对路径永远匹配不上 → 恒假红。改法：① 判定收敛成**三路任一命中即 ✅** —— (a) 注册表 Path 原文含 `%JAVA_HOME%\bin`（大小写不敏感）；(b) Path 用**注册表 JAVA_HOME 真值**手工展开后含 `jdk25\bin`（自带 `_expand_vars`，不依赖 `os.environ`）；(c) PATH 目录里能直接解析到 `java.exe`；② `JAVA_HOME` 已设但 Path 缺这条 → 只记 ℹ️「PATH 未含 JDK bin，建议补」，**不判 ❌**；③ 真 ❌ 只留给「JDK 目录不可用」= `JAVA_HOME` 已设但 `${JAVA_HOME}\bin\java.exe` 不存在（把值改成不存在的路径即可复现该红灯）。自证三点：全绿 → 临时把 `JAVA_HOME` 改成不存在路径后该项 ❌（exit=1）→ 改回后连跑两次全绿。教训：**比对环境变量要用「原文 + 按真值手工展开」两条腿走**，只比展开结果会在「本进程没继承」时把真配置报成缺。④ **git 假 ❌ 修复**：git 不在 HKCU/HKLM 的 `Path`（服务会话必 FileNotFoundError）→ `resolve_git()` 兜底：`shutil.which` → `C:\Program Files\Git\cmd` → `%LOCALAPPDATA%\hermes\git\cmd` → `…\git\bin`；打印来源+路径，全无才 ❌「git 不可用，git 相关自动化会失败」。自证：注册表 PATH 下全绿 exit=0；两条 exe 改名后 ❌ exit=1。⑤ 用户 `Path` 要变量形式得用 `Set-ItemProperty -Type ExpandString` —— `[Environment]::SetEnvironmentVariable(...,'User')` 会把 REG_EXPAND_SZ 降级成 REG_SZ（实测），写完回读 kind/原文/展开值。 |
+| 2.6.11 | 2026-11-17 | **自检交付策略修正（latest 必须永远是最新结论）**：原实现「全绿不落盘」有个真坑——全绿后 `orzmc-selfcheck-latest.md` 会**停在旧的告警内容上**，人一看 latest 就误判当前仍有故障。改为三段口径：① latest **每次运行无条件覆盖**（只有 `--no-deliver` 跳过）；② 带时间戳快照 `orzmc-selfcheck-<yyyyMMdd-HHmm>.md` **只在有 ⚠️/❌ 时**写，滚动保留最近 3 份；③ 退出码规则不变（有 ❌ 才 1）。`--always-deliver` 保留为兼容 no-op。教训：**「静默」只能用在通知上，不能用在状态文件上** —— 状态文件一静默就变成陈旧告警的假象。④ **JAVA_HOME 全局口径落地**：老板已在 Windows 用户级全局设 `JAVA_HOME=E:\orzmc\tools\jdk25` 且用户 `Path` 含 `%JAVA_HOME%\bin`（注册表回读确认）→ 自检第 7 项由「提示全局未设」改为 **✅ 全局已配置**，真值读 `HKCU\Environment`（**不用本进程 `os.environ`**：已运行进程不继承新写的用户级变量，否则会把「全局已配」误报成没配），给 gradle 子进程仍显式注入；SKILL.md 对应坑条从 🟡「全局未设」改写为 🟢「全局已配但必须显式注入 + 已运行进程需重启才继承」；⑤ **MCSM 面板 API 403 口径定案**：老板定「属 API key 失效、不处理，测试服才是正式口径」→ 自检**不含任何面板 API 判定项**，全部结论只走本地直读 + 容器事实（`docker ps` / `docker exec`），面板 403 只以 ℹ️ 口径说明出现在第 4 项，不计告警、不影响退出码。 |
+| 2.6.10 | 2026-11-17 | **全栈自检 ⑥ 落地**：新增 `scripts/orzmc_selfcheck.py`（8 项：技能/cron/交付/容器/入口端口/版本基线/工具链/报告新鲜度）+ cron `orzmc-selfcheck`（每天 08:30，`ca0e89c8579d`，异常才落 S:）。报告改为 `orzmc-selfcheck-latest.md` 固定名 + 带时间戳快照**只留 3 份**。两条真坑记在这：① **子进程输出解码 + 判定不能只看末行** —— Windows 上子进程没继承 `PYTHONUTF8` 时按 locale(cp936) 写管道，父进程硬解 UTF-8 得到 `���: PASS`，于是「实际 PASS」被报成 UNKNOWN/❌；正确做法是字节捕获后按 UTF-8→locale→mbcs 顺序解码，判定改为全输出里搜 `结果/RESULT: PASS`（`rc!=0` 才算失败），失败时打解码后的末 5 行；② **映射盘是会话级资源** —— `S:` 只在交互登录会话（Session 1）存在，SSH/服务会话（Session 0）看不到属正常现象，勿据此报交付失败（自检改为先判 `ProcessIdToSessionId`，非交互会话降级成 ℹ️，不计 ⚠️、不影响退出码；真正要盯的是「交互会话里也看不到 S:」） |
+| 2.6.9 | 2026-11-17 | **L2 断言迁移收尾**：PR #609 已合并（squash `546f118e` 进 `develop`），`e2eLocalPerm`（21 条）/ `e2eLocalPortal`（7 条）成为仓库 CI 常跑检查；技能侧 `perm-tier-test.js` / `villager_portal_test.js` **删除**，凭本条记录即可回溯来源。本轮真实教训写进注释而非技能：① 日志守卫按实体名判定会被无关实体/大小写/命名空间差异搞成恒真或误红 → 宁可用行为断言；② 探针全局超时必须按各步最坏之和预算，清理放 `finally`；③ 下界换算只缩放 X/Z，Y 原样 |
+| 2.6.8 | 2026-11-17 | **Windows 侧自查修复**：`scripts/skill_self_check.py` 原来写死 `~/.hermes/skills/gaming/orzmc`，在 Windows 上直接 `FileNotFoundError`（技能真源已迁 Windows，路径是 `%LOCALAPPDATA%\hermes\skills\...`）→ 改为按 `Path(__file__).parents[1]` 定位，跨平台通用。教训：**技能内脚本不许写死 home 路径**，一律相对自身位置解析 |
+| 2.6.7 | 2026-11-17 | **真源与归属定案**：新增「技能真源与编辑纪律」一节——**MC 相关一切只在 Windows Hermes 做，Mac 不再处理 MC**；技能唯一真源 = Windows 侧，编辑只用 Windows 会话的 `skill_manage`（推翻 11-16「Windows 真源 + Mac 编辑后 tar 同步」，那套自相矛盾并造成 Mac 2.6.5/266 文件 vs Windows 2.6.4/269 文件的双端漂移）；Mac 副本移出 skills 树、Mac 两条 orzmc cron 删除、Mac 只保留接收交付文件；同步纪律写成「解压后回读 sha256 + 文件数 + 显式清理多余文件（tar 解压不删旧文件）」 |
+| 2.6.6 | 2026-11-17 | **跨端核对与「完成」判据**：① 脚本双副本纪律补两条——只比文件总数会漏「一增一删相抵」，要对两端相对路径清单做**集合差集**并确认「仅对端有」为空；Windows 清单/JSON 带 **UTF-8 BOM**，Mac 端须按 `utf-8-sig` 解码，否则差集全是假差异；② Windows 专项坑新增 **PS 5.1 读 UTF-8（含中文）JSON 按 GBK 解码 → `ConvertFrom-Json 无效的 JSON`**，修法 `-Encoding UTF8` 或回 Mac 侧解析；③ cron 纪律补「新建周期 job 没有 `last_run_at` = 未验证」——汇报完成度必须分「已定义 / 已手动跑通 / 已自然触发」三档 |
+| 2.6.5 | 2026-11-16 | **技能侧 L2 断言迁入仓库 CI + E2E 断言规则**：① 两条原本只在技能脚本里、且靠人眼看的断言迁成仓库自举 E2E——`e2eLocalPerm`（三档 LP 组权限矩阵，装真实 LuckPerms、只用插件自身节点）与 `e2eLocalPortal`（村民穿下界门：门框合法 / 内层 portal / 过门前村民在场 / 过门后原维度消失 / 确在地狱维度 / 产物清理），各配 CI job；② `references/plugin-e2e-testing.md` 新增 §CI 自举 E2E（迁移判断口径 + 四条硬规则 + 验证纪律），核心是**日志类断言必须限定到本次测试造的对象**（裸串会被全新世界里无关实体命中，真实断言全过却被日志守卫判红）、前置守卫防假绿、探针客户端版本天花板、异步写库用可数证据而非 sleep；③ 测试归属表把两条从「缺口候选」改为「已迁入」 |
+| 2.6.4 | 2026-11-16 | **测试归属清点 + 单测不挂 cron**：① 新增「测试归属：仓库 vs 技能」一节（原则：产品行为断言只放仓库 CI，技能只留够不到 CI 的运维探针与第三方插件现场回归），逐脚本给出判定：`portal-transfer-test.js` **归档**（自述 mineflayer 无法可靠触发 PlayerPortalEvent + 仓库 `PortalIntegrationTest`/5 个 Portal 单测已覆盖）、`perm-tier-test.js`（三档 LP 组矩阵）与 `villager_portal_test.js`（实体过门 L2）**标为仓库缺口候选**，`check-death-chest.js`/`perm-check.js`/`portal-probe.js`/`check_lsdb.py`/`shop_arbitrage_check.py` 与全部运维探针保留；② `orzmc_quality_report.py` 改为**按需手动、不挂 cron**（老板决策：单测/构建回归由仓库自身 CI 保证）；③ `references/plugin-e2e-testing.md` 同步分工口径与归档原因 |
+| 2.6.3 | 2026-11-16 | **单测与 cron 两处操作纪律**：① `references/java-test-pitfalls.md` 新增「跑单个测试类」——多模块工程 `--tests` 需限定任务 `:test`，否则子项目报 `No tests found for given includes` 误成 BUILD FAILED；并新增「跨平台断言」——不写死 `/` 分隔符，取最后路径段比名字，验证必须「原失败环境 + POSIX 端各跑一次 + 同 commit CI 绿」；② SKILL.md 新增两条 Windows 操作坑：跑构建/带环境变量命令一律落盘 `.bat` + `cmd /c`（`set VAR=value &&` 尾随空格会进值→假 “invalid directory”；嵌套引号被吃掉→假 “JAVA_HOME is not set”）；cron 停用/退役必须回读 `enabled/state`（字段不是 `paused`）并先停 job 再归档脚本 |
+| 2.6.2 | 2026-11-16 | **收口与纠错**：① 新增 `scripts/fix_utf8_guard.py`（ast 定位 + 字节安全插入 + 自查，取代手搓 guard 插入器；Pitfalls 指向它）；② 入口探针口径落地为代码——**实例 stopped/missing 降为提示项**（只写 `INFO` 日志，不进告警集/状态/复述），只有「实例 running 但 RCON 失败」计故障；③ 修正三处过期口径：Windows cron **6 条→8 条**（+配置审查/版本巡检，bisync paused）、核心基线 26.3-246→**26.3-253**、§6 手动跑版本巡检改 Windows 路径；④ 旧名 `ops-migration-20261116`（当日经过）→ **`references/hermes-ops-endpoint.md`**（按主题命名，内容改写成 runbook：脚本手术纪律 + 交付验收 + 回滚，不再叙述当天经过） |
+| 2.6.1 | 2026-11-16 | **巡检端整体迁 Windows Hermes + 交付闭环**：① 巡检/升级/配置审查/版本核对的主体脚本改为 Windows 本机直读（`mcsm_env.py`/`orzmc_paths.py`/`orzmc_config_audit.py` 新增，`connectivity_check`/`mc_version_check`/`orzmc_quality_report` 跨平台改造），Mac 端 cron 暂停、脚本归档；② 新增「Windows 宿主执行脚本的硬前提」与 **10 条 Windows 专项坑**（python Store stub、SMB `WinError 1326` ≠ session、pathlib `/` 优先于 `%`、控制台 GBK、PS 5.1 BOM/反引号、TUN 劫持自身 LAN IP、`subprocess text=True` 按 cp936 解码、起 `.bat` 必须绝对路径…）；③ 交付到 S: 盘**端到端实测通**（Windows cron 落盘 → 落点哈希一致），验收纪律写成「真实文件 + 两侧 sha256」，配套 `scripts/deliver_selftest.py`／`deliver_probe.py` |
+| 2.6.0 | 2026-11-16 | **巡检口径对齐「统一代理入口」**：① 配置审查新增 `cmp3/fetch3_proxy.py`（读代理侧 Geyser-Velocity 生效配置、自动识别 proxy/direct 模式，取代已停用的实例内副本）⇒ Geyser 假差异从 4 条降到 3 条真实拓扑差异；② `connectivity_check.py` 自动识别运行模式（`detect_test_mode`：25565 通 + 25566 闭 = proxy），proxy 下目标集换成 `proxy`/`proxy-pub`/`prod-mcsm` 并**删掉 25566/19133 旧端口**，新增「后端存活」RCON 25575/25576 探测，`--json` 增 `test_mode` 字段，可用 `ORZMC_TEST_MODE` 强制；③ 基线升到第八轮（Paper 253 / Folia 26.3-8 / Geyser b1303 / Exa WG 7.0.21）；④ Pitfalls 新增两条：**运行中容器 bind mount 的 jar 写不进去（必须 stop→换→start）**、`powershell -File` 必须带 `-ExecutionPolicy Bypass`；⑤ 新增「在 Windows 宿主手动执行脚本的三条硬前提」（venv 解释器 / 映射盘会话隔离→用 UNC / `.env` 缺键静默变空）；⑥ SOP 新增 §2k：**实例保持停止时的文件层验收口径** + 代理侧 jar 换版顺序 + 跨大版本线回滚路径 + Exaroton PUT→回读→DELETE 定型流程 |
 | 2.5.0 | 2026-11-10 | **专题文档合并（15 → 3）**：① 权限/LP/Rank 9 篇 → `permission-impl.md`（696 行，原文未改写，按 9 节分区）② 审核/PR 清单 3 篇 → `review-framework.md`（262 行）③ Bot 命令测试 + 机器人 E2E + Paper 26 踩坑 3 篇 → 并入 `testing.md`（552 行）；references **83 → 70 篇**，SKILL.md 索引行同步去重（9+3+3 行 → 3 行）；跨文件引用 15 处自动改指向；自检 70/70、0 死链 0 孤儿 PASS |
 | 2.4.0 | 2026-11-10 | **技能整理（瘦身 + 去矛盾）**：SKILL.md **91KB/416 行 → 60KB/389 行**；外置 5 份新文档（`version-baseline-history`、`orzmc-plugin-features`、`version-check-pitfalls`、`site-manual`、`changelog-archive`）；删掉 6 条互相矛盾的「当前权威」历史基线、5 份漂移报告合并为 1 行；修正 4 处与现状冲突的口径：① 投递 `download_from_url` → **scp 直投** ② ExecutableEvents「Folia 不可行」→ **3.26.11.2 已正常运行** ③ 中转/FRP → **标废弃（中转机已销毁）** ④ 版本巡检 cron → **已并入周巡检**；自检 83/83 引用、0 死链 0 孤儿 0 超长行 |
 | 2.3.4 | 2026-11-10 | **Minecraft 知识沉淀轮（文档为主）**：新增 `references/domestic-mcsm-log-runbook.md`（国内服启动日志期望值/常态告警/需留意项/Velocity 转发行/外部实测基线）；`mcsm-backend.md` 新增「调用姿势三处硬坑」（`/api/instance` 必带 uuid、列表走 POST body、command 拼 query、status 端点不存在）+ 启停耗时实测；`test-server-upgrade-sop.md` 新增 §2j 第七轮实录 + 6 条真踩过的坑（**备份必须 Move 不能 Copy**、Modrinth 无 sha256、报告版本号不可信、OrzMC 自更新、PowerShell 禁非 ASCII、Exa 不必重配 Geyser） |
@@ -135,19 +154,50 @@ required_commands: [java, curl, tar]
 ViaVersion 最新一条是 `5.12.3-SNAPSHOT`，只看「最新一条」会把整项误判为 SNAPSHOT 跳过，而 10-27 发布的 **5.12.2 正式版**就在下面。
 `mc_version_check.py` 已按此改造：✅=最新正式版 / ⚠️=有正式版可升 / 🔵=部署为预发布或高于正式版（应回退）。
 
-## 巡检体系（五部分）
+## 巡检体系（六部分）
 
 | 部分 | 脚本 | 关键点 |
 |:--|:--|:--|
-| ① 配置审查 | `~/.hermes/scripts/orzmc_config_audit.sh` | 面板拉取不完整时**自动**改走 `cmp3/fetch3_ssh.py`（`ssh win` 读 Windows 实例目录，秒级 66 文件）；**2026-11-16 起再加一步 `cmp3/fetch3_proxy.py`**：入口 Geyser 已迁代理容器，改读**代理侧生效配置**（`E:/orzmc/eagler/proxy/plugins/Geyser-Velocity/config.yml`），自动识别 proxy/direct 模式 |
-| ② 插件质量 | `~/.hermes/scripts/orzmc_quality_report.py` | gradle 全量 + 覆盖率；时序类失败先看 CI 同 commit |
-| ③ 版本巡检 | `~/.hermes/scripts/mc_version_check.py` | release-only 语义（见上表）；Folia 只比非 ALPHA |
-| ④ 健康体检 | `~/.hermes/scripts/orzmc_weekly_health.py`（技能内同源副本 `scripts/`） | 日志 SEVERE/加载失败、Geyser `Started on UDP`、NetherNet 警告、备份堆积/磁盘水位、TPS/在线人数 |
-| ⑤ **连通性体检** | `~/.hermes/scripts/connectivity_check.py`（技能内同源副本 `scripts/`） | **Java + 基岩双协议一次跑完**：DNS（自动绕本机 TUN fake-IP）/ Java 协议握手 / RakNet Pong（旧）/ NetherNet 信令 `GET /v1/join`（新）/ 基岩端口 HTTPS 信令 / 可选 `--external` 公网 TCP 外部节点。**2026-11-16 起自动识别测试服运行模式**：`proxy`（统一代理 Velocity）→ 只测入口 25565/19132 + 后端 RCON 25575/25576 可连性，**不再探测 25566/19133 旧端口**；`direct` → 旧双实例目标。可用 `ORZMC_TEST_MODE=proxy\|direct` 强制 |
+| ① 配置审查 | **Windows** `%LOCALAPPDATA%\hermes\scripts\orzmc_config_audit.py`（cron `orzmc-config-audit`，周一 09:05） | **2026-11-16 迁 Windows 后改为本机直读**：基准 = `InstanceData/<paper uuid>/` 本地遍历，入口 Geyser 取代理侧 `Geyser-Velocity/config.yml`（存在即 proxy 模式），对比 = Exaroton API；报告落 `E:/orzmc/reports/` + 交付目录两处（公网 IP 自动脱敏），**交付口径 = `config-audit-latest.md` 每次无条件覆盖 + 带时间戳快照 `config-audit-<yyyyMMdd-HHmm>.md` 每次也写、滚动只留最近 3 份**（2.6.13，与 selfcheck 同策略）。旧 Mac 版 `orzmc_config_audit.sh + cmp3/fetch3_ssh.py` 已归档（`.archive-20261116/`），不再运行 |
+| ② 插件质量 | **Windows** `orzmc_quality_report.py`（**按需手动，不挂 cron**） | 依赖 Windows 本机 Temurin JDK 25（`E:/orzmc/tools/jdk25`）+ 仓库克隆 `E:/orzmc/src/OrzMC/plugin`；gradle 走 `gradlew.bat`。**2026-11-16 老板决策：单测/构建不纳入周巡检**——回归由 OrzMCPlugin 仓库自身 CI（build + e2e-paper/player/lp/im + folia-smoke）保证，本脚本只在「想在本机看覆盖率/复现失败用例」时手动跑 |
+| ③ 版本巡检 | **Windows** `mc_version_check.py`（cron `orzmc-version-check`，周一 09:10） | 部署侧读**本机实例 jar 文件名**（`mcsm_env.py` 本地适配器提供 `mcsm_list`），渠道侧仍查上游 release；release-only 语义不变 |
+| ④ 健康体检 | `orzmc_weekly_patrol.py`（Windows，周一 09:15，cron `orzmc-weekly-patrol`） | 日志 SEVERE/加载失败、Geyser `Started on UDP`、NetherNet 警告、备份堆积/磁盘水位、TPS/在线人数；Mac 版 `orzmc_weekly_health.py` 未迁（与 patrol 重叠，已归档） |
+| ⑤ **连通性体检** | **Windows** `connectivity_check.py` |**Java + 基岩双协议一次跑完**：DNS（自动绕本机 TUN fake-IP）/ Java 协议握手 / RakNet Pong（旧）/ NetherNet 信令 `GET /v1/join`（新）/ 基岩端口 HTTPS 信令 / 可选 `--external` 公网 TCP 外部节点。**自动识别测试服运行模式**：`proxy`（统一代理 Velocity）→ 只测入口 25565/19132 + 后端 RCON 25575/25576 可连性，**不再探测 25566/19133 旧端口**；`direct` → 旧双实例目标。`ORZMC_LAN_HOST` 在 Windows 上必须是 **127.0.0.1**（Windows 侧 Mihomo TUN 会劫持发往自身 LAN IP 的包，探测 192.168.0.33 会全线超时） |
+
+| ⑥ **全栈自检** | **Windows** `skills/gaming/orzmc/scripts/orzmc_selfcheck.py`（cron `orzmc-selfcheck`，每天 08:30，`ca0e89c8579d`） | 8 项一次跑完：技能版本/文件数 + `skill_self_check` 结论、cron 全量 job（挑出 disabled / last_status≠ok）、交付目录可选级 + 真写测试、容器（velocity/caddy/easybot 应 Up）+ paper/folia 应 stopped、入口 25565/19132 **TCP 实连**、jar 文件名 vs 版本基线、jdk/gradle/node/git、`E:/orzmc/reports` 新鲜度。**每次运行都无条件覆盖 `orzmc-selfcheck-latest.md`**（latest 永远 = 最近一次真实结论，全绿后也必须变回全绿，不许停在旧告警上）；带时间戳快照 `orzmc-selfcheck-<yyyyMMdd-HHmm>.md` **只在有 ⚠️/❌ 时才写**，滚动**最多留 3 份**（第 4 份起删最旧的），全绿不产生新快照；19132 **只做 TCP 实连**，UDP 侧由 `orzmc-entry-probe` 的 `GET /v1/join` 覆盖（两处不重复探测）；SSH/服务会话（Session 0）看不到 `S:` 属正常——映射盘是会话级资源，该项降级为 ℹ️，不计 ⚠️、不影响退出码，真正该报的是「交互会话里也看不到 S:」；`--json` / `--no-deliver` 可选。cron 侧只放转发 stub（`%LOCALAPPDATA%\hermes\scripts\orzmc_selfcheck.py`），真源仍在本技能目录 |
+
+> 🖥️ **巡检端归属（2026-11-16 老板决策 #1 全量迁移）**：orzmc 的巡检 / 升级 / 配置审查 / 版本核对 / 交付打包**全部在 Windows Hermes**（%LOCALAPPDATA%\hermes）执行，Mac 端 cron 已暂停、脚本已归档（只读）。Windows 端不需要 SSH、不需要面板 files API——实例目录与代理配置都在本机。
 
 **TPS/玩家数取数纪律**：**从 `logs/latest.log` 读**，面板 `outputlog` 只做兜底（缓冲会截断，表现为「日志与面板都读不到 TPS」的假告警）。两种格式都要认：Paper `TPS from last 1m, 5m, 15m: a, b, c`；Folia 分区行 `at X.XX TPS`（多行，取 **min** = 最差分区，否则会拿平均值掩盖卡顿）。日志内容先剥 ANSI 色码再解析，否则数字前会粘色码。
 
-**脚本双副本纪律**：cron 用的权威副本在 `~/.hermes/scripts/`，技能 `scripts/` 下的同源副本仅供分发——**只改一边会导致下次巡检跑旧逻辑**；改完必须 `md5` 比对两份一致（或只改 cron 副本并在技能里标注版本）。
+## 技能真源与编辑纪律（2026-11-17 老板决策）
+
+> **一句话**：**Minecraft 相关的一切只在 Windows Hermes 上做，Mac 端不再处理 MC。** 本技能的唯一真源是 Windows `C:\Users\WangA\AppData\Local\hermes\skills\gaming\orzmc\`。
+
+- **编辑**：在 **Windows 侧**的 Hermes 会话里用 `skill_manage` 改；不要再在 Mac 上编辑本技能再同步（2026-11-16 的"Windows 唯一真源 + Mac 编辑后 tar 同步"是自相矛盾的，导致双端漂移：Mac 2.6.5/266 文件 vs Windows 2.6.4/269 文件）。
+- **Mac 侧已退休**：本地技能副本移出 skills 树（`~/.hermes/skills/` 下不再有 orzmc），Mac 的两条 orzmc cron 已删除，Mac 端脚本归档在 `~/.hermes/scripts/.archive-20261116/`。Mac 只保留"接收交付文件"这一件事（`S:\` = Mac `~/Downloads`）。
+- **同步纪律（若某天必须从他机同步）**：`tar -cf x.tar -C <skills>/gaming orzmc` → `scp` → **解压后必须回读 `SKILL.md` sha256 与文件数**；`tar` 解压**不会删除**目标侧多余文件，必须显式比对文件清单并清理（曾因此残留改名/归档前的旧文件）。
+- 迁移/双端状态的完整来龙去脉见 `references/hermes-ops-endpoint.md`。
+
+## 测试归属：仓库 vs 技能（2026-11-16 老板决策）
+
+**原则**：**产品行为的断言只放仓库**（OrzMCPlugin 的 `src/test` / `src/integrationTest` / `e2e/`，由 CI 每次跑）；技能只留「够不到 CI 的运维探针」和「第三方插件的现场回归」。写新测试前先问一句「能不能进仓库 CI」，能就别写进技能 —— 技能里的"测试"没人跑，只会造成"有覆盖"的错觉。
+
+| 技能脚本 | 测什么 | 判定 |
+|:--|:--|:--|
+| `portal-transfer-test.js` | 传送门 transfer 触发 | ❌ **已归档**（2026-11-16）：脚本自述「mineflayer 位置同步与服务器端不一致，tp 到门中心也不触发 PlayerPortalEvent」= 不能当断言；仓库已有 `PortalIntegrationTest` + `PortalServiceTest`/`PortalBuilderTest`/`PortalCleanerTest`/`PortalPersistenceTest`/`PortalLabelRendererTest` |
+| ~~`perm-tier-test.js`~~ | 三档 LP 组权限矩阵（default/member/builder） | ✅ **已迁入仓库并删脚本**（PR #609 合并 `546f118e`）：`e2e/ci/perm-tiers-probe.js` + Gradle `e2eLocalPerm` + CI job `e2e-perm`，21 条断言、装真实 LuckPerms、只用插件自身节点；技能侧已删，**别在这里补同类断言** |
+| ~~`villager_portal_test.js`~~ | 实体（村民）过真实传送门 | ✅ **已迁入仓库并删脚本**（PR #609 合并 `546f118e`）：`e2e/ci/entity-portal-probe.js` + Gradle `e2eLocalPortal` + CI job `e2e-portal`，7 条断言（门结构/过门前在场/落地维度/坐标清理）；技能侧已删 |
+| `check-death-chest.js` | 死亡箱生成回归 | ✅ 保留：测的是第三方 `devcyntrix/death-chest`（本地修复版），不属 OrzMCPlugin 仓库 |
+| `perm-check.js`、`portal-probe.js` | 玩家身份查 LP 输出 / 方块扫描 | ✅ 保留：纯观察探针（RCON 不回显 LuckPerms 输出，权限只能玩家身份查） |
+| `check_lsdb.py`、`shop_arbitrage_check.py` | LoginSecurity 库 / EzShops 套利 | ✅ 保留：第三方插件数据核对 |
+| `connectivity_check` / `orzmc_entry_probe` / `mc_version_check` / `deliver_*` / `skill_self_check` | 入口、连通、版本、交付、技能自身 | ✅ 保留：运维检查，不是产品测试 |
+
+**仓库侧三层测试在哪**（以后找覆盖看这里）：`src/test`（单测，L0）· `src/integrationTest`（MockBukkit 集成，L1，17 个集成测试类）· `e2e/cases/01-06`（真实服 L2 手动套件）+ `e2e/ci/player-probe.js`（玩家侧自举，**CI 每次跑**，模式 = Gradle 任务自建服务端 + `node` 探针 + 控制台断言）。新增同类任务照这个模式（已落 `e2eLocalPerm` / `e2eLocalPortal`）。**写这类断言的规则 → `references/plugin-e2e-testing.md` §CI 自举 E2E**：日志类断言必须限定到本次测试造的对象（裸串会被全新世界里无关的自然实体命中→假红）、每个 PASS 前加前置守卫防假绿、探针客户端版本有协议天花板、异步写库的中间件用可数证据同步而不是 sleep。
+
+**脚本双副本纪律**：cron 用的权威副本在 **Windows** `%LOCALAPPDATA%\hermes\scripts\`（Mac 端已归档 `~/.hermes/scripts/.archive-<日期>/`），技能 `scripts/` 下的同源副本仅供分发——**只改一边会导致下次巡检跑旧逻辑**；改完必须比对两份一致（Mac `shasum -a 256` / Windows `Get-FileHash -Algorithm SHA256`）。⚠️ Mac 上 `cp -f` 有 `-i` 别名会交互提示导致静默不覆盖 → 用 `\cp -f`。
+
+⚠️ **`tar` 解包只覆盖、不删除：删/改名脚本后对端会留「幽灵副本」**。技能镜像同步用的 `tar -cf … | scp | extract` 流程不会清掉目标端已不存在的文件，**只比 `SKILL.md` 的 sha256 或只数 `SKILL.md` 一致就宣布同步完成，会漏掉**——Mac 上删掉的脚本在 Windows 技能目录里照样在，将来可能被 `skill_view`/脚本索引捡回来，或反过来被当成真源。纪律：① **增删脚本后按「文件计数」核对两端**（`tar -tzf x.tar | wc -l` vs 对端文件数），sha 只证明内容一致、不证明集合一致；② 删除脚本时先在源端归档（`~/.hermes/scripts/.archive-<日期>/`）再删，然后**在对端显式 remove 同一个文件**（Windows 用 `Remove-Item -LiteralPath <绝对路径>`），不要指望下一次同步替你清；③ **只比总数会漏「一增一删相抵」**：两端各导出相对路径清单（`find . -type f | sed 's|^\./||' | sort`）+ 做**集合差集**，必须看到「仅对端有」为空才算同步完；④ 两端清单常因编码对不上（Windows 侧带 **UTF-8 BOM**）→ Mac 端比较/解析一律按 `utf-8-sig` 解码，否则全行都判不同、差集全是假噪声。
 
 > 巡检纪律：**只读**；每部分必须给「数据有效性证据」（文件数/条目数/实例数），数据源不可达时显式写「本次无效」，禁止输出假绿结论。
 > **落盘前脱敏（2026-11-09 起强制）**：报告/脚本/docstring 里的公网 IP 一律写成 `<公网IP>` / `<生产公网IP>`（域名可写）；`secret_guard` 会在 bisync 前拦截，命中即中止推送 —— 先脱敏再推送，不要绕过门禁。
@@ -212,7 +262,7 @@ curl -s -H 'accept: application/dns-json' \
 > 📚 **历史基线（09-20 / 10-12 / 10-19 / 10-26 / 11-02 逐轮快照 + 协议生态演进结论）** → `references/version-baseline-history.md`（仅演进参考，**不当口径用**）。
 > 📚 **OrzMC 插件行为/配置语义（GeoIP、permission.yml reload 语义、member-threshold、维护文案模板、prison、耗时中文化、防刷阈值、权限四组、BackOnDeath/GetMeHome、Brigadier greedy）** → `references/orzmc-plugin-features.md`。
 >
-> ⚠️ **§ 通道纪律 + 双实例刻意差异**：核心只升 **STABLE**（现 26.3-246）；`block-versions` 的用途已从「拦 26.3 客户端」变为「堵 1.20.5–1.21.4 可利用协议」（见 Pitfalls），别照抄旧结论。paper 实例 `im.yml` = `backend: builtin` + `i18n.default_lang: en-US`；folia 实例 = `backend: easybot` + `zh-CN` —— **老板 2026-09-12 明确确认的刻意设计（paper 专测英文语言包 + 内置直连，folia 测 EasyBot 网关），两条 IM 通道并行保留：勿统一、勿改语言**。
+> ⚠️ **§ 通道纪律 + 双实例刻意差异**：核心只升 **STABLE**（现 26.3-253）；`block-versions` 的用途已从「拦 26.3 客户端」变为「堵 1.20.5–1.21.4 可利用协议」（见 Pitfalls），别照抄旧结论。paper 实例 `im.yml` = `backend: builtin` + `i18n.default_lang: en-US`；folia 实例 = `backend: easybot` + `zh-CN` —— **老板 2026-09-12 明确确认的刻意设计（paper 专测英文语言包 + 内置直连，folia 测 EasyBot 网关），两条 IM 通道并行保留：勿统一、勿改语言**。
 
 - **旧 API `api.papermc.io/v2` 已完全废弃（410 Gone）**——用 fill-data 新机制（`parse_papermc.py` 封装）
 - ⚠️ **PaperMC 通道判定（新）**：fill API 的 build 对象带 `channel` 字段（STABLE/BETA/ALPHA）——「最新版」不等于「可上线版」，升级前先看 channel；本会话脚本查询：`https://fill.papermc.io/v3/projects/paper/versions/26.2/builds/latest`
@@ -276,6 +326,8 @@ curl -s "https://hangar.papermc.io/api/v1/projects/OrzMC/versions?limit=5" | jq 
 CMP=~/.hermes/skills/gaming/orzmc/scripts/cmp3
 python3 $CMP/cmp3_configs.py <exa配置目录> <mcsm配置目录> <本地目录>   # 语义对比
 python3 $CMP/cmp3_plugins_sha.py                                        # jar sha256 对齐
+python3 $CMP/fetch3_ssh.py                                              # MCSM 侧配置 SSH 直读（面板 files API 慢/返回 0 文件时的兜底，tar 打包回传秒级）
+python3 $CMP/fetch3_proxy.py                                            # 代理侧生效 Geyser 配置（proxy 模式自动替换实例内副本，direct 自动回退）
 python3 $CMP/exa_apply_config.py && python3 $CMP/exa_verify_config.py   # Exaroton 改配置
 python3 $CMP/mcsm_upload_update.py <jar名...>                           # MCSM 插件更新
 ```
@@ -307,12 +359,12 @@ python3 ~/.hermes/skills/gaming/orzmc/scripts/exa_sync_plugins.py --plan plan.js
 ### 6. 版本巡检（脚本可手动跑；定时已并入周巡检）
 
 ```bash
-# 手动触发
-python3 ~/.hermes/scripts/mc_version_check.py
+# 手动触发（2026-11-16 起跑在 Windows Hermes，Mac 副本已归档）
+%LOCALAPPDATA%\hermes\hermes-agent\venv\Scripts\python.exe %LOCALAPPDATA%\hermes\scripts\mc_version_check.py
 ```
 
-- **调度**：原独立 cron `0b4298821a86`（每日 10:00）**已停用**，现由周巡检 `d81c8325fe8b` 第③部分调用本脚本；手动跑：`python3 ~/.hermes/scripts/mc_version_check.py`
-- **脚本逻辑**：`~/.hermes/scripts/mc_version_check.py` 查 **Paper + Folia 双核心**（parse_papermc.py 支持 `[paper|folia]` 参数，Folia 输出含本地对比）+ 21 插件各官方渠道最新版（Modrinth/Hangar/GitHub/metadata.luckperms.net/geysermc）vs 本地 MCSM 实例（`InstanceData/<uuid>/plugins/`）部署版本（读 jar 内 plugin.yml/paper-plugin.yml）
+- **调度**：Windows cron `orzmc-version-check`（`e9a7e185fbff`，周一 09:10，`deliver=origin`）；Mac 端旧 job `d81c8325fe8b` 已 paused
+- **脚本逻辑**：**部署侧读本机实例 jar 文件名**（`mcsm_env.py` 本地适配器） + 21 插件各官方渠道最新版（Modrinth/Hangar/GitHub/metadata.luckperms.net/geysermc）（读 jar 内 plugin.yml/paper-plugin.yml）
 - **输出**：对比表 + 状态（✅一致 / ⚠️有更新 / ➖本地构建 / ➖稳定 / ❓查询失败）+ 差异汇总
 - **渠道映射**（CHANNEL dict）：OrzMC=hangar；EzShops/LoginSecurity/DeathChest/GetMeHome=**local**（本地打包，不提示升级）；BackOnDeath/Vault=**stable**（无渠道）；Essentials=github；Geyser-Spigot=geyser；CustomWorldHeight=**modrinth**（Hangar 无此插件，2026-08-15 修正）；**F3F4Perms=modrinth（slug: f3f4perms）；packetevents=modrinth（⚠️ CHANNEL key 必须小写 `packetevents`——jar 内 plugin.yml name 是小写，deploy dict 以 pname 为 key 会匹配不上大写 key）**；其余=modrinth
 - **已知坑（10 条：build 号/license 映射/平台过滤/前缀漏报…）** → `references/version-check-pitfalls.md`
@@ -341,21 +393,56 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 
 | 任务 | job_id | 计划 | 脚本 | 模式 | 行为 |
 |:--|:--|:--|:--|:--|:--|
-| ~~MC 三端版本巡检~~ | ~~`0b4298821a86`~~ | ~~每日 10:00~~ | `~/.hermes/scripts/mc_version_check.py` | — | **已停用，并入周巡检 d81c8325fe8b 第③部分**（2026-11-06 核对 cron 列表确认不存在） |
-| ~~三端配置审查~~ | ~~`ab06b886c39f`~~ | ~~每周一 9:15~~ | `~/.hermes/scripts/orzmc_config_audit.sh` | — | **已停用，并入周巡检 d81c8325fe8b 第①部分**（同上） |
-| ~~orzmc MC 每周巡检（Mac 端）~~ | ~~`d81c8325fe8b`~~ | ~~每周一 9:00~~ | 五部分脚本（配置审查/插件质量/版本巡检/健康体检/连通性体检） | agent | **仅存在于 Mac 端 `~/.hermes/cron/jobs.json`，Windows 本机没有这套脚本**；测试服已整体迁到 Windows（`E:/orzmc`），Mac 那套现在盯的是空机器 —— 本机替代品见下方 `9d625c27db6d` |
-| **NetherNet advertise 同步** | `8582a0f31644`（**跑在 Windows 端 Hermes**，不是 Mac） | 每 5 分钟（2026-11-15 由 15m 收紧，缩短 `orzmc.sh up` 后基岩裸域名窗口） | `%LOCALAPPDATA%\hermes\scripts\nethernet_advertise_sync.py` | no_agent watchdog | DoH 查真 A 记录 → 与**当前入口**（`ENABLE_VELOCITY=true` 时为代理 `eagler/proxy/plugins/Geyser-Velocity/config.yml`，否则回落实例内 Geyser-Spigot）的 `advertise-addresses` 比对 → 变更时改写 + **`docker restart orzmc-velocity`**（有玩家在线只报警不重启；代理无 RCON，不能 `geyser reload`）；局域网条目取 `.env` 的 `LAN_HOST_IP`；无变化静默（日志 `%LOCALAPPDATA%\hermes\logs\nethernet-advertise-sync.log`） |
-| **入口存活探针** | `f198dd2a7e95` | 每 30 分钟 | `%LOCALAPPDATA%\hermes\scripts\orzmc_entry_probe.py` | no_agent watchdog | 6 项：`orzmc-velocity`/`orzmc-caddy` 容器状态、Java 状态包 25565、NetherNet `GET /v1/join`、网页入口 18443（TLS+SNI，期望 404 且 `Server: EaglercraftXServer`）、paper/folia 两口 RCON 认证；**全绿静默**，故障仅在新增/集合变化/每 6 小时复述，恢复发一条 ✅。**只报警不重启**（老板要求入口处置人工拍板）；**退出码恒 0**（只有脚本自身崩溃才 2）；按「引擎 / 入口 / 后端」三层判定——Docker 不可用收敛成一条、实例容器 stopped/missing 报容器状态而非 RCON 失败。运行手册（分层判定/退出码/三态自测/cron 核对）→ `references/entry-monitoring.md`；日志 `%LOCALAPPDATA%\hermes\logs\orzmc-entry-probe.log` |
-| **本机周巡检** | `9d625c27db6d` | 每周一 09:15 | `%LOCALAPPDATA%\hermes\scripts\orzmc_weekly_patrol.py` | no_agent | 容器/三通道连通性/后端 TPS+人头/advertise 一致性/Paper·Folia·Geyser 版本 diff（Fill API + Modrinth）/近 7 天 ERROR·WARN+Top/磁盘·世界体积·备份新鲜度 → 末尾「需要动手」清单；只读不重启 |
+| ~~MC 三端版本巡检~~ | ~~`0b4298821a86`~~ | ~~每日 10:00~~ | `~/.hermes/scripts/mc_version_check.py` | — | **已停用**（2026-11-06 确认不存在）；2026-11-16 起由 Windows 端 `orzmc-version-check`（`e9a7e185fbff`，周一 09:10）承担 |
+| ~~三端配置审查~~ | ~~`ab06b886c39f`~~ | ~~每周一 9:15~~ | `~/.hermes/scripts/orzmc_config_audit.sh` | — | **已停用**；2026-11-16 起由 Windows 端 `orzmc-config-audit`（`836f72d6ad16`，周一 09:05）承担 |
+| ~~orzmc MC 每周巡检（Mac 端）~~ | ~~`d81c8325fe8b`~~ | ~~每周一 9:00~~ | 五部分脚本（配置审查/插件质量/版本巡检/健康体检/连通性体检） | agent | **2026-11-16 老板决策 #4「立即停」→ 已 paused**；同轮 `89be8cc5d6a2`（技能双向同步）也已 paused。orzmc 运维整体迁 Windows，Mac 端只读 |
+| ~~配置审查~~ | ~~`836f72d6ad16`~~（Windows） | ~~每周一 09:05~~ | `%LOCALAPPDATA%\hermes\scripts\orzmc_config_audit.py` | no_agent | **2026-11-17 paused → 20:13 删除 job 定义，并入 `orzmc-monday-report` 第一段**；脚本本身不变，仍可单独手动跑。原行为： 本机直读 99 件配置 vs Exaroton 79 件；报告落 `E:/orzmc/reports/` + 交付目录；proxy/direct 自动识别 |
+| ~~版本巡检~~ | ~~`e9a7e185fbff`~~（Windows，2026-11-17 20:13 删除定义） | ~~每周一 09:10~~ | `%LOCALAPPDATA%\hermes\scripts\mc_version_check.py` | no_agent | **2026-11-17 paused → 删除，并入 `orzmc-monday-report` 第二段**。原行为： 部署侧读本机 jar 文件名，渠道侧查上游 release；Folia 只比非 ALPHA |
+| **NetherNet advertise 同步**（现为 `orzmc-watchdog` 的一个段） | **`330d431ac384`**（~~`8582a0f31644`~~ 已于 2026-11-17 并入 watchdog 删除） | **每个 tick（5m）都跑**（原独立 job 为 15m；并入后 5m —— 只在 DoH 结果与现配置真不一致时才改写+重启 velocity，无变化静默，所以高频不会变吵） | `%LOCALAPPDATA%\hermes\scripts\nethernet_advertise_sync.py` | no_agent watchdog | DoH 查真 A 记录 → 与**当前入口**（`ENABLE_VELOCITY=true` 时为代理 `eagler/proxy/plugins/Geyser-Velocity/config.yml`，否则回落实例内 Geyser-Spigot）的 `advertise-addresses` 比对 → 变更时改写 + **`docker restart orzmc-velocity`**（有玩家在线只报警不重启；代理无 RCON，不能 `geyser reload`）；局域网条目取 `.env` 的 `LAN_HOST_IP`；无变化静默（日志 `%LOCALAPPDATA%\hermes\logs\nethernet-advertise-sync.log`） |
+| **入口存活探针**（现为 `orzmc-watchdog` 的一个段） | **`330d431ac384`**（~~`f198dd2a7e95`~~ 已于 2026-11-17 并入 watchdog 删除） | 每 30 分钟（watchdog `tick%6==0`，即每 6 个 tick） | `%LOCALAPPDATA%\hermes\scripts\orzmc_entry_probe.py` | no_agent watchdog | 6 项：`orzmc-velocity`/`orzmc-caddy` 容器状态、Java 状态包 25565、NetherNet `GET /v1/join`、网页入口 18443（TLS+SNI，期望 404 且 `Server: EaglercraftXServer`）、paper/folia 两口 RCON 认证；**全绿静默**，故障仅在新增/集合变化/每 6 小时复述，恢复发一条 ✅。**只报警不重启**（老板要求入口处置人工拍板）；**退出码恒 0**（只有脚本自身崩溃才 2）；按「引擎 / 入口 / 后端」三层判定——Docker 不可用收敛成一条；**实例容器 stopped/missing 归「提示项」**（只写日志 `INFO 后端 x 实例=容器状态 stopped`，不进告警集/状态文件/复述，boss 明确要求实例刻意停止时别吵）；只有「实例 running 但 RCON 认证失败」才计故障。运行手册（分层判定/退出码/三态自测/cron 核对）→ `references/entry-monitoring.md`；日志 `%LOCALAPPDATA%\hermes\logs\orzmc-entry-probe.log` |
+| ~~本机周巡检~~ | ~~`9d625c27db6d`~~（2026-11-17 20:13 删除定义） | ~~每周一 09:15~~ | `%LOCALAPPDATA%\hermes\scripts\orzmc_weekly_patrol.py` | no_agent | **2026-11-17 paused → 删除，并入 `orzmc-monday-report` 第三段**。原行为： 容器/三通道连通性/后端 TPS+人头/advertise 一致性/Paper·Folia·Geyser 版本 diff（Fill API + Modrinth）；**核心版本一律以实例目录 jar 文件名为准**——曾优先读 `logs/latest.log` 的 `Loading Paper 26.3-246@`，实例停着没重启时日志永远停在旧版，报出「Paper 落后 7 个 build」而磁盘上装的是 26.3-253（假告警）。日志只作兜底，`_ran` 记上次运行版本，与 jar 不一致时输出「上次运行 X，重启后才生效」/近 7 天 ERROR·WARN+Top/磁盘·世界体积·备份新鲜度 → 末尾「需要动手」清单；只读不重启 |
 
 > ⚠️ **跨端查 cron 必须两端都看**：Windows 那台也跑着独立 Hermes（`gateway run` 进程 + `%LOCALAPPDATA%\hermes\cron\jobs.json`），Mac 端 `jobs.json` 里看不到它的任务。
+> ⚠️ **停用/退役 job 必须回读状态才算停住**：① `pause` 调用返回成功**不等于**已暂停——回读 `jobs.json` 原始字段 `enabled: false` + `state: "paused"`（字段名**不是** `paused`，用 `j.get('paused')` 判断会把所有 job 都误报成 ACTIVE）；② 顺序是**先停 job、再归档/删除它的脚本**，否则 resume 时脚本已不在、或脚本还在却继续被旧 job 触发（技能双向同步这类 job 在「单一真源」后继续跑会直接把真源覆盖回去）；③ 两端都要核：一端以为停了、另一端还在跑，正是这类事故的常见形态；④ **cron 的写操作必须串行发，一次一个等结果**——同轮并行发多条 create/pause/update 会互相覆盖：`jobs.json` 是整份快照落盘（后写者拿走先写者的改动），实测出现过「三个 pause 全部回滚 + 新建的 job 从磁盘消失，而列表接口仍显示它在」的错位（列表读的是内存态）。所以每次写完都要**回读 `jobs.json` 确认「记录还在 + enabled/state 正确」**，只看工具返回的 `success:true` 不够；⑤ **同一台机器上的另一个会话同样是整份快照落盘**（实测：本会话新建的 `orzmc-monday-report` 被 20:04 那次 watchdog 合并写、以及 20:1x 的一次写连续吃掉两次，id 从 `686aa3ce8a13`→`3902dd9773a1`→`1404c6fc14f8`），所以**新建/改完 job 后隔几分钟再复读一次**；发现被吃掉先看 `created_at`/`origin` 判断是谁写的（`origin.platform=local` = 本机别的 CLI 会话），**不要在不知道对方在改什么的时候盲目重建第三次**，先跟对方（或老板）确认归属。
+>
+> ⚠️ **stub 转发脚本必须区分 `__main__` 与 import**：`scripts\*.py` 现在都是「转发到技能目录真源」的 19 行 stub；若 stub 在模块顶层无条件 `runpy.run_path(target, run_name="__main__")`，**任何 `import` 它的脚本都会被执行真源末尾的 `raise SystemExit(main())` 静默杀掉——症状是 rc=0 + stdout 空 + 无 stderr**（实测：`orzmc_weekly_patrol.py` import `orzmc_entry_probe` → 周巡检整段消失，聚合器仍显示「3/3 段完成」）。正确写法：`if __name__ == "__main__": runpy...` 否则用 `importlib.util.spec_from_file_location` 加载真源并 `globals().update(...)` 搬命名空间。**排查口诀：rc=0 但输出为空，先查 import 链，不要怀疑业务逻辑**；聚合器已把「rc=0 但解析无内容」计入段失败。判定「是不是对方做了重构」要读对方的脚本（如 `scripts\orzmc_watchdog.py` 的分段表）确认职责已被承接，**以新出现的 job/脚本为权威，别把自己删掉的 job 又加回来**（会造成双份触发）；要抓「谁在什么时候改的」就短采样：每 10s 取 `jobs.json` 的 md5 与 `"id"` 计数，变化时刻对照 `created_at` 即锁定写入者。
 
-- 本机（Windows）现有 6 个任务：advertise 同步 5m、入口探针 30m、route-guard 10m、gateway-session-guard 5m、bisync 60m、周巡检（周一 09:15）
+> ⚠️ **新建的周期 job 没有 `last_run_at` = 还没被真实验证过**：`enabled=True + state=scheduled` 只证明「已登记」。高频 job（5–30 分钟）几分钟内就能拿到 `last_run_at` 佐证；「每周/每月」job 必须等下一个窗口才会第一次真跑。所以汇报「迁移/交接完成」时把状态分三档说清——**已定义 / 已手动跑通 / 已自然触发**，别把前两档讲成第三档。
+> ⚠️ **在 Windows 宿主上手动执行脚本的三条硬前提**（从 Mac 侧编排 Windows 任务时同样适用）：
+> 1. **解释器**：Windows PATH 上的 `python` 可能是 0 字节的 Store stub（敲了才报错）—— 用 Hermes 自带 venv `%LOCALAPPDATA%\hermes\hermes-agent\venv\Scripts\python.exe`（含 yaml/ruamel/requests），或干脆交 cron 托管执行。
+> 2. **盘符/凭据**：映射盘（如指向 Mac SMB 共享的 `S:`）与 UNC 都需要 **SMB 凭据**；脚本内**优先写 UNC**（`\\<IP>\<共享名>\`，不依赖盘符映射）。写不进先读错误码：`WinError 1326 用户名或密码不正确` = 缺凭据（`cmdkey /list` 为空即证实），**与 Session 号无关**；凭据就绪后 `S:\` 与 UNC 都 `writable=True`。`WinError 5` 才是权限/路径问题。
+> 3. **凭据**：Windows 侧 `.env` 只保证有它自己那几条键（Feishu/model）。用到 `MCSM_LOCAL_*` / `EXAROTON_*` / `RCON_PASSWORD` / `LAN_HOST_IP` 的脚本拷过去前先确认这些键存在，否则表现为「查询全空但不报错」。
+
+- 本机（Windows）cron 现状（2026-11-17 20:15 实测 `jobs.json`，**共 3 条，全部 active**）：**active** —— `orzmc-watchdog` 每 5m（`330d431ac384`，2026-11-17 20:05 由 advertise 15m + 入口探针 30m + route-guard 10m + gateway-session-guard 5m **四条合并**，详见 2.6.14）、`orzmc-selfcheck` 每日 08:30（`ca0e89c8579d`）、`orzmc-monday-report` 周一 09:15（`1404c6fc14f8`）。原三条周一单任务（config-audit/version-check/weekly-patrol）的 **job 定义已于 20:13 全部删除**，脚本全留（聚合器正是调它们），要恢复单任务按脚本名重建即可，不必回滚历史 job。⚠️ 后三条的 pause 与 `orzmc-monday-report` 的创建**发生在 2026-11-17 20:02:43~45，由另一个 Feishu 会话完成**（`created_at`/`paused_at` 字段可查，origin=feishu），**不是 2.6.14 这轮 G1 的动作**；G1 全程只新建 watchdog + 删除上面四条，未读写这三条。回滚方式不是 `resume`（定义已删）：按脚本名重建三条 09:05/09:10/09:15 的 job，或先 `remove` 聚合器再重建。四个原脚本仍在 `%LOCALAPPDATA%\hermes\scripts\`，可单独手跑（watchdog 就是调它们）。
+- **合并纪律（2026-11-17 定）**：只有「同节奏 + 同投递目标 + 互不依赖」的任务才合并出报告（周一周任务 3→1，实测串行 199s：配置 153s + 版本 32s + 巡检 14s）。**高频看守（advertise/route-guard/entry-probe）默认不合并**——它们分属「动作型」与「只报警型」，且各自有去重状态，合成一个会让一次异常同时吞掉三类监控；只有段间隔离成立（独立子进程 + 独立告警分节，见下条 G1）时才允许并成 watchdog。`gateway-session-guard` 更不并（救生员不能和要救的人绑一起）。聚合器 `scripts/orzmc_monday_report.py`：单段失败只标红该段、退出码恒 0。报告分两层——**正文只出浓缩摘要**（结论一览表 + 按优先级排的待办 + 运行态/版本/配置三张小表，约 1.2KB；老板要求「10 秒判断要不要动手」），三段完整输出落 `monday-full.md` 与三份 `<script>.txt`（目录 `E:/orzmc/reports/monday-YYYYMMDD/`）。新增异常类型记得同步 `build_todo()`，否则会静默不出现在待办里（正文结构、表格竖线清洗、数字重组的硬规则 → `references/entry-monitoring.md` §6）。 **2026-11-17 G1 补充**：老板批准把「高频看守」也合并时，合并的前提不是「节奏一致」，而是**段间隔离必须成立** —— `orzmc-watchdog` 用独立子进程 + 独立 try/except + 按段名分节聚合（`## entry-probe`）+ 任一段 exit≠0 只把该段标红，因此一次异常不会吞掉其余段；这条隔离是允许合并的前置条件，缺了它就该退回多条独立 job。
 - ⚠️ **实例 `eventTask.autoStart=false` + `autoRestart=false`，但容器 policy 是 unless-stopped**：断电重启后代理会自己起来、Paper/Folia 不会 → 玩家进不去。2026-11-15 老板明确要求**不要**开自动拉起，靠探针报警 + 人工处置
 - 两者脚本均读 `~/.hermes/.env` 凭据；cron 精简 PATH 实测通过（2026-08-12 全量体检）
 - 脚本维护记录：audit 脚本 `Bearer ***` bug 已修（2026-08-12）；version_check Geyser build 号比较已修（2026-08-12）
 
 ## Pitfalls（跨后端通用）
+
+### 🖥️ Windows 迁移专项坑（2026-11-16，迁移当场踩到的）
+
+- 🔴 **Windows 上 `python` 是 Microsoft Store 的 0 字节 stub**：手敲 `python x.py` 直接失败（`where python` 指向 `WindowsApps\python.exe`，长度 0）。一律用 Hermes venv 解释器 `%LOCALAPPDATA%\hermes\hermes-agent\venv\Scripts\python.exe`（3.11.16，yaml/ruamel/requests 齐备），或交给 cron 托管执行。
+- 🔴 **SMB 写不进先看错误码；凭据按「登录会话」生效**：`WinError 1326 用户名或密码不正确` = 该会话没有可用 SMB 凭据（`cmdkey /list` 在该会话为空即证实）；`WinError 5` 才是权限/路径问题。⚠️ **同一台机器不同会话结论可能不同**：2026-11-16 实测 Hermes cron（**Session 1**，老板交互登录会话）对 `S:\` 与 `\\{LAN_IP}\下载` 均 `writable=True`，而 `ssh win`（**Session 0**）同一时刻仍报 1326 → `deliver_dir()` 回退到 `E:/orzmc/deliver`。**所以交付验证必须由 cron（Session 1）跑**，在 SSH 里测出「不可写」不能代表 cron 不可写（反之亦然）。曾把这条误判成「Session 0 导致写不进、与凭据无关」，绕了半天 —— 正确顺序：先看错误码 → 再确认是哪个会话 → 再定结论。
+- 🔴 **交付工具用 `deliver_file.py`（技能 `scripts/`）**：`python deliver_file.py <源文件> [--as 名] [--json]` → 自动走 `deliver_dir()`（`S:\` → UNC → 本机），打印两侧 sha256 与一致性。cron 里没有参数位，包一层 `_deliver_one.py` 之类的一次性脚本再挂 job。
+- 🔴 **pathlib 的 `/` 优先级高于 `%`**：`p / "_probe_%s.txt" % os.getpid()` 等价于 `(p / "_probe_%s.txt") % int` → `TypeError: unsupported operand type(s) for %: 'WindowsPath' and 'int'`，会把**可写目录误报成不可写**。写 `p / ("_probe_%s.txt" % os.getpid())`。
+- 🔴 **改别人的 Python 脚本前先确认文件编码，禁止 `read_text(utf-8, errors="replace")` 再写回**：非 UTF-8（GBK）脚本里的中文会被替换成 `U+FFFD`，写回后字符串字面量直接断裂（`SyntaxError: unterminated string literal`），一次搞坏 6 个脚本。正确姿势：`data.decode("utf-8", errors="surrogateescape")` → 改 → `text.encode("utf-8", errors="surrogateescape")`，非 UTF-8 字节原样往返。纯 ASCII 的插入（如 guard 代码块）可以直接在**字节流**上做，不碰解码。
+- 🔴 **UTF-8 guard 必须落在「模块级」，且 `import sys` 要在模块级**：按「连续 import/注释/空行」扫头部插 guard 时，遇到跨多行的模块 docstring 会停在其**内部** → guard 成了字符串内容（外加一句假的 `import sys`）→ 模块级 `sys.stdout.reconfigure` 抛 `NameError` → 被自己的 `except Exception: pass` **静默吞掉** → 等于没加 guard。用 `ast` 取 docstring/`__future__` 的 `end_lineno` 定位插入点，并用 ast 复核「模块级有 import sys + 模块级 try 含 reconfigure」。**别手搓插入器** —— 直接跑 `scripts/fix_utf8_guard.py --dir <脚本目录>`（字节安全、幂等；`--check` 只体检，退出码 1=有不合格的；生成后会自动 py_compile）。
+- 🔴 **告警脚本必须做「注入假故障」自测，光看平时静默不算通过**：入口探针因为上面的 guard 失效，平时全绿毫无异常，但**一旦真要告警**，`print("🔴 …")` 在 cp936 下抛 `UnicodeEncodeError` → cron 交付给老板的是一屏 traceback 而不是告警内容（等于告警通道一直是坏的）。自测法：复制脚本、注入一条假 fail（`PROBE_SELFTEST=1`），确认 stdout 出现预期的红字告警且 stderr 为空；随后删临时脚本 + 清 state 文件再跑生产版确认静默。
+- 🔴 **`exa_file._load_env()` 原先硬编码 `~/.hermes/.env`** → Windows 上是 `C:\Users\WangA\.hermes\.env`（不存在）→ 报 **FileNotFoundError**，看起来像网络/权限问题。已改为「`%LOCALAPPDATA%\hermes\.env` → `~/.hermes/.env` 逐个尝试，都不在就返回空 dict」。
+- 🔴 **Windows PowerShell 5.1 读非 ASCII 的 `.ps1` 要 UTF-8 BOM**：无 BOM 的 UTF-8 中文脚本按 GBK 解码，引号会被撑坏，报 `字符串缺少终止符`／`foreach 缺少变量名`，报错行号与真因无关。→ 含中文的 `.ps1` 一律 `utf-8-sig` 写盘；另外 **PS 的反引号是转义符不是续行符**，多行命令别用行尾 `` ` ``（会串行解析炸掉）。
+- 🔴 **PowerShell 5.1 读 UTF-8（含中文）的 JSON / 清单会按 GBK 解码**：`Get-Content ... -Raw | ConvertFrom-Json` 报 `ConvertFrom-Json : 无效的 JSON ...`（还夹乱码），文件本身完全正常。修法二选一：`Get-Content -Encoding UTF8 -Raw` 再解析，或**直接把文件 `scp` 回 Mac 用 Python 解析**（跨端解析优先放在 Mac 侧）。反向同理：PS 的 `Set-Content -Encoding UTF8` 会**加 BOM**，Mac 端拿它做集合比较/逐行匹配前必须先剥 BOM。
+- 🔴 **Windows 侧 Mihomo/Clash TUN 会劫持「发往自身 LAN IP」的连接**：探 `192.168.0.33:25565` 全线超时，但 `127.0.0.1:25565` 秒通。→ `.env` 里 `ORZMC_LAN_HOST=127.0.0.1`（局域网条目/广告地址仍用 `LAN_HOST_IP=192.168.0.33`，两者用途不同别混）。
+- 🟡 **`mc_version_check.py` 的 `PARSE_PAPERMC` 路径要跨平台解析**：写死 `~/.hermes/skills/...` 在 Windows 上不存在 → `Paper核心 解析失败`。已抽 `_skill_scripts_dir()` 先试 `%LOCALAPPDATA%\hermes\skills...`。
+- 🔴 **`subprocess.run(..., text=True)` 在 Windows 上默认按 cp936 解码子进程输出**：gradle / java / 中文日志里出现非 GBK 字节 → 读线程 `UnicodeDecodeError` → `r.stdout/r.stderr` 变 **None** → 下游 `TypeError: 'NoneType' object is not subscriptable`（报错位置远离真因）。→ 所有抓子进程输出的地方必须显式 `encoding="utf-8", errors="replace"`，并在拼接前 `(r.stdout or "")`。
+- 🔴 **在 Windows 跑构建/带环境变量的命令：落盘 `.bat` 再 `cmd /c <文件>`，别在 SSH 一行里拼**：`.bat` 里 `set "JAVA_HOME=E:\...\jdk25"` 与 `call gradlew.bat <args>` **各占一行**。两个会伪装成「环境没装」的坑：① `cmd` 里写 `set VAR=value && ...` 时**尾随空格会算进变量值** → gradlew 报 `JAVA_HOME is set to an invalid directory: E:\...\jdk25 `（路径其实完全正确）；② `set "VAR=value"` 塞进 `ssh win "cmd /c \"...\""` 的多层引号会被 bash/SSH 吃掉 → 变成 `JAVA_HOME is not set`。看到这两种报错先怀疑拼法，不要去重装 JDK。**按项目跑单测/构建的坑（多模块 `--tests` 需模块限定、POSIX-only 断言）→ `references/java-test-pitfalls.md`**。
+- 🔴 **Windows 上 `subprocess` 起 `.bat` 不能用相对名**：`cmd=["gradlew.bat"]` + `cwd=插件目录` → `FileNotFoundError [WinError 2]`（`CreateProcess` 不查子进程 cwd，只查 PATH）→ 必须传**绝对路径**（`<repo>/gradlew.bat`，兜底本机 `E:/orzmc/tools/gradle/bin/gradle.bat`）。
+- 🔴 **`hermes cron create --script X.py` 只认 `%LOCALAPPDATA%\hermes\scripts\X.py`**，不查技能目录（直接报 `Script file not found: ...\hermes\scripts\X.py`）。真源留在技能目录时，主机侧放一个 5 行转发 stub（`sys.path.insert` 技能 scripts + `runpy.run_path(..., run_name="__main__")`），避免两份副本漂移。
+- 🔴 **Docker Desktop(WSL2) 发布的端口不出现在 Windows `netstat` / `Get-NetTCPConnection`**（监听在网络命名空间/VM 内）：`netstat -ano | grep 25565` 空 = 假阳性。判定入口存活一律用 **TCP 实连 `127.0.0.1:<port>`**；且本机连自己的 LAN IP 会被 TUN 劫持超时（见上条），不能拿它当「端口没开」。
+- 🔴 **`orzmc_paths.redact()` 会把四段版本号当公网 IP 打码**：`SCore-5.26.11.15` / `EE 3.26.11.15` 落盘后变成 `<公网IP>`，报告里的版本基线直接被毁。凡落盘内容含 `x.y.z.w` 形态的版本串，脱敏前先把已知版本标记成占位符、脱敏后再还原（`orzmc_selfcheck.py` 的 `_mask_versions()` 就是这层保护）。
+- 🟢 **`gradle.bat` 硬依赖 `JAVA_HOME` —— 全局已配，仍然显式注入**：Windows 用户级全局已设 `JAVA_HOME=E:\orzmc\tools\jdk25` 且用户 `Path` 含 `%JAVA_HOME%\bin`（注册表 `HKCU\Environment` 回读确认），`java` 可直接跑了。但**已在运行的进程（Hermes 网关、长驻 cron 宿主）不会自动继承**新写的用户级变量，必须重启才拿到 → 脚本给子进程显式注入 `JAVA_HOME` 永远比赌继承更稳。自检第 7 项「全局是否配了」读**注册表真值**、不看本进程 `os.environ`，否则会因没继承而误报全局没配。**判定 Path 里有没有 JDK bin 必须「原文 + 手工展开」两条腿走**：注册表存的是变量原文 `%JAVA_HOME%\bin`，本进程没继承 `JAVA_HOME` 时 `os.path.expandvars` 展不开，只比展开后的绝对路径 `E:\orzmc\tools\jdk25\bin` 会恒假红（2.6.12 修过）→ 现口径三路任一命中即 ✅：(a) 原文含 `%JAVA_HOME%\bin`；(b) 用注册表 JAVA_HOME 真值手工展开后含 `jdk25\bin`；(c) PATH 里能直接找到 `java.exe`。Path 缺这条只记 ℹ️ 不判 ❌；真 ❌ 只留给「`JAVA_HOME` 已设但 `${JAVA_HOME}\bin\java.exe` 不存在」。
+
 
 - ⚠️ **手写 RCON 客户端必须循环解析「所有完整包」，不能只取首包**：一次 `recv` 里常同时带回 auth 应答 + 命令应答，只读一包会拿到上一个响应；同时返回体长度要读满（截到 80 字会把 `tps` 这类长行截残 → 字段解析恒失败，误判成「服务器没响应」）。有 `scripts/rcon.py` 就别手搓。同理：`docker ps --format '{{.Ports}}'` 会把 `0.0.0.0:` 与 `[::]:` 各报一遍，展示/比对前先去重。
 - ⚠️ **核心版本串只写在 `logs/latest.log` 头部**（`Loading Paper 26.3-246@...`）——服务跑久后日志尾部 grep 不到它，别因此判「版本读不出来」；读前 n 行再剥 ANSI。
@@ -383,6 +470,8 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 - ⚠️ **Geyser 切 `both` 模式：`advertise-addresses` 的端口必须等于 `webrtc-port`**（不是 `port`）。写错会变成「RakNet 老客户端能进、NetherNet 新客户端卡住」的半瘫，且两端日志都不报错 —— 只看日志永远找不到。
 - ⚠️ **服务器主机跑着 Clash/代理（TUN 模式）时，`advertise-addresses` 只能写数字公网 IP**：系统 DNS 被劫持成 `198.18.x` 假 IP（连指定公共 DNS 也一样），`stun-discovery` 探到的是**代理出口地址**（实测返回代理机 IP + 随机源端口）→ 域名写法与留空都会把玩家导到死地址。自检：主机上 `Resolve-DnsName <域名>` 必须回真公网 IP、`curl -s https://ifconfig.me` 必须等于该域名 A 记录；任一不符 → 写 IP。动态 IP 变化交给 `nethernet_advertise_sync.py` 守护。
 
+- ⚠️ **Git 不在任何 PATH 里（HKCU 与 HKLM Path 均无 git 目录），但本机确实有 Git**：`C:\Program Files\Git`（现只剩空壳 cmd/ 与 etc/）与 Hermes 自带 `%LOCALAPPDATA%\hermes\git\{cmd,bin}\git.exe` 都在 —— 交互 bash 里 `which git` 命中的 `hermes\git\mingw64\bin\git.EXE` 只是 MSYS 自己的 PATH。服务/SSH 会话按 PATH 找必然 `FileNotFoundError`，脚本里一律用 `resolve_git()` 四级兜底（`shutil.which` → `C:\Program Files\Git\cmd\git.exe` → `%LOCALAPPDATA%\hermes\git\cmd\git.exe` → `…\bin\git.exe`），禁止裸写 `["git", …]`。
+- ⚠️ **`[Environment]::SetEnvironmentVariable('Path', $v, 'User')` 会把 REG_EXPAND_SZ 降级成 REG_SZ**（实测：写后 `GetValueKind` = `String`，`%JAVA_HOME%` 从此不展开，Path 变成死字面量）。要保留变量形式必须 `Set-ItemProperty -Path HKCU:\Environment -Name Path -Value $v -Type ExpandString`，改完回读三样确认：kind = `ExpandString`、原文含 `%JAVA_HOME%\bin`、`ExpandEnvironmentVariables(原文)` = 期望绝对路径。
 - ⚠️ **配置重建升级（OrzMC/EzShops 等）备份必须隔离目录**：旧配置备份与"拉新配置"严禁写同一目录——拉新强制用 `*_new/` 独立目录（2026-08-09 实测教训：复用同一 outdir 导致旧备份被新默认配置覆盖，迁移依据永久丢失；/tmp 无 Time Machine/APFS 快照兜底）。备份后**立即打印内容摘要（key: value）核对**，并二次复制到 `~/backups/`；迁移前先 diff 新旧确认依据完整
 - ⚠️ **破坏性升级（删配置重建）前**：先 `skill_view` 查技能已有脚本/端点结论（mcsm_delete.py 用 `{"targets":[...]}`、MCSM 重启用 `api/protected_instance/restart`、Exaroton 上传用 PUT+UA），不凭记忆手写；备份/迁移清单先列给用户确认（plan-first）
 - ⚠️ 下载必须校验 sha256，防止损坏 jar
@@ -397,6 +486,9 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 - ⚠️ **MCSM 升级跨大版本（如 26.1→26.2）**：世界数据首次启动自动转换（日志 `Starting upgrade for world`），确认无玩家时段操作
 
 ## 验证
+- **交付链路验收（写老板 S: 盘 / 任何远端共享）= 真实文件 + 落点回读 + 两侧 sha256 一致**，三步缺一不可：
+  `scripts/deliver_selftest.py` 把真实报告按 `orzmc_paths.deliver_dir()` 落盘并打印两侧哈希（日志 `E:/orzmc/reports/deliver-selftest.log`）；`scripts/deliver_probe.py` 只做**目录级探活**。
+  ⚠️ **目录可写 ≠ 交付成功**：探活脚本自己要是有 bug（如 `p / "x_%s" % pid` 的优先级错）会把可写目录报成不可写，反过来也可能假阳性 → 结论必须用真实文件哈希闭环。
 - `curl -s localhost:25565` 返回 Minecraft 协议字节 = 服务器在线
 - 日志出现 `Done (Xs)! For help, type "help"` = 启动成功
 - `ls plugins/` 看到 jar = 插件已安装
