@@ -43,7 +43,7 @@ EOF
 ```bash
 PYTHONPATH="" python - <<'EOF'
 import zipfile,re
-z=zipfile.ZipFile('eagler/proxy/plugins/Geyser-Velocity.jar')
+z=zipfile.ZipFile('E:/orzmc/mcsmanager/daemon/data/InstanceData/e09d92431092412b940e1e77f307e946/plugins/Geyser-Velocity.jar')
 hits=set()
 for n in z.namelist():
     if n.endswith('.class'):
@@ -61,7 +61,7 @@ Geyser 2.12.1 的表覆盖 **Bedrock 1.20.0 → 1.26.6x**（`/v1/join` 通告的
 > 网页入口本身该怎么搭（有没有代理层、EaglerXPaper vs Velocity 插件、双栈与 TLS）见 `references/eagler-client-access.md`；本文只答「范围」。
 
 ```bash
-grep -nE '^\[|min_minecraft_protocol|max_minecraft_protocol' eagler/proxy/plugins/eaglerxserver/listeners.toml
+grep -nE '^\[|min_minecraft_protocol|max_minecraft_protocol' E:/orzmc/mcsmanager/daemon/data/InstanceData/e09d92431092412b940e1e77f307e946/plugins/eaglerxserver/listeners.toml
 ```
 
 默认 `min_minecraft_protocol = 3`（1.7）、`max_minecraft_protocol = 340`（1.12.2）、`max_minecraft_protocol_v5 = -1`（v5 客户端不限）。所以网页端是「EaglercraftX 客户端，MC 协议 3–340」，实际玩家多数用 1.8.8。

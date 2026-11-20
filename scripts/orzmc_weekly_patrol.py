@@ -11,6 +11,8 @@
 只读：不改配置、不重启任何东西。
 """
 from __future__ import annotations
+import sys
+
 try:  # Windows console/pipe defaults to cp936: lock UTF-8 or emoji print raises
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -24,15 +26,17 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import time
 import urllib.request
 
-HERMES = os.path.join(os.environ.get("LOCALAPPDATA", ""), "hermes")
-SCRIPTS = os.path.join(HERMES, "scripts")
-DATA_ROOT = "E:/orzmc"
+# 真源就在本目录（技能 scripts/）；cron 入口是 %LOCALAPPDATA%/hermes/scripts/ 下的同名转发 stub
+SCRIPTS = os.path.dirname(os.path.abspath(__file__))
+DATA_ROOT = os.environ.get("ORZMC_DATA_ROOT") or "E:/orzmc"
 INST = f"{DATA_ROOT}/mcsmanager/daemon/data/InstanceData"
-PROXY = f"{DATA_ROOT}/eagler/proxy"
+sys.path.insert(0, SCRIPTS)
+from orzmc_paths import velocity_dir  # noqa: E402
+
+PROXY = str(velocity_dir() or "")   # ADR-040：面板 Velocity 实例目录；空串表示找不到
 INSTANCES = [
     ("paper", "716c2fb712154c36ba5ab0f1480d3f87", 25575),
     ("folia", "8A932DD47F4D42AAAD6A6A9A5FAD2A91", 25576),
@@ -210,7 +214,7 @@ def installed_versions() -> dict[str, str]:
             v[label] = m.group(2)
     if ran:
         v["_ran"] = ran
-    pt = "\n".join(tail_lines(f"{PROXY}/logs/latest.log", 300))
+    pt = "\n".join(tail_lines(os.path.join(PROXY, "logs", "latest.log"), 300)) if PROXY else ""
     m = re.search(r"Booting up Velocity (\S+?)\.\.\.", pt)
     if m:
         v["velocity"] = m.group(1)

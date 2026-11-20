@@ -6,9 +6,9 @@
 
 | 端 | 文件 | 格式 | 生效方式 |
 |:--|:--|:--|:--|
-| Java（含基岩继承） | `E:/orzmc/eagler/proxy/velocity.toml` 的 `motd` | **MiniMessage**（`<gradient:#a:#b>…`、`\n` 表示换行） | `docker restart orzmc-velocity` |
+| Java（含基岩继承） | `E:/orzmc/mcsmanager/daemon/data/InstanceData/e09d92431092412b940e1e77f307e946/velocity.toml` 的 `motd` | **MiniMessage**（`<gradient:#a:#b>…`、`\n` 表示换行） | 面板 API 重启 Velocity 实例（ADR-040，禁 `docker restart`） |
 | 基岩 | 无需单独配 | — | 代理侧 `Geyser-Velocity/config.yml` 的 `passthrough-motd: true` + `passthrough-player-counts: true` 自动继承 Java 端 |
-| 网页（EaglercraftX） | `E:/orzmc/eagler/proxy/plugins/eaglerxserver/listeners.toml` 的 `server_motd` | **字符串数组**（每行一项，最多两行）+ 旧式 `&` 颜色码，不支持 MiniMessage | 同上重启 |
+| 网页（EaglercraftX） | `E:/orzmc/mcsmanager/daemon/data/InstanceData/e09d92431092412b940e1e77f307e946/plugins/eaglerxserver/listeners.toml` 的 `server_motd` | **字符串数组**（每行一项，最多两行）+ 旧式 `&` 颜色码，不支持 MiniMessage | 同上重启 |
 
 `velocity.toml` 相关三键：`motd`、`show-max-players`（**只是列表里展示的上限数字**，与真实满员无关）、`sample-players-in-ping`（悬停是否显示在线名单）。
 

@@ -249,13 +249,10 @@ docker exec orzmc-easybot sh -c 'nc -z -w 6 region1.v2.argotunnel.com 7844 && ec
 **修法（最小动作）**：`docker restart orzmc-cloudflared` → **25～45 秒内**日志出现
 `Registered tunnel connection … protocol=http2`，三个域名立刻 200。不需要重建容器、不改配置。
 
-**自愈（已落地 2026-10-12）**：cron job `b0621d7056c1`（`orzmc-tunnel-guard`，每 10 分钟，
-no_agent watchdog）+ 脚本 `~/AppData/Local/hermes/scripts/orzmc_tunnel_guard.py`：
-端到端探测 `https://mcs.{SERVER_NAME}.cn/`（宿主 `curl.exe --ssl-no-revoke` + 容器内 `wget` 双通道，
-任一成功算健康；两者都失败再复测一次）→ 仍不可达则 `docker restart orzmc-cloudflared` →
-45 秒后复测 → 恢复/失败都把文本投递到飞书；**健康时零输出、零打扰**。
-15 分钟冷却（state `orzmc_tunnel_guard.json`）防重启风暴；状态日志 `orzmc_tunnel_guard.log`。
-测试用 `ORZMC_TUNNEL_GUARD_DRYRUN=1|2` 模拟「重启后恢复 / 重启后仍失败」分支，不真重启。
+**自愈：已下线（2026-10-29）**。本机已改为 **Caddy 直连 + Let's Encrypt DNS-01**，cloudflared
+容器与 `orzmc_tunnel_guard.py`（cron `b0621d7056c1`）、`Hermes_Gateway` 之外的 tunnel 相关任务
+全部删除。本节只作为「当年怎么修隧道」的历史参考；现在证书到期与否看 cron `caddy-cert-watch`
+（`caddy_cert_watch.py`，真源在技能 `scripts/`）。
 
 > ⚠️ §9b 与 §9c 的区别：§9b = QUIC 被 TUN UDP 劫持（错误是 `no recent network activity`，
 > 修法 = 强制 `TUNNEL_TRANSPORT_PROTOCOL=http2`）；§9c = http2 已配却仍失败

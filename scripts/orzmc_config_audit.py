@@ -5,7 +5,7 @@
 
   基准端（测试服） = 本机 MCSM 实例目录直读
       E:/orzmc/mcsmanager/daemon/data/InstanceData/<paper uuid>/
-  生效 Geyser 配置 = 代理侧 E:/orzmc/eagler/proxy/plugins/Geyser-Velocity/config.yml
+  生效 Geyser 配置 = 面板 Velocity 实例目录下 plugins/Geyser-*/config.yml（ADR-040；旧 eagler/proxy 已废弃）
       （ADR-036 后实例内 Geyser-Spigot 已被 Velocity 停用；存在代理配置即判 proxy 模式，
        不存在则回退实例内副本 = direct 模式）
   对比端（Exaroton） = 平台 API（需要 EXAROTON_API_KEY，走技能里的 exa_file.get_file）
@@ -39,7 +39,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mcsm_env import get_mcsm_local_config, mcsm_scan_plugin_configs  # noqa: E402
-from orzmc_paths import deliver_dir, env, redact, reports_dir  # noqa: E402
+from orzmc_paths import deliver_dir, env, redact, reports_dir, velocity_dir  # noqa: E402
 
 HERMES_HOME = pathlib.Path(os.environ.get("LOCALAPPDATA", "")) / "hermes"
 if not HERMES_HOME.is_dir():
@@ -48,7 +48,16 @@ SKILL_SCRIPTS = HERMES_HOME / "skills" / "gaming" / "orzmc" / "scripts"
 sys.path.insert(0, str(SKILL_SCRIPTS))
 sys.path.insert(0, str(SKILL_SCRIPTS / "cmp3"))
 
-PROXY_GEYSER = pathlib.Path("E:/orzmc/eagler/proxy/plugins/Geyser-Velocity/config.yml")
+def proxy_geyser_config() -> pathlib.Path | None:
+    """生效的 Geyser 配置（ADR-040：在面板 Velocity 实例目录里；旧 $DATA_ROOT/eagler/proxy 已废弃）"""
+    d = velocity_dir()
+    if not d:
+        return None
+    for p in sorted((d / "plugins").glob("Geyser-*/config.yml")):
+        return p
+    return None
+
+
 
 CORE = ["server.properties", "bukkit.yml", "spigot.yml", "commands.yml", "wepif.yml"]
 CORE_MAP = {
@@ -133,8 +142,9 @@ def local_snapshot():
             snap[f"plugins/{rel}"] = lines
     # 代理模式：用生效的 Geyser 配置覆盖实例内副本（对齐 Exa 同名路径便于比对）
     mode = "direct"
-    if PROXY_GEYSER.is_file():
-        lines = read(PROXY_GEYSER)
+    proxy_cfg = proxy_geyser_config()
+    if proxy_cfg and proxy_cfg.is_file():
+        lines = read(proxy_cfg)
         if lines is not None:
             snap["plugins/Geyser-Spigot/config.yml"] = lines
             mode = "proxy"

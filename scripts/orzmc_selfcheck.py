@@ -20,16 +20,16 @@
     1 技能          SKILL.md version / 技能文件数 / skill_self_check.py 结论
     2 cron          job 数、名称、enabled、last_status、next_run；挑出异常项
     3 交付目录      deliver_dir() 命中级别 + 真写一个临时文件再删（非交互会话看不到 S: → ℹ️ 不计告警）
-    4 实例状态      velocity/caddy/easybot 应 running；paper/folia 应 stopped
+    4 实例状态      容器 velocity/caddy/easybot 应 Up；MCSM 实例 velocity/paper/folia 应运行中（面板 API status=3）
     5 入口端口      25565 / 19132 真连（实例停止时由代理监听）
     6 版本基线      实例 jar 文件名 vs SKILL.md 记的基线（只比对，不改动）
     7 工具链        jdk25 java / gradle / node / git（JAVA_HOME 全局配置状态读注册表真值）
     8 报告新鲜度    E:/orzmc/reports 最近 3 个文件；>8 天无新报告 = ⚠️
 
 判定口径（老板定）：
-    * **MCSM 面板 API 403 = API key 失效，已按老板决定不处理** → 本脚本不含任何面板 API 判定项，
-      全部结论只走「本地直读（E:/orzmc 文件系统）+ 容器事实（docker ps / docker exec）」，
-      面板相关只作为 ℹ️ 口径说明出现，不计告警、不影响退出码。
+    * **实例判活以面板 API 为准**（ADR-042 后 paper/folia 常驻运行）：apikey 从面板 web 数据目录
+      `E:/orzmc/mcsmanager/web/data/User/*.json`（permission==10）现读，不写死；status 语义实测
+      0=停止、3=运行中。API 不可用时降级为 ℹ️ 并跳过实例判定（不误报）。**绝不自动拉起实例**。
     * **JAVA_HOME 已在 Windows 用户级全局配置**（`E:\orzmc\tools\jdk25`，用户 Path 含 `%JAVA_HOME%\bin`）
       → 第 7 项按 ✅ 报，真值读注册表（进程 env 可能是设置之前起的、没继承）；已运行进程需重启才继承，
       脚本内仍显式注入给子进程更稳。
@@ -83,8 +83,9 @@ BASELINE = [
     ("folia", "Folia 核心", r"^folia-(.+)\.jar$", "26.3-8"),
     ("folia", "ExecutableEvents", r"^ExecutableEvents-(.+)\.jar$", "3.26.11.15"),
     ("folia", "SCore", r"^SCore-(.+)\.jar$", "5.26.11.15"),
+    ("velocity", "Velocity 核心", r"^velocity-(.+)\.jar$", "4.3.1-45"),
 ]
-INSTANCE_UUIDS = {"paper": PAPER_UUID, "folia": FOLIA_UUID}
+INSTANCE_UUIDS = {"paper": PAPER_UUID, "folia": FOLIA_UUID}   # velocity 走 velocity_dir() 动态解析
 
 REPORT_STALE_DAYS = 8
 LEVEL_ICON = {"ok": "✅", "warn": "⚠️", "fail": "❌", "info": "ℹ️"}
@@ -94,10 +95,12 @@ _PROTECT = set()
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 try:
-    from orzmc_paths import deliver_dir, redact  # noqa: E402
+    from orzmc_paths import deliver_dir, mcsm_instances, redact, velocity_dir  # noqa: E402
 except Exception as _e:  # 辅助模块缺失不能让自检崩
     deliver_dir = None
     redact = None
+    mcsm_instances = None
+    velocity_dir = None
     _PATHS_ERR = str(_e)
 else:
     _PATHS_ERR = ""
@@ -407,8 +410,8 @@ def chk_deliver():
 def chk_instances():
     ev = []
     level = "ok"
-    ev.append("ℹ️ MCSM 面板 API 403：已按老板决定不处理（API key 失效）——本项判定只走本地直读 + 容器事实，"
-              "不查面板 API、不计告警、不影响退出码")
+    ev.append("口径：容器看 docker ps（Up=运行）；MCSM 实例看面板 API status（3=运行中、0=停止），"
+              "实例 java 进程跑在 daemon 容器内、不是独立容器")
     rc, out = run(["docker", "ps", "-a", "--format", "{{.Names}}\t{{.Status}}"], timeout=60)
     if rc is None or rc != 0:
         return {"level": "fail", "evidence": ["docker ps 失败 rc=%s：%s" % (rc, first_line(out))]}
@@ -426,20 +429,36 @@ def chk_instances():
             level = "fail"
     ev.append("daemon 容器：%s" % (states.get(DAEMON_CONTAINER) or "不存在"))
 
-    # paper/folia 在 MCSM 里是 daemon 容器内的 java 进程，不是独立容器 → 用进程判活
-    ev.append("期望 stopped（MCSM 实例，按老板决定保持停止）：")
-    for label, uuid in INSTANCE_UUIDS.items():
-        rc2, out2 = run(["docker", "exec", DAEMON_CONTAINER, "sh", "-c",
-                         "ps -ef | grep -i '[j]ava' | grep -i '%s'" % uuid[:8]], timeout=60)
-        if rc2 is None:
-            ev.append("  ⚠️ %-6s 无法探测（daemon 容器不可 exec）：%s" % (label, first_line(out2, 120)))
-            level = "warn" if level == "ok" else level
-            continue
-        running = bool([l for l in out2.splitlines() if "java" in l.lower()])
-        ev.append("  %s %-6s %s" % ("⚠️" if running else "✅", label,
-                                    "正在运行（预期停止，老板没同意不要自动拉起）" if running else "stopped"))
-        if running and level == "ok":
-            level = "warn"
+    # MCSM 实例跑在 daemon 容器里（不是独立 docker 容器）→ 状态以面板 API 为准（0=停止、3=运行中）
+    inst_list = mcsm_instances() if mcsm_instances else []
+    ev.append("MCSM 实例（面板 API status）：")
+    if not inst_list:
+        ev.append("  ℹ️ 面板 API 不可用（apikey 读不到 / HTTP 失败）→ 跳过实例判定，不计告警")
+    else:
+        for it in inst_list:
+            nick = it.get("nickname") or it["uuid"][:8]
+            st = it.get("status")
+            running = str(st) == "3"
+            root = INSTANCE_ROOT / it["uuid"]
+            cores = sorted(p.name for p in root.glob("*.jar")) if root.is_dir() else []
+            ev.append("  %s %-18s %-8s %s"
+                      % ("✅" if running else "❌", nick,
+                         "运行中" if running else ("停止" if str(st) == "0" else "status=%s" % st),
+                         ("core=" + ",".join(cores)) if cores else ""))
+            if running:
+                cmd = (it.get("startCommand") or "").strip()
+                if cmd:
+                    ev.append("       startCommand: " + cmd[:90])
+            else:
+                level = "fail"
+        # 代理插件（ADR-042：面板上传，缺失即 warn）
+        vd = velocity_dir() if velocity_dir else None
+        if vd:
+            miss = [n for n in ("EaglerXServer.jar", "Geyser-Velocity.jar")
+                    if not (vd / "plugins" / n).is_file()]
+            if miss:
+                ev.append("  ⚠️ Velocity 插件缺失（应在面板上传）：%s" % ", ".join(miss))
+                level = "warn" if level == "ok" else level
     return {"level": level, "evidence": ev}
 
 
@@ -468,12 +487,19 @@ def chk_ports():
 
 
 # ---------------------------------------------------------------- 6 版本基线
+def instance_root(inst):
+    """实例目录：paper/folia 用固定 uuid；velocity 由 velocity_dir() 解析（ADR-040 代理数据在面板实例目录）"""
+    if inst in INSTANCE_UUIDS:
+        return INSTANCE_ROOT / INSTANCE_UUIDS[inst]
+    return velocity_dir() or (INSTANCE_ROOT / inst)
+
+
 def chk_baseline():
     ev = []
     level = "ok"
     mismatches = []
     for inst, label, pattern, expect in BASELINE:
-        root = INSTANCE_ROOT / INSTANCE_UUIDS[inst]
+        root = instance_root(inst)
         if not root.is_dir():
             ev.append("❌ %-6s %-16s 实例目录不存在: %s" % (inst, label, root))
             mismatches.append("%s %s 目录缺失" % (inst, label))
