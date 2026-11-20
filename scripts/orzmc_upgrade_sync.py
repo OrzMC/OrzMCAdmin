@@ -190,6 +190,19 @@ def wait_log(inst_dir, needles, timeout=200):
     return False, txt
 
 
+def emit(status_ok, note=""):
+    """统一输出（cron 报告按此格式解析）"""
+    print("## 升级流水线 %s%s" % (time.strftime("%Y-%m-%d %H:%M"), (" · " + note) if note else ""))
+    print("\n### 版本与取证")
+    print("\n".join("- " + e for e in EV) or "- （无）")
+    print("\n### 动作")
+    print("\n".join("- " + a for a in ACTIONS) or "- 无")
+    if WARN:
+        print("\n### ⚠️ 异常")
+        print("\n".join("- " + w for w in WARN))
+    print("\nSTATUS_LINE: " + ("✅ 全绿" if status_ok and not WARN else "⚠️ 有异常"))
+
+
 def players_online():
     """经代理 ping 当前在线人数；探测失败返回 None（视为未知，不阻断）"""
     try:
@@ -546,7 +559,7 @@ def main():
         state, msg = exaroton_sync(os.path.join(paper_dir, "plugins", gs_jar or ""), dry=args.dry_run) \
             if (gs_jar and not args.skip_exaroton) else ("skip", "跳过")
         say("ℹ️", "线上服：%s" % msg)
-        print("\n".join(EV))
+        emit(True, "无变更")
         return 0
 
     if args.require_idle and not args.dry_run:
@@ -558,10 +571,7 @@ def main():
                                       flags={"paper": do_paper, "folia": do_folia, "geyser": do_geyser})
             export_s(base, got, paper_t, folia_t, geyser_t, "未执行（有玩家在线）")
             cleanup(base) if not args.no_clean else None
-            print("\n## 升级流水线 %s（有玩家在线，已跳过部署）" % time.strftime("%Y-%m-%d %H:%M"))
-            print("\n".join("- " + e for e in EV))
-            print("\n### 动作\n" + ("\n".join("- " + a for a in ACTIONS) or "- 无"))
-            print("\nSTATUS_LINE: ⚠️ 有玩家在线，未部署（包已出，待人工择时）")
+            emit(True, "有玩家在线 → 只出包不部署")
             return 0
 
     base, got = build_package(date_str, paper_t if do_paper else {}, folia_t if do_folia else {},
@@ -621,12 +631,7 @@ def main():
         if not args.no_clean:
             cleanup(base)
 
-    print("\n## 升级流水线 %s" % time.strftime("%Y-%m-%d %H:%M"))
-    print("\n### 版本与取证\n" + "\n".join("- " + e for e in EV))
-    print("\n### 动作\n" + ("\n".join("- " + a for a in ACTIONS) or "- 无"))
-    if WARN:
-        print("\n### ⚠️ 异常\n" + "\n".join("- " + w for w in WARN))
-    print("\nSTATUS_LINE: %s" % ("✅ 全绿" if ok_all and not WARN else "⚠️ 有异常"))
+    emit(ok_all)
     return 0 if ok_all else 1
 
 

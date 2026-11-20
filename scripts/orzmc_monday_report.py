@@ -186,9 +186,11 @@ def parse_upgrade(txt):
     """解析 orzmc_upgrade_sync.py 输出：STATUS_LINE + 「版本与取证」「动作」要点"""
     ok = "STATUS_LINE: ✅" in txt
     status = _f(r"STATUS_LINE:\s*(.+)", txt, "")
-    bullets = [l[2:].strip() for l in txt.splitlines() if l.startswith("- ")]
-    actions_at = next((i for i, l in enumerate(txt.splitlines()) if l.strip() == "### 动作"), None)
-    lines = txt.splitlines()
+    lines_all = txt.splitlines()
+    actions_at = next((i for i, l in enumerate(lines_all) if l.strip() == "### 动作"), None)
+    head = lines_all[:actions_at] if actions_at is not None else lines_all
+    bullets = [l[2:].strip() for l in head if l.startswith("- ")]
+    lines = lines_all
     acts = []
     if actions_at is not None:
         for l in lines[actions_at + 1:]:

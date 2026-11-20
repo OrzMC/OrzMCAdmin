@@ -110,3 +110,20 @@ python ... --exaroton-only | --skip-exaroton | --no-clean | --paper-only
   有玩家时**只出包+报告、不重启实例**（无人值守重启会把在线玩家踢掉）；探测失败视为未知、不阻断。
 - **已有 jar 不覆盖**：除目标版本与 Geyser 同名替换外一律不动；旧核心 jar 留在实例目录做回滚，
   `orzmc_selfcheck.py` 对"版本低于基线"的 jar 显示 ℹ️ 旧版保留、不计漂移。
+
+## 7. 写/改这条流水线的四个坑（都实测踩过）
+
+1. **验收 needle 必须抄真实日志串，别按版本号拼**。实际打印是：
+   Paper `This server is running Paper version 26.3-257-main@…`（**没有** `build 257` 这种串）、
+   Folia `Folia version 26.3-26-…`、后端 Geyser `[Geyser-Spigot] Loading server plugin Geyser-Spigot v2.12.1-SNAPSHOT`
+   （**后端侧不带 build 号**，只能用 `Geyser-Spigot v<major.minor.patch>`）、Velocity 侧才有完整 build
+   `Loaded plugin geyser 2.12.1-b1306`。needle 写错会每次验收都 ❌、周报天天"有异常"——先 `grep` 现装 `latest.log`
+   确认字样，再写进脚本。
+2. **面板 uuid 保持实例目录名原样（小写）**。`os.path.basename(inst_dir).upper()` 去查 `instance?uuid=` 会拿到空
+   data、`status=None`，表现为「启动超时」而实例其实早就起来了。取目录名直接用，别做大小写变换。
+3. **状态读不到 ≠ 启动失败**。轮询 `status=3` 超时就回退看 `logs/latest.log` 有没有 `Done (`，有就算成功并记
+   ℹ️（status 不可读），只有日志也没有才记 ⚠️。同理 `protected_instance/stop` 后 status 常停在 1/2 不归零 ——
+   `open` 是幂等的，直接 open 并记一条 ℹ️，不要判整个流水线失败（否则全绿的批次会被写成"有异常"）。
+4. **跳过下载时要回填待部署件清单**。包内已有同哈希件时下载会跳过，`got` 变空 → S: 导出与 Exaroton 同步会静默
+   什么都不做（MANIFEST 只剩半张表、线上"未执行"）。任何"包已存在则跳过"的分支都必须从包目录把件名扫回来
+   （`core/paper/paper-*.jar`、`plugins/proxy/Geyser-Velocity*`、`plugins/paper/Geyser-Spigot-*`）再往下走。
