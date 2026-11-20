@@ -134,4 +134,4 @@ if __name__ == "__main__":
     d, note = deliver_dir()
     print("deliver_dir:", d, "|", note)
     print("lan_ip:", lan_ip())
-    print("redact test:", redact("real {HOME_IP} lan 192.168.0.33 loop 127.0.0.1"))
+    print("redact test:", redact("real {HOME_IP} lan {LAN_IP} loop 127.0.0.1"))

@@ -1,5 +1,13 @@
 # 启动实例与 RCON（本机 MCSM 4.x）
 
+> **2026-11-19 起测试服 RCON 已关闭**：两台后端 `server.properties` 均为 `enable-rcon=false`、`rcon.password=` 清空，
+> MCSM 实例 `docker.ports` 也不再发布 25575/25576（Paper 只剩 `24454:24454/udp`，Folia 无任何宿主端口）。
+> 控制台操作改用面板 API（`protected_instance/stop|open`）+ 直接读 `InstanceData/<uuid>/logs/latest.log`。
+> 探针 `orzmc_entry_probe.py` / `connectivity_check.py` / `orzmc_weekly_patrol.py` 已改成读 `enable-rcon` 自动跳过，不会误报。
+> 临时要 RCON：`enable-rcon=true` + 设 `rcon.password`，并把 `25575:25575/tcp`（Folia 用 `25576:25575/tcp`）加回
+> `InstanceConfig/<uuid>.json` 的 `docker.ports`，再 `docker restart orzmc-mcsmanager-daemon` 重新加载配置。
+> 另：`scripts/grim_kick_ban.py` 依赖 RCON，当前不可用。
+
 ## 1. 启动实例：只能走 daemon 的 socket.io，不是 HTTP
 
 MCSM daemon（容器 `orzmc-mcsmanager-daemon`，内部 24444，**未发布到宿主**）的 HTTP 只暴露上传/下载，所有实例控制都是 socket.io 事件。
@@ -58,7 +66,7 @@ New-NetFirewallHyperVRule -Name "OrzMC-RCON-25575" -DisplayName "OrzMC RCON 2557
 
 需要管理员；本机 `ConsentPromptBehaviorAdmin=0`，`Start-Process -Verb RunAs` 可静默提权。
 
-- **本机自测无效**：从 Windows 或容器连 `192.168.0.33:<端口>` 会超时（mirrored 模式下回不到 VM；原生监听如 SSH 22 正常）。判断是否放行要看规则存在，最终结论必须用**另一台设备**验证。
+- **本机自测无效**：从 Windows 或容器连 `{LAN_IP}:<端口>` 会超时（mirrored 模式下回不到 VM；原生监听如 SSH 22 正常）。判断是否放行要看规则存在，最终结论必须用**另一台设备**验证。
 - MCSM 面板 23333 **本来就没发布到宿主**（只在 docker 网络 + cloudflared 隧道里），局域网 `http://<LAN IP>:23333` 必然连不上；要局域网直连需在 `compose.site.yaml` 给 `mcsmanager-web` 加 `ports: ["23333:23333"]` 再 `./orzmc.sh up -d`，并同样加两层防火墙规则。
 
 ## 5. 面板访问慢 / 连不上：先分清三条路径

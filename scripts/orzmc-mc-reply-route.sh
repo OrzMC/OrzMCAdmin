@@ -20,7 +20,7 @@
 #   旧版在路由丢失时照样 exit 0 → 计划任务显示"成功"，自愈静默失效，外网全超时。
 #   v2 起：应用后**自验证**（路由 + 全部规则逐条核对，最多重试 3 次），
 #          失败 → 日志 + exit 1（计划任务 LastTaskResult 非 0，可见）；
-#          并自动探测 LAN 网卡/网关/本机 IP（不再硬编码 eth4 / 192.168.0.33）。
+#          并自动探测 LAN 网卡/网关/本机 IP（不再硬编码 eth4 / {LAN_IP}）。
 #
 # ⚠️ v3（2026-10-04 同日第二次复发）教训：**不要用 table 100**。
 #   WSL mirrored 网络栈自带规则 `100: from all fwmark 0x9 lookup 100`（非本脚本添加），
@@ -43,6 +43,7 @@
 # 现在它主要是"WSL 重启后把守护拉起来"的兜底，实时修复由守护负责）。
 # 用法: orzmc-mc-reply-route.sh [--check|--force]
 # 环境变量: ORZMC_IFACE / ORZMC_GW / ORZMC_SIP / ORZMC_TCP_PORTS / ORZMC_UDP_PORTS / ORZMC_TABLE
+# 443 = Caddy 公网 Web 入口（面板/音乐/网页客户端，含 WebSocket 长连接），24454 = Simple Voice Chat
 #           ORZMC_NO_DAEMON=1 可禁用守护自启（仅调试用）
 # 退出码: 0=正常（已就位或应用并验证通过） / 1=校验失败或缺失(--check)
 
@@ -54,8 +55,8 @@ FROM_PREF=85
 SPORT_PREF=90
 LOG="${ORZMC_ROUTE_LOG:-/var/log/orzmc-mc-reply-route.log}"
 MAX_TRY=3
-TCP_PORTS="${ORZMC_TCP_PORTS:-25565 25566 25567}"
-UDP_PORTS="${ORZMC_UDP_PORTS:-19132 19133 19134}"
+TCP_PORTS="${ORZMC_TCP_PORTS:-25565 25566 25567 443}"
+UDP_PORTS="${ORZMC_UDP_PORTS:-19132 19133 19134 24454}"
 
 MODE="${1:-apply}"
 
