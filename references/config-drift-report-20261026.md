@@ -10,7 +10,7 @@
 |:--|:--|:--|
 | MCSM `files/list` 递归扫描 | ✅ 26 次调用全成功 | 中位 8.6s、最长 20.3s → **8s 硬超时会砍掉约一半数据**，实际采用「8s 首档 + 50s 复审」 |
 | MCSM `files/download` 签发 + 拉流 | ❌ 严重不稳（2/5 失败，单文件 111~135s） | 与 2026-10-19 / 10-26 晨同因（面板迟钝期） |
-| **改用 SSH 直读 Windows 实例目录** | ✅ **58/58 全量取到（504KB tar，秒级）** | `ssh win`（192.168.0.33）→ `E:\orzmc\mcsmanager\daemon\data\InstanceData\<uuid>\`；Windows 侧 `tar -T 清单` 打包回传 |
+| **改用 SSH 直读 Windows 实例目录** | ✅ **58/58 全量取到（504KB tar，秒级）** | `ssh win`（{LAN_IP}）→ `E:\orzmc\mcsmanager\daemon\data\InstanceData\<uuid>\`；Windows 侧 `tar -T 清单` 打包回传 |
 | Exaroton 文件 API | ✅ 核心 7 全成功，插件配置 43 件取到（缺失 = 生产端未装该插件） | `exa_file.get_file` |
 
 > 结论：**面板 files API 在慢响应状态下不可用于全量巡检**（签发/拉流比 list 更脆）。**SSH 直读 Windows 实例目录是当前最可靠、最快、最权威的 MCSM 侧数据源**，建议下周巡检默认走 SSH（见待决策 #6）。
