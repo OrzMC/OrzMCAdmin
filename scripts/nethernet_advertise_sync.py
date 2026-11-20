@@ -41,7 +41,9 @@ import urllib.request
 
 DOMAIN = "dev.{SERVER_NAME}.cn"
 DATA_ROOT = "E:/orzmc"
-PROXY_GEYSER_GLOB = f"{DATA_ROOT}/eagler/proxy/plugins/Geyser-*/config.yml"
+MCSM_WEB = "http://127.0.0.1:23333"
+VELOCITY_NICKNAME = "Velocity"   # 面板实例黑名单之外唯一的代理实例（ADR-040）
+# 注意：不要再写死 $DATA_ROOT/eagler/proxy —— ADR-040 起代理数据在面板实例目录里
 MCSM_INSTANCES = [
     ("papermc-test", "716c2fb712154c36ba5ab0f1480d3f87"),
     ("folia-test", "8A932DD47F4D42AAAD6A6A9A5FAD2A91"),
@@ -101,14 +103,88 @@ def resolve_a(domain: str) -> str:
 
 
 # ---------------------------------------------------------------- config
+def velocity_instance_dir() -> str:
+    """面板实例目录（ADR-040）：.env 的 VELOCITY_DIR 优先，否则扫 InstanceData 找含 velocity 的目录。"""
+    env = ""
+    try:
+        env = open(f"{DATA_ROOT}/.env", encoding="utf-8", errors="replace").read()
+    except OSError:
+        pass
+    m = re.search(r"(?m)^\s*VELOCITY_DIR\s*=\s*(\S+)", env)
+    if m:
+        return m.group(1).strip("\"'")
+    for d in sorted(glob.glob(f"{DATA_ROOT}/mcsmanager/daemon/data/InstanceData/*")):
+        if glob.glob(os.path.join(d, "velocity*.jar")) or os.path.isfile(os.path.join(d, "velocity.toml")):
+            return d
+    return ""
+
+
+def velocity_geyser_configs() -> list[str]:
+    d = velocity_instance_dir()
+    return sorted(glob.glob(os.path.join(d, "plugins", "Geyser-*", "config.yml"))) if d else []
+
+
+def _mcsm_credentials() -> tuple[str, str, str, str]:
+    """(web, daemonId, apikey, uuid) —— 全从本机面板数据推出，不写死。"""
+    apikey = ""
+    for p in sorted(glob.glob(f"{DATA_ROOT}/mcsmanager/web/data/User/*.json")):
+        try:
+            d = json.load(open(p, encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if d.get("apiKey") and d.get("permission") == 10:   # 10 = 管理员
+            apikey = d["apiKey"]
+            break
+    if not apikey:
+        raise RuntimeError("读不到面板 apiKey（web/data/User/*.json）")
+
+    uuid = ""
+    for p in sorted(glob.glob(f"{DATA_ROOT}/mcsmanager/daemon/data/InstanceConfig/*.json")):
+        try:
+            d = json.load(open(p, encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if d.get("nickname") == VELOCITY_NICKNAME:
+            uuid = os.path.splitext(os.path.basename(p))[0]
+            break
+    if not uuid:
+        raise RuntimeError(f"面板里找不到实例 {VELOCITY_NICKNAME}")
+
+    req = urllib.request.Request(f"{MCSM_WEB}/api/service/remote_services_list?apikey={apikey}")
+    data = json.loads(urllib.request.urlopen(req, timeout=10).read())["data"]
+    daemons = data if isinstance(data, list) else data.get("remote", [])
+    if not daemons:
+        raise RuntimeError("面板没有可用 daemon")
+    daemon = next((d for d in daemons if d.get("available")), daemons[0])
+    # MCSM 10.x 的 remote_services_list 里 daemon 主键叫 uuid（老版本叫 daemonId）
+    daemon_id = daemon.get("daemonId") or daemon.get("uuid") or ""
+    if not daemon_id:
+        raise RuntimeError(f"daemon 列表字段不认识：{sorted(daemon)}")
+    return MCSM_WEB, daemon_id, apikey, uuid
+
+
+def _mcsm_status(web: str, daemon: str, uuid: str, apikey: str) -> int:
+    url = f"{web}/api/instance?daemonId={daemon}&uuid={uuid}&apikey={apikey}"
+    data = json.loads(urllib.request.urlopen(url, timeout=10).read())["data"]
+    return int(data.get("status", -1))
+
+
+def _port_open(port: int, host: str = "127.0.0.1", timeout: float = 2.0) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def live_configs() -> list[tuple[str, str]]:
     env = ""
     try:
         env = open(f"{DATA_ROOT}/.env", encoding="utf-8", errors="replace").read()
     except OSError:
         pass
-    proxy_cfgs = sorted(glob.glob(PROXY_GEYSER_GLOB))
-    if re.search(r"(?m)^ENABLE_VELOCITY\s*=\s*true", env) and proxy_cfgs:
+    proxy_cfgs = velocity_geyser_configs()
+    if re.search(r"(?m)^\s*ENABLE_VELOCITY\s*=\s*true", env) and proxy_cfgs:
         return [("velocity", c) for c in proxy_cfgs]
     out: list[tuple[str, str]] = []
     for name, uuid in MCSM_INSTANCES:
@@ -252,11 +328,35 @@ def java_players(host: str = JAVA_STATUS[0], port: int = JAVA_STATUS[1], timeout
 
 
 def restart_entry() -> str:
+    """走面板 API 重启入口（ADR-040）。
+
+    绝不能用 `docker restart orzmc-velocity`：容器由 MCSM daemon 托管（autoRestart=true），
+    外部 restart 会让 daemon 以为容器状态漂移 → 重复起容器 → `Bind for 0.0.0.0:19132 failed`
+    → 失败清理把容器删掉（2026-11-20 22:27 / 23:26 两次入口消失就是这么来的）。
+    面板路径：stop → 等 status==0 → open → 等 25565 端口回来。
+    """
     try:
-        r = subprocess.run(["docker", "restart", ENTRY_CONTAINER], capture_output=True, text=True, timeout=240)
-        return f"docker restart {ENTRY_CONTAINER} rc={r.returncode}"
+        web, daemon, apikey, uuid = _mcsm_credentials()
+        q = f"daemonId={daemon}&uuid={uuid}&apikey={apikey}"
+        urllib.request.urlopen(
+            urllib.request.Request(f"{web}/api/protected_instance/stop?{q}", method="POST"), timeout=30
+        ).read()
+        for _ in range(20):
+            if _mcsm_status(web, daemon, uuid, apikey) == 0:
+                break
+            time.sleep(2)
+        else:
+            return "面板重启失败：实例 40s 内没停下来"
+        urllib.request.urlopen(
+            urllib.request.Request(f"{web}/api/protected_instance/open?{q}", method="POST"), timeout=30
+        ).read()
+        for _ in range(40):
+            if _port_open(25565):
+                return f"面板重启 {VELOCITY_NICKNAME} 完成（25565 已就绪）"
+            time.sleep(2)
+        return "面板重启失败：80s 内 25565 未起来（看面板实例日志）"
     except Exception as exc:  # noqa: BLE001
-        return f"重启失败: {exc}"
+        return f"面板重启失败: {exc}"
 
 
 # ---------------------------------------------------------------- main

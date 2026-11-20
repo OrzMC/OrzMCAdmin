@@ -30,6 +30,7 @@ import struct
 import subprocess
 import time
 import http.client
+import urllib.request
 
 HERMES = os.path.join(os.environ.get("LOCALAPPDATA", ""), "hermes")
 LOG = os.path.join(HERMES, "logs", "orzmc-entry-probe.log")
@@ -255,6 +256,36 @@ def rcon(port: int, password: str, command: str = "list", timeout: float = 8.0) 
 
 
 # ---------------------------------------------------------------- main
+def panel_heal_entry() -> str:
+    """入口容器**不存在**（不是 stopped）时，用面板 API 拉起一次。
+
+    ADR-040 起入口是 MCSM 面板实例：`docker start` 对不存在的容器无效，只能走面板。
+    返回可读描述（进 INFO，不进告警）；失败返回空串。
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from nethernet_advertise_sync import _mcsm_credentials, _port_open, VELOCITY_NICKNAME
+    except Exception as exc:  # noqa: BLE001
+        log(f"HEAL 跳过：导入面板助手失败 {type(exc).__name__}: {exc}")
+        return ""
+    try:
+        web, daemon, apikey, uuid = _mcsm_credentials()
+        q = f"daemonId={daemon}&uuid={uuid}&apikey={apikey}"
+        urllib.request.urlopen(
+            urllib.request.Request(f"{web}/api/protected_instance/open?{q}", method="POST"), timeout=30
+        ).read()
+        for _ in range(30):
+            if _port_open(25565):
+                log(f"HEAL 已用面板 API 拉起 {VELOCITY_NICKNAME}，25565 就绪")
+                return f"容器原本不存在，已用面板 API 拉起 {VELOCITY_NICKNAME}（25565 已就绪）"
+            time.sleep(2)
+        log(f"HEAL 拉起 {VELOCITY_NICKNAME} 后 60s 内 25565 未就绪")
+        return f"容器原本不存在；已用面板 API 拉起 {VELOCITY_NICKNAME} 但 60s 内 25565 未就绪"
+    except Exception as exc:  # noqa: BLE001
+        log(f"HEAL 失败 {type(exc).__name__}: {exc}")
+        return f"容器不存在，面板 API 拉起失败：{type(exc).__name__}: {exc}"
+
+
 def main() -> int:
     results: list[tuple[str, bool, str]] = []
     # 提示项：不进告警集合、不进状态文件、不参与复述（老板 2026-11-16 决策）
@@ -275,6 +306,11 @@ def main() -> int:
             "入口和网页此刻多半真的断了",
         )]
     else:
+        # 容器整个不存在 → 先自发拉起一次（stoped 不做自愈：面板实例刻意停是合法状态）
+        exit_ok, exit_detail = container_running("orzmc-velocity")
+        if not exit_ok and exit_detail.startswith("容器不存在"):
+            infos.append(("入口自愈", panel_heal_entry()))
+            results = [(n, True, d) if n == "容器 orzmc-velocity" else (n, o, d) for n, o, d in results]
         ok, detail = java_status()
         results.append(("Java 入口 25565", ok, detail))
         ok, detail = nethernet()
@@ -286,11 +322,12 @@ def main() -> int:
         for label, uuid, port in INSTANCES:
             state = states.get(label, "未知")
             if state != "running":
-                # 后端容器没起 → RCON 必然不通。属于刻意保持停止 → 提示项：
-                # 只写日志，不进告警、不复述、不发飞书
+                # 后端容器没起 → RCON 必然不通。只写日志，不进告警、不复述、不发飞书。
+                # 2026-11-20 起 paper/folia 的 eventTask.autoStart=true（面板 daemon 启动时拉起），
+                # 但容器仍可能停在 exited（例如手动停过、或旧容器被清）→ 这里不自动拉起，只记录。
                 infos.append((
                     f"后端 {label} 实例",
-                    f"容器状态 {state}（刻意保持停止；面板手动启动，不自动拉起）",
+                    f"容器状态 {state}（autoStart=true，daemon 重启时会拉起；当前非运行）",
                 ))
                 continue
             if not rcon_enabled(uuid):
