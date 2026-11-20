@@ -1,7 +1,7 @@
 ---
 name: orzmc
 description: "Minecraft 运维统一技能（唯一入口）：三端服务器运维/插件构建升级/性能诊断/权限体系/测试/基岩支持（含 NetherNet 迁移），74 份参考文档 + 170+ 脚本。"
-version: 2.6.25
+version: 2.6.26
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux, windows]
@@ -98,6 +98,7 @@ required_commands: [java, curl, tar]
 > | 构建与升级 | `references/ezshops-maven-build.md` | EzShops 本地构建与部署（2026-08-09） |
 > | 构建与升级 | `references/loginsecurity-build.md` | LoginSecurity 构建与 AuthModeChangedEvent 排查（2026-08-10） |
 > | 构建与升级 | `references/upgrade-playbook.md` | OrzMCDeploy 版本升级规程（实战：0.0.3 → 0.0.4，0.0.4 → 0.0.6） |
+> | 备份与恢复 | `references/backup-restore.md` | `backup.sh` 用法/体积/恢复；**Windows tar 盘符三坑**（`-C` 父目录、归档路径 `--force-local`、校验 `-tzf`） |
 > | 实体 / 传送门 / 传送弓 | `references/entity-diagnostics.md` | 服务器侧实体统计与卡顿定位（配合 bot 使用，2026-08-04 实测） |
 > | 实体 / 传送门 / 传送弓 | `references/orzmc-entity-teleport-tnt.md` | OrzMC 实体传送可配置化 + TNT 通知聚合（2026-08-09） |
 > | 实体 / 传送门 / 传送弓 | `references/teleport-bow-chunk-analysis.md` | 传送弓「未加载区块无法传送」根因分析（2026-08-08 实测定案） |
@@ -123,6 +124,7 @@ required_commands: [java, curl, tar]
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.6.26 | 2026-11-20 | **`backup.sh` 首次实跑即失败 → Windows tar 盘符三坑修复（OrzMCDeploy#18 / `5c139d8`）**：① `tar -C "$(dirname "$DATA_ROOT")"` 在 `E:/orzmc` 上得到 `E:`，GNU tar 当远程主机 → `Cannot connect to E: resolve failed`；② 归档路径 `-czf E:/orzmc-backups/...` 同样被当 `host:path`；③ 校验 `tar tzf` 再加 `--force-local` 后裸 `tzf` 不再被当选项束解析，必须写 `-tzf`。修法：父目录只在**恰为盘符根**时补斜杠（早期写成 `[A-Za-z]:/*` 分支会把 `C:/Users/x/data` 算成 `C:/`，tar 报 `data: Cannot stat`）、Windows 下 `--force-local`、校验用 `-tzf`。首份真实归档：5.8G → 3.9G / 28657 项 / 13 分钟。新增 `references/backup-restore.md`（含恢复步骤与「部署目录仍是旧版 backup.sh」提醒）。 |
 | 2.6.25 | 2026-11-20 | **发布线口径从 references 提到 SKILL.md 正文 + 新增磁盘清理分层**：①「技能真源与编辑纪律」补齐三级单向流（本机真源 B → 技能仓 `OrzMC/OrzMCAdmin` → monorepo 子模块 gitlink）与三条硬纪律——改完技能必须 `orzmc_publish.sh` 发布、**不要在 monorepo 的技能目录里直接改文件**（那是脱敏版 checkout，改动回不到真源也会被下次发布覆盖）、bump 指针前 `git ls-tree` 必须是 `160000`（否则产出伪 bump PR），并写明「改技能 = 两步提交」是已接受的代价；②`references/deploy-layer-boundaries.md` 新增 §8 磁盘清理分层：程序目录整份不动、`caddy/data` 删了撞 LE 配额、`world/plugins/libraries/tools` 不动，可删项先列体积清单等拍板；`du` 整树超时改后台落文件再读（后台回执空输出≠失败） |
 | 2.6.24 | 2026-11-20 | **技能发布线改为「独立技能仓 + monorepo 子模块」**：`OrzMC/OrzMCAdmin` 从「已退役」复活为技能自己的版本线（可独立迭代、独立打 tag），monorepo 的 `.agents/skills/orzmc` 改为 git submodule 指向它 —— 老板口径是「技能有对应独立仓库，挂在主仓下也需要以子模块方式，才能统一真源和同步迭代」。`orzmc_publish.sh` 目标仓改为技能仓（默认 `E:/dev/OrzMCAdmin`），`--merge` 合并后额外 bump 主仓 gitlink；顺手补上**长期静默漏同步的 `scripts/*.ps1`** 与 `192.168.0.<x>` 脱敏规则。`references/skill-publish-flow.md` 整篇重写为三级拓扑（B→技能仓→主仓 gitlink），新增四条硬纪律：① **镜像白名单按 B 的扩展名分布逐项补齐**（漏一种扩展名不会报错，那类文件永远进不了仓）；② `git rm -r` / `submodule add` 属破坏性审批门，**先讲清删什么再请审批，被拦就等——不许用变相写法绕过用户同意**；③ `gh pr view --json state,merged`：**`CLOSED` + `merged:true` 就是成功的 squash 合并**，只看 state 会把合并误读成否决；④ 迁移成子模块后必须同步改 `.gitmodules`、`AGENTS.md`、`.agents/skills/README.md`（原文写「OrzMCAdmin 已退役」）三处文字 |
 | 2.6.23 | 2026-11-20 | **三目录铁律进 SKILL.md 正文（不再只放在 reference 里）**：程序 `E:/deploy/orzmc`（`up`/`stop`/`backup` 唯一执行处）/ 数据 `E:/orzmc`（DATA_ROOT）/ 备份 `E:/orzmc-backups`（唯一备份根）；升级=同目录原地覆盖、回滚=用 `_dl` 旧 tarball 覆盖回同路径，**禁止 junction / 版本目录 / 软链**；`tools/`、`reports/`、`deliver/` 留 DATA_ROOT；`backup.sh` 整份打包且默认无排期。**同时修正 `references/skill-publish-flow.md` 已过期的口径**：原文写「公网 IP 必须手工改」，实际已落 `{HOME_IP}`/`{CVM_IP}` 的 ENC_RULES → 改为「按 IP 网段前缀写正则规则，不靠手改文档」；新增《门禁中止了怎么办》四步（不改真源 → 认值归类 → 补 ENC 规则 → 发布后 grep 回证）与两条硬纪律：**已在 git 历史的真实值不会因新规则消失，清历史要改写+force push，只能告知老板拍板、不得默默强推或假装已清**；**发布后先做 `gh pr view` 回读 + `git pull --ff-only`，`git branch -D` 属审批门，别为删分支把整轮验证卡死** |
