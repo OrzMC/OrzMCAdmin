@@ -24,17 +24,27 @@ import urllib.request
 BASE = "https://api.exaroton.com/v1"
 
 
-def env(key, default=""):
-    p = os.path.expanduser("~/.hermes/.env")
-    for line in open(p, encoding="utf-8"):
-        line = line.strip()
-        if line.startswith(key + "="):
-            return line.split("=", 1)[1].strip().strip('"').strip("'")
-    return default
+# 凭证统一走 exa_file（Windows 是 %LOCALAPPDATA%\\hermes\\.env，旧的 ~/.hermes/.env 在 Windows 上不存在）
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from exa_file import get_exa_config as _exa_cfg
+    _c = _exa_cfg()
+    KEY = _c["api_key"]
+    SID = _c["server_id"]
+except Exception:                       # 兜底：保留旧逻辑，缺文件不再抛
+    def env(key, default=""):
+        for cand in (os.path.join(os.environ.get("LOCALAPPDATA", ""), "hermes", ".env"),
+                     os.path.expanduser("~/.hermes/.env")):
+            if not os.path.isfile(cand):
+                continue
+            for line in open(cand, encoding="utf-8"):
+                line = line.strip()
+                if line.startswith(key + "="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+        return default
 
-
-KEY = env("EXAROTON_API_KEY")
-SID = env("EXAROTON_SERVER_ID", "")
+    KEY = env("EXAROTON_API_KEY")
+    SID = env("EXAROTON_SERVER_ID", "")
 H = {"Authorization": "Bearer " + KEY, "User-Agent": "HermesAgent/1.0"}
 
 
