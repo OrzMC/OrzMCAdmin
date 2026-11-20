@@ -95,5 +95,31 @@ diff -rq <dir1> <dir2> -x .git -x build -x .gradle -x .kotlin
 - 带嵌套引号的超长单行（如 `git submodule foreach '...$(...)...'` 组合 grep/tr 管道）会触发 `BLOCKED (hardline): command parser limit`，命令被存到 `~/.hermes/cache/blocked-scripts/`
 - **正解：写成脚本文件（write_file /tmp/xxx.sh）再 `bash /tmp/xxx.sh`**，不重试内联形式
 
+## 已跟踪目录改成子模块后：本机 clone 的收尾
+
+父仓某路径从「普通目录（276 个跟踪文件）」变成 gitlink 后，**已有的本地 clone 会切不回去**：
+该路径在工作区里仍是一堆未跟踪文件，`git switch main` 报
+`error: The following untracked working tree files would be overwritten by checkout`。
+
+```bash
+mv .agents/skills/orzmc "$TMPDIR/orzmc-plain-tmp"   # ① 让路（内容已在技能仓，别在原地删）
+git switch main && git pull --ff-only
+git submodule update --init -- .agents/skills/orzmc  # ② 按 gitlink 真克隆出来
+git submodule status                                 # ③ 行首无 - / + 即正常，示例 (v2.6.26)
+rm -rf "$TMPDIR/orzmc-plain-tmp"                     # 确认 status/diff 干净后再删
+```
+
+- **不要用 `git checkout -f` / `git reset --hard` 强切**：它们连带清掉同一工作区里其他未提交改动，而这里只需要挪一个目录。
+- 让路目录先留着，等 `git submodule status` 有该条目且 0 脏再删——删早了就没了对照。
+
+### 指针落地验收（三步，缺一步都可能「看着成功」）
+
+1. `git ls-tree HEAD -- <sub>` 模式 = **`160000`**（普通目录是 `040000`）；
+2. `git submodule status` 有该条目、**行首没有 `-`**（未初始化）；
+3. **进子模块目录回读内容**：`grep -m1 '^version:' <sub>/SKILL.md` 与本次新增的 `references/<新文件>.md` 都存在 ——
+   只有这一步能证明「指针指到了这次的 skill commit」，光比 sha 看不出它是不是上上版。
+
+发布脚本 `--merge` 跑完后同样用这三步回读；命令回显可能被截成一行，不代表失败也不代表成功。
+
 ## 关联
 - OrzMC monorepo 资产地图（各子模块用途）→ `references/orzmc-repo.md`

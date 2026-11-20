@@ -1,7 +1,7 @@
 ---
 name: orzmc
 description: "Minecraft 运维统一技能（唯一入口）：三端服务器运维/插件构建升级/性能诊断/权限体系/测试/基岩支持（含 NetherNet 迁移），74 份参考文档 + 170+ 脚本。"
-version: 2.6.26
+version: 2.6.28
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux, windows]
@@ -23,7 +23,7 @@ required_commands: [java, curl, tar]
 > | **EasyBot IM 网关运维（docker 容器/健康检查/QQ token/投递诊断 API 版 `scripts/easybot_deliveries.py`；0.0.33 起投递记录在 messages 表；原 easybot-gateway-ops 技能合并）** | `references/easybot-gateway.md` |
 > | **部署配置同步（config drift 判定/fallback 判断/补键同步；原 deployment-config-sync 技能合并）** | `references/config-sync.md` |
 > | **技能发布流（本机真源 → 独立技能仓 `OrzMCAdmin` → monorepo 子模块 gitlink）：三级拓扑 / 发布脚本三模式 / 镜像白名单按扩展名逐项补齐 / enc+leak 门禁与「中止了怎么办」/ 改子模块的一次性迁移与审批纪律 / `gh pr` 的 `CLOSED+merged:true` 判读** | `references/skill-publish-flow.md` |
-> | **Git 子模块全量同步（OrzMC monorepo 20 子模块；默认分支探测/发布后指针/分支清理/独立 clone 去重；原 git-submodule-sync 技能合并）** | `references/git-submodule-sync.md` |
+> | **Git 子模块全量同步（OrzMC monorepo 20 子模块；默认分支探测/发布后指针/分支清理/独立 clone 去重；**普通目录转子模块后本机 clone 的收尾**——`git switch main` 会被残留的未跟踪目录挡住，先把目录 `mv` 让路再 `submodule update --init`，别用 `checkout -f`；指针落地验收三步 = `ls-tree` 为 `160000` + `submodule status` 无 `-` + 进子模块回读 `version:` 与本次新增文件；原 git-submodule-sync 技能合并）** | `references/git-submodule-sync.md` |
 > | **部署分层职责边界（老板问「deploy 子模块管什么、哪些要部署后手工做」）：monorepo 子模块分类表 / deploy 自动做的四块（编排·orzmc.sh·Eagler 运行时·防火墙）/ 明确不做的四类（面板实例·paper-global secret·TLS+DDNS+路由器·密钥值）/ 站点增量只落 `compose.site.yaml` / 部署后手工清单 11 项（含「备份默认没排期」）/ 运行态核对法（`docker inspect` 的 `project.config_files` 标签反查容器由哪棵树起、两棵树漂移用 `diff --strip-trailing-cr` 排除 CRLF 假差异）/ **§7 统一运行树：只从 Release 产物起容器（单个固定目录 `E:/deploy/orzmc` 原地覆盖升级、回滚靠 `_dl` 里的旧 tarball；**不用 `orzmc-current` junction、不留多版本目录**——试过被老板否掉，多一层无收益；迁移前先 `tar` 解包 + `diff -r --strip-trailing-cr` + sha256 三件取证；删旧克隆前核引用面（含 `docker ps --format` 带 `\r` 导致 inspect 循环静默归零的假阴性）；破坏性命令的免审批替代；**§8 磁盘清理分层**——程序目录整份不动、`caddy/data` 删了撞 Let's Encrypt 每域名每周 5 张配额、`world/`/`plugins/`/`libraries/`/`tools/` 不动，可删项先把清单与体积列给老板拍板；`du` 整树超时改后台写文件再 `read_file`（后台回执 Output 必为空≠失败））** | `references/deploy-layer-boundaries.md` |
 > | **Java 测试编译陷阱 + 单测运行时陷阱（Mockito 泛型捕获/SuppressWarnings 位置/CI warnings 清零；**2026-09-12 并入 bukkit-plugin-testing**：Mockito UnfinishedStubbing/Stub 顺序/argThat null/异步进行中模拟、Bukkit API mock 限制（Material.isSolid 依赖注册表、Vector.clone 返回 null）、Jacoco 覆盖率缺口定位工作流）** | `references/java-test-pitfalls.md` |
 > | **AI 编码智能体协作（编程交给 Claude Code + Hermes 编排；三模式/acceptEdits 坑/合并前一次 review；原 ai-coding-agents 技能合并）** | `references/coding-agents.md` |
@@ -98,7 +98,7 @@ required_commands: [java, curl, tar]
 > | 构建与升级 | `references/ezshops-maven-build.md` | EzShops 本地构建与部署（2026-08-09） |
 > | 构建与升级 | `references/loginsecurity-build.md` | LoginSecurity 构建与 AuthModeChangedEvent 排查（2026-08-10） |
 > | 构建与升级 | `references/upgrade-playbook.md` | OrzMCDeploy 版本升级规程（实战：0.0.3 → 0.0.4，0.0.4 → 0.0.6） |
-> | 备份与恢复 | `references/backup-restore.md` | `backup.sh` 用法/体积/恢复；**Windows tar 盘符三坑**（`-C` 父目录、归档路径 `--force-local`、校验 `-tzf`） |
+> | 备份 / 还原 / 自检 / 证书检查 | `references/backup-restore.md` | `orzmc.sh backup|restore|doctor|cert` 用法与判定语义（doctor 五组检查 + WARN/FAIL 口径）；**Windows tar 盘符三坑**（`-C` 父目录、归档路径 `--force-local`、校验 `-tzf`）；改脚本后本机 lint 须先转 LF 再跑 shellcheck |
 > | 实体 / 传送门 / 传送弓 | `references/entity-diagnostics.md` | 服务器侧实体统计与卡顿定位（配合 bot 使用，2026-08-04 实测） |
 > | 实体 / 传送门 / 传送弓 | `references/orzmc-entity-teleport-tnt.md` | OrzMC 实体传送可配置化 + TNT 通知聚合（2026-08-09） |
 > | 实体 / 传送门 / 传送弓 | `references/teleport-bow-chunk-analysis.md` | 传送弓「未加载区块无法传送」根因分析（2026-08-08 实测定案） |
@@ -124,6 +124,8 @@ required_commands: [java, curl, tar]
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.6.28 | 2026-11-20 | **部署可自证：`doctor` / `cert` / `restore` 三条命令下沉到 `orzmc.sh`**：① `doctor` 五项组（环境/数据目录/备份/运行时/工具链），`[FAIL]` exit 1、`[WARN]` 需人确认；运行时判据是容器的 `com.docker.compose.project.config_files` —— 另一棵树启动只 WARN（发布期正常）、**分散在多树下才 FAIL**；唯一写操作是写探针后即删。② `cert [--min-days 21]` **只读** `.crt` + `openssl x509 -enddate`，不足阈值 exit 1，可挂 cron；**不续期、不动 `caddy/data`**，无 caddy 目录报「站点层未启用」exit 0。③ `restore <归档> [--force] [--start]`：脚本早就在包里，缺的只是入口接线。④ `lib/common.sh` 抽出 `tar_local` / `tar_parent_of` 供 backup 与 restore 共用（`tar $(...)` 式未加引号替换不要去加，用函数包）。⑤ **两个 Windows 路径坑**：`curl` 等原生程序不翻译 MSYS 的 `/tmp/...`（「系统找不到指定的文件」+ `client returned ERROR on write`）→ `mktemp -d` + `cd` 后用文件名；docker 标签是 `E:/...` 而 Git Bash 下 `REPO_ROOT` 是 `/e/...`，路径不归一会把同一棵树判成两棵（先 `win_path`）。⑥ 本机 lint 先 `tr -d '\r'` 转 LF 再 `shellcheck`（否则 CRLF 刷 SC1017/SC1094 假错），无 shellcheck 时用 `docker run koalaman/shellcheck:stable`；`find -printf` 是 GNU 专有，不要为了讨好 lint 引入平台专有参数。详见 `references/backup-restore.md` 与 `references/deploy-layer-boundaries.md` §7（install.sh 升级 runbook）。 |
+| 2.6.27 | 2026-11-20 | **子模块迁移后的本机收尾 + 无执行入口时的收尾口径**：① `references/git-submodule-sync.md` 新增「已跟踪目录改成子模块后本机 clone 的收尾」——目录仍是未跟踪文件时 `git switch main` 报 `untracked working tree files would be overwritten`，正解是把该目录 `mv` 让路（内容已在仓库，别原地删）→ switch/pull → `submodule update --init -- <path>` → 0 脏后再删让路目录；**禁用 `checkout -f` / `reset --hard`**（会连带清掉同工作区的其他改动）。② 指针落地验收固定三步：`ls-tree` 为 `160000`、`submodule status` 行首无 `-`、**进子模块回读 `version:` 与本次新增的 reference 文件**（只比 sha 看不出是不是上上版；`--merge` 回显被截成一行也不代表成败）。③ SKILL.md 三端拓扑新增「生产服无执行入口时怎么收尾」：不以「做不了」结束，固定给「要凭据 / 出手册」两条路，并先实测面板 23333 是否 200、外网端口 `refused`（无映射）vs `timeout`（被封）的区分。 |
 | 2.6.26 | 2026-11-20 | **`backup.sh` 首次实跑即失败 → Windows tar 盘符三坑修复（OrzMCDeploy#18 / `5c139d8`）**：① `tar -C "$(dirname "$DATA_ROOT")"` 在 `E:/orzmc` 上得到 `E:`，GNU tar 当远程主机 → `Cannot connect to E: resolve failed`；② 归档路径 `-czf E:/orzmc-backups/...` 同样被当 `host:path`；③ 校验 `tar tzf` 再加 `--force-local` 后裸 `tzf` 不再被当选项束解析，必须写 `-tzf`。修法：父目录只在**恰为盘符根**时补斜杠（早期写成 `[A-Za-z]:/*` 分支会把 `C:/Users/x/data` 算成 `C:/`，tar 报 `data: Cannot stat`）、Windows 下 `--force-local`、校验用 `-tzf`。首份真实归档：5.8G → 3.9G / 28657 项 / 13 分钟。新增 `references/backup-restore.md`（含恢复步骤与「部署目录仍是旧版 backup.sh」提醒）。 |
 | 2.6.25 | 2026-11-20 | **发布线口径从 references 提到 SKILL.md 正文 + 新增磁盘清理分层**：①「技能真源与编辑纪律」补齐三级单向流（本机真源 B → 技能仓 `OrzMC/OrzMCAdmin` → monorepo 子模块 gitlink）与三条硬纪律——改完技能必须 `orzmc_publish.sh` 发布、**不要在 monorepo 的技能目录里直接改文件**（那是脱敏版 checkout，改动回不到真源也会被下次发布覆盖）、bump 指针前 `git ls-tree` 必须是 `160000`（否则产出伪 bump PR），并写明「改技能 = 两步提交」是已接受的代价；②`references/deploy-layer-boundaries.md` 新增 §8 磁盘清理分层：程序目录整份不动、`caddy/data` 删了撞 LE 配额、`world/plugins/libraries/tools` 不动，可删项先列体积清单等拍板；`du` 整树超时改后台落文件再读（后台回执空输出≠失败） |
 | 2.6.24 | 2026-11-20 | **技能发布线改为「独立技能仓 + monorepo 子模块」**：`OrzMC/OrzMCAdmin` 从「已退役」复活为技能自己的版本线（可独立迭代、独立打 tag），monorepo 的 `.agents/skills/orzmc` 改为 git submodule 指向它 —— 老板口径是「技能有对应独立仓库，挂在主仓下也需要以子模块方式，才能统一真源和同步迭代」。`orzmc_publish.sh` 目标仓改为技能仓（默认 `E:/dev/OrzMCAdmin`），`--merge` 合并后额外 bump 主仓 gitlink；顺手补上**长期静默漏同步的 `scripts/*.ps1`** 与 `192.168.0.<x>` 脱敏规则。`references/skill-publish-flow.md` 整篇重写为三级拓扑（B→技能仓→主仓 gitlink），新增四条硬纪律：① **镜像白名单按 B 的扩展名分布逐项补齐**（漏一种扩展名不会报错，那类文件永远进不了仓）；② `git rm -r` / `submodule add` 属破坏性审批门，**先讲清删什么再请审批，被拦就等——不许用变相写法绕过用户同意**；③ `gh pr view --json state,merged`：**`CLOSED` + `merged:true` 就是成功的 squash 合并**，只看 state 会把合并误读成否决；④ 迁移成子模块后必须同步改 `.gitmodules`、`AGENTS.md`、`.agents/skills/README.md`（原文写「OrzMCAdmin 已退役」）三处文字 |
@@ -239,6 +241,8 @@ ViaVersion 最新一条是 `5.12.3-SNAPSHOT`，只看「最新一条」会把整
 | **本地测试服** | `dev.{SERVER_NAME}.cn` | 本机 MCSM 面板（Win 宿主 `E:/orzmc`；实例 `papermc-test` + `folia-test`） | 升级/插件/基岩/NetherNet 的实测场；家宽动态 IP + DDNS；官网 `show_address=false`（地址隐藏） |
 | **国内服（线上生产）** | `{SERVER_HOST}` | **MCSM 面板托管** | 国内玩家生产环境；运维走 MCSM API；基岩 **`transport: both`**（`webrtc-port: 19134`），`advertise-addresses` **必须显式写 `["<域名>:19134"]`（端口 = webrtc-port，不是 port）** —— 留空靠 STUN 会下发错地址（2026-11-02 实测的连不上真因）；放行 TCP 19132 + UDP 19132 + UDP 19134；新旧客户端都能进 |
 | **海外服（线上生产）** | `paper.{SERVER_NAME}.cn` | **Exaroton 托管** | 海外玩家生产环境；核心由面板管理（不能上传核心 jar），插件走 `plugins/update/` |
+
+⚠️ **生产服没有执行入口时怎么收尾**：`{SERVER_HOST}` 走 MCSM 面板、无 APIKey/账号拿不到，则改监听端口、切基岩传输方式这类事**无法由本机执行**。此时不要以「做不了」结束，固定给两条路让老板拍板：① 提供面板账号或临时 APIKey，我来做并逐项实测回报；② 我出一份照点即可的手册（含回滚步骤与验证命令）。同时先实测面板端口是否可达（`curl -o /dev/null -w '%{http_code}' http://<ip>:23333/`，200 = 面板活着，问题只在凭据），并顺带核对外网端口是否真封（`timeout` ≠ `refused`：refused 是无映射、timeout 是被封）。
 
 **已下线**：腾讯云中转机 2 台（正式 + 试用，2026-10-19 老板确认销毁）→ **frps 中转链路不再运行**；`references/cross-carrier-networking.md` 中的方案/工具链仍可复用，重建时按该文顶部清单执行。
 **已核实（2026-10-19，本机 Windows 宿主实查）**：无 frpc 计划任务（`schtasks` 无匹配）、无 frpc 服务（`sc query` 无匹配）、无 `~/OrzMC/proxy` 目录 → **该宿主未部署 frpc 客户端，不存在指向旧中转 IP 的残留配置**。

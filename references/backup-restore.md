@@ -1,20 +1,44 @@
-# 数据备份与恢复（backup.sh）
+# 数据备份 / 还原 / 自检 / 证书检查（orzmc.sh 命令）
 
-## 用法
+## 命令（v0.3.0 起都挂在 `orzmc.sh` 上，程序目录只从 Release 包取得）
 
 ```bash
 cd E:/deploy/orzmc
 ./orzmc.sh -d E:/orzmc backup                    # 在线打包（best-effort 快照）
 ./orzmc.sh -d E:/orzmc backup --stop             # 先停 compose 再打包再拉起
 ./orzmc.sh -d E:/orzmc backup -o E:/orzmc-backups --keep 3
+./orzmc.sh -d E:/orzmc restore <归档> [--force] [--start]   # 还原/迁移
+./orzmc.sh -d E:/orzmc doctor                    # 部署自检（有 FAIL 则 exit 1）
+./orzmc.sh -d E:/orzmc cert [--min-days 21]      # 证书到期检查（只读，不续期）
 ```
 
 - 归档默认落 `${DATA_ROOT%/*}/orzmc-backups/`，即 `E:/orzmc-backups`（**唯一备份根**）。
+  换 `-d` 就换根：`-d E:/x/data` → `E:/x/orzmc-backups`，`-d E:/x` → `E:/orzmc-backups`（父目录就是 `E:/`），不是 bug。
 - 归档名 `orzmc-backup-YYYYMMDD-HHMMSS.tar.gz`，**含 `.env` 等密钥**，只留本机，不外传。
 - `--stop` 只停 compose 服务；MCSManager 托管的 PaperMC 实例不在 compose 里，要一致快照得先在面板停实例。
 - 体积参考：5.8G 数据 → 3.9G 归档（world 已压缩，gzip 收益低），耗时约 13 分钟。
+- `restore` 解包后会**自动改写归档里 `.env` 的 `DATA_ROOT`** 指向目标目录（迁移/换盘靠这个，别再手工 sed）。
 
-## Windows 上 tar 的坑（2026-11-20 修，OrzMCDeploy#18）
+## doctor / cert 各自判什么
+
+`doctor` 唯一写操作 = 在 `DATA_ROOT` 与备份根各写一个探针文件后立即删除；其余只读。分组：
+
+| 分组 | 判什么 | 典型故障 |
+|:--|:--|:--|
+| 环境 | docker CLI / daemon / compose 插件 / openssl | Docker Desktop 落在会话 0 里起不来 |
+| 数据目录 | 存在、可写、`.env` 齐全、`.env` 里 `DATA_ROOT` 与实际一致 | 迁移后 `.env` 残留旧路径 |
+| 备份 | 备份根可写、最近归档、磁盘水位 | 单次近 4G，空间不足会写坏归档 |
+| 运行时 | 容器数、**容器 `config_files` 是否指同一棵程序树**、期望端口是否真发布 | 改 A 树、容器跑 B 树 |
+| 工具链 | `JAVA_HOME` 指向存在 | 清理误删 tools 目录 |
+
+判定语义：`[FAIL]` exit 1；容器由**另一棵**树启动只 `[WARN]`（开发克隆里跑属正常），
+**分散在多棵树**下才 `[FAIL]`。看 `[WARN]` 先分清「我在仓库里跑」还是「真的漂移」。
+
+`cert` 读 `$DATA_ROOT/caddy/data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/<domain>/<domain>.crt`，
+打印域名/到期日/剩余天数；任一不足 `--min-days` 即 exit 1，可直接挂 cron/监控。
+**只读**：不续期、不动 `caddy/data`（手工续期会打乱 Caddy 的 ACME 状态）；无 `caddy/data` 时报「站点层未启用」exit 0。
+
+## Windows 上 tar 的坑
 
 症状：`tar: E\:: Cannot open` / `tar (child): Cannot connect to E: resolve failed`。
 
@@ -29,18 +53,35 @@ GNU tar 把 `X:/...` 当远程主机（`host:path`），三段都中招：
 第二条的边界：只有父目录**恰为** `X:` 时才补斜杠，`C:/Users/x/data` 的父目录是 `C:/Users/x`，
 早期写成 `[A-Za-z]:/*` 分支会把深层路径算成盘符根，tar 报 `data: Cannot stat`。
 
+脚本侧收敛：`lib/common.sh` 的 `tar_local`（Windows 下自动补 `--force-local`）与 `tar_parent_of`（父目录推导），
+backup 与 restore 共用，别再各写一份。**用函数封装，不要写 `tar $(tar_win_opts) …`**——未加引号的命令替换
+触发 SC2046，且空值/多值时会退化成「参数消失」；`tar_local -tzf "$a"` 读起来也没有选项解析悬念。
+
+## 改脚本后怎么自测（别直接对真实数据跑）
+
+1. 造一个假 DATA_ROOT，**并用 `-o` 指到临时目录**——默认备份根是 `${DATA_ROOT%/*}/orzmc-backups`，不传 `-o` 时测试归档会落进真实备份根的兄弟位置，事后还得手工清。
+2. **两种路径形态都要测**：盘符根（`E:/btest`，考验父目录补斜杠那支）和深层路径（`C:/Users/<u>/…/data`，考验「父目录不是盘符根」那支）。只测盘符根会让深层路径算错成 `C:/` 的 bug 漏网。
+3. 判据：脚本自报「备份完成并校验通过」+ `tar --force-local -tzf <归档> | wc -l` 给出万级项数。**列表只吐 1–2 行且秒回 = 参数被误解析**，不是「归档小」。
+4. 往返测：备份 → `restore` 到另一个目录 → `cat` 内容一致 + `.env` 的 `DATA_ROOT` 已改写成目标路径。
+5. **本机 lint 要先转 LF**：git 在 Windows 上 checkout 出 CRLF，直接 `shellcheck` 会刷 SC1017(CRLF) /
+   SC1094(被 source 的文件解析失败) 等假警报。做法：`tr -d '\r' < f > $W/f` 复制一份到临时树再跑
+   `shellcheck -x --shell=bash *.sh lib/*.sh`，和 CI 看的是同一份（仓库存 LF）。没装 shellcheck 就用
+   `docker run --rm -v "$(cygpath -m $W):/mnt" -w /mnt koalaman/shellcheck:stable …`。
+6. 导出函数名的写法要过 shellcheck 的**可移植性**关：`find -printf` 是 GNU 专有（macOS 无），
+   取最新归档还是用 `ls -1t`，真被 SC2012 咬就加 `# shellcheck disable=SC2012` 说明理由，别为讨好 lint 引入平台专有参数。
+
 ## 验证与恢复
 
 ```bash
 tar --force-local -tzf E:/orzmc-backups/orzmc-backup-2026xxxx.tar.gz | wc -l   # 28657 量级
-tar --force-local -xzf E:/orzmc-backups/orzmc-backup-2026xxxx.tar.gz -C E:/     # 解出 ./orzmc
+./orzmc.sh -d E:/orzmc restore E:/orzmc-backups/orzmc-backup-2026xxxx.tar.gz --force --start
 ```
 
 恢复前先 `./orzmc.sh -d E:/orzmc stop`，解包后 `up`；实例目录属于 MCSManager，恢复 world 时确认面板里实例已停。
+手工解包也行（`tar --force-local -xzf <归档> -C E:/` 解出 `./orzmc`），但那样 `.env` 的 `DATA_ROOT` 要自己改。
 
 ## 注意
 
-- 修复在 `deploy` 仓库（`5c139d8`）。**部署目录 `E:/deploy/orzmc/backup.sh` 仍是旧版**，等下次 Release 覆盖；
-  眼下要备份就跑仓库副本：`bash E:/dev/OrzMC/deploy/backup.sh -d E:/orzmc`。
 - 备份脚本不含排除项，`tools/`（JDK/Gradle/Hugo，521M）也会打进归档——恢复时不要用它覆盖 `JAVA_HOME` 指向的工具链。
-- 从未有过自动备份计划任务；归档增长快（每次近 4G），定期 `--keep` 或手工清理旧包。
+- 从未有过自动备份计划任务；归档增长快（每次近 4G），定期 `--keep` 或手工清理旧包。要做排期得先让老板拍板（磁盘水位 + 是否 `--stop`）。
+- 程序目录里没有 `doctor`/`cert`/`restore` 说明跑的仍是旧 Release：重跑 `install.sh` 升级（见 `deploy-layer-boundaries.md` §7），别去手改程序目录。
