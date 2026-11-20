@@ -1,7 +1,7 @@
 ---
 name: orzmc
 description: "Minecraft 运维统一技能（唯一入口）：三端服务器运维/插件构建升级/性能诊断/权限体系/测试/基岩支持（含 NetherNet 迁移），74 份参考文档 + 170+ 脚本。"
-version: 2.7.9
+version: 2.7.10
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux, windows]
@@ -135,6 +135,7 @@ required_commands: [java, curl, tar]
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.7.10 | 2026-11-21 | **让升级流水线真正能被 cron 解析并报准版本**：① `orzmc_upgrade_sync.py` 三种退出路径（全绿/有玩家在线只出包/无变更）统一走 `emit()` 输出同一套 `## 升级流水线` + `### 版本与取证` + `### 动作` + `STATUS_LINE`，此前无变更路径只 print 裸 EV 行 → 周一报告第四段报「段无有效结果」；② 验收 needle 改用实测日志串（`Paper version 26.3-257`、`Folia version 26.3-26`、后端 `Geyser-Spigot v2.12.1`（无 build 号）、代理侧 `geyser 2.12.1-b1306`），原来查 `Paper 26.3 build 257` 恒失败；③ velocity 重启的 uuid 不再 `.upper()`（大写导致 `instance` API 返回空、status 恒 None → 误报「停止超时/启动超时」），并加日志兜底判定；④ `orzmc_weekly_patrol.installed_versions()` 改为取**最高版本** jar（与 `start.sh` 的 `sort -V \| tail -1` 同口径），原来 `glob` 第一个命中 → 旧 jar 未删时报 `26.3-253 落后 4`（假告警）；⑤ Geyser 版本比较改取 `b` 后段数字。 |
 | 2.7.9 | 2026-11-21 | **升级流水线自动化（并入周一 cron 第四段）**：新增 `scripts/orzmc_upgrade_sync.py` —— Fill API/Modrinth 查最新 → 分类出包（core 三端 + plugins proxy/后端 + production，sha256/sha1 逐件校验）→ 写实例目录 + **面板 API stop/open** 部署测试服三实例 → 等 `Done (`/版本串/`Geyser bXXXX` 验收 → `S:/orzmc-upgrade/upgrade-<日期>/` 生产交接件 → Exaroton 仅 OFFLINE 时上传+回读 sha256+删旧件 → 清理旧包只留本次。`--require-idle` 时有人在线只出包不重启。配套：`orzmc_selfcheck` 对低于基线的 jar 改判 ℹ️ 旧版保留（回滚件不计漂移）；`exa_sync_plugins.py` 凭证改走 `exa_file`（原 `~/.hermes/.env` 在 Windows 不存在，脚本直接崩）；周一报告解析升级段结论。本轮实机：paper 26.3-257 / folia 26.3-26 / Geyser b1306，Exaroton 已同步 |
 | 2.7.7 | 2026-11-21 | **巡检脚本对齐面板托管实现 + 升级包分类**：① 三个 cron 脚本改真源单点 —— `orzmc_monday_report.py`/`caddy_cert_watch.py` 真身移进技能 `scripts/`，`hermes/scripts/` 只留转发 stub（此前 `orzmc_paths.py` 是 4.7KB 旧真身，与技能侧 8.3KB 漂移）；② `orzmc_selfcheck` 第 4 项由「java 进程名猜活 + paper/folia 应 stopped」改为面板 API `status`（3=运行中/0=停止）并打印 `startCommand` 与核心 jar，跳过 `global0001` 全局实例，代理插件缺失 warn；③ `orzmc_config_audit`/`orzmc_weekly_patrol` 不再写死 `$DATA_ROOT/eagler/proxy`，改 `velocity_dir()` 动态解析（面板实例目录）；④ 周一报告 `后端 RCON` 行：关闭时显示 `ℹ️ 已关闭` 而非 🔴；⑤ 新增 `references/upgrade-package-layout.md`（三端核心 + proxy/后端插件分档、线上服 `n/a` 标注）+ **Geyser 两份保留**（多部署模式回归用，禁止清理）；⑥ 清理 `orzmc_tunnel_guard.py`/`watch_render.py`/`_add_utf8_guard.py`，文档里 `eagler/proxy` 路径统一改 `InstanceData/<velocity-uuid>` |
 | 2.7.6 | 2026-11-21 | **ADR-042：核心 jar 与插件统一面板管理，启动走 start.sh 自动选版本**（OrzMCDeploy v0.6.1）：先是查清 paper/folia 的现状 —— 两者启动命令都是 `sh /server/start.sh` + `ls -1 paper-*.jar \| sort -V \| tail -1`，更新=传版本化 jar + 重启，命令不动；Velocity 之前还要求手改命令，节奏不一致。① 代理实例补 `start.sh`（`ls -1 velocity-*.jar \| sort -V \| tail -1`，回退 `velocity.jar`），启动命令改 `sh /server/start.sh`，三端同构 —— 这也解决了 ADR-041 的死结：MCSM 按空格硬切启动命令，但把 shell 放进**脚本文件**就没事（entrypoint 只见 `sh` + `/server/start.sh`），实测放 `velocity-4.3.2-1.jar` 后重启，容器内 `ps` 就是它，移走再重启回到 `-45`。② 插件（EaglerXServer/Geyser-Velocity/EaglerXPaper/EaglerXBackendRPC）不再下载，只 warn 缺件 + 移走不该有的；**删除 `templates/eagler/versions.env` 与 `eagler_lock`/`eagler_fetch`**，部署仓库零版本锁，「现在跑哪个版本」以面板实例目录为准。③ `up` 幂等补 `start.sh`（已存在不动），实测现网 `up` 输出四条就位 info、生成物与手工版 `diff` 一致。④ 顺带实测：`dev.jokerhub.cn:25565` 外网可连，但**宿主访问自己的 LAN IP `192.168.0.33:25565` 超时**（防火墙 inbound 无对应规则），探针里那条 `[WARN] Java(经 LAN IP)` 是长期现象、不影响外部玩家。 |

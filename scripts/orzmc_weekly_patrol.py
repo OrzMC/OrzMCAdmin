@@ -197,13 +197,19 @@ def installed_versions() -> dict[str, str]:
     v: dict[str, str] = {}
     ran: dict[str, str] = {}
     for label, uuid, _ in INSTANCES:
+        # 取「最高版本」而不是第一个命中：ADR-042 不删旧 jar，实例目录里可能同时有 253 与 257，
+        # start.sh 用 `ls -1 | sort -V | tail -1` 取最高 —— 这里必须同口径，否则报出旧版（假告警）。
         jarver = ""
+        def _vk(s):
+            return tuple(int(x) for x in re.findall(r"\d+", s)) or (0,)
+        cands = []
         for jar in glob.glob(f"{INST}/{uuid}/*.jar"):
             mm = re.match(r"(?:paper|folia)[-_]?(\d+\.\d+-\d+)\.jar$",
                           os.path.basename(jar), re.I)
             if mm:
-                jarver = mm.group(1)
-                break
+                cands.append(mm.group(1))
+        if cands:
+            jarver = sorted(cands, key=_vk)[-1]
         t = head_text(f"{INST}/{uuid}/logs/latest.log")
         m = re.search(r"Loading (Paper|Folia) (\S+?)@", t)
         if m:
