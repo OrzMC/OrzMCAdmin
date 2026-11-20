@@ -110,6 +110,29 @@ diff --strip-trailing-cr -u <仓库>/compose.yaml <tarball>/compose.yaml | head
 - 回滚：重新解**旧** tarball 覆盖同一目录 → `stop && up`（数据零影响，`_dl` 里留着旧包才有的回滚）。
 - 旧版目录（`orzmc-deploy-0.0.x` / `0.1.x`）已清掉；只要 `config_files` 全部指向 `E:\deploy\orzmc` 就不会再出现「同一 project 被两棵树各管一半」。
 
+**升级的正确姿势：用 `install.sh`，不要手解包**（它做覆盖解压、不删无关文件、自带 sha256 校验）：
+
+```bash
+export HTTPS_PROXY=http://127.0.0.1:7897
+# 0) 现役程序目录先快照（百 KB 量级）；必须 --force-local，缺了 tar 会静默不出包
+cd /e/deploy/orzmc && tar --force-local -czf E:/orzmc-backups/program-pre-<ver>.tar.gz .
+# 1) 原地覆盖升级
+bash E:/dev/OrzMC/deploy/install.sh -d E:/deploy/orzmc -v vX.Y.Z
+# 2) 验收：在容器所属那棵树里跑（不是仓库克隆里），期望 WARN 0
+cd /e/deploy/orzmc && ./orzmc.sh -d E:/orzmc doctor && ./orzmc.sh -d E:/orzmc cert
+```
+
+只盖文件不重启容器；要生效还得 `stop && up`。升级完先跑 `doctor`，它会把「版本没盖全（缺 `lib/doctor.sh`）」「端口没发布」「`.env` 路径漂移」一次性点出来。
+
+**两个反复咬人的 Windows 路径坑**（写/改 deploy 脚本时都适用）：
+
+- **原生程序不翻译 MSYS 路径**：`curl` 是原生 exe，`curl -o /tmp/<asset>` 报「系统找不到指定的文件」→
+  `client returned ERROR on write`；同理 `tar` 必须 `--force-local`。脚本里的临时目录一律 `mktemp -d "${TMPDIR:-/tmp}/…"`
+  然后 `cd` 进去只用**文件名**（Git Bash / macOS / Linux 通用），别把 `/tmp/...` 绝对路径交给原生程序。
+- **路径形态不同会被当成两棵树**：docker 标签里是 `E:/deploy/orzmc`，从 Git Bash 跑脚本时 `REPO_ROOT` 是
+  `/e/deploy/orzmc` → 字符串比较直接得出「容器由另一棵树启动」。判同一棵树前先归一（`win_path`），
+  否则要么误报 WARN，要么反过来把真漂移当正常。
+
 **迁移前先证明产物可信**（不信封包就换树 = 把未知漂移带进生产）：
 
 ```bash

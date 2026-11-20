@@ -88,6 +88,7 @@ git commit -m "chore: 技能目录改子模块" && git push -u origin HEAD
   `##[error]AGENTS.md 登记表缺少子模块：['<path>']`。所以 submodule add 之后第一件事就是补表，否则白等一轮 CI。
   登记表在 §4，表格末行追加即可；`AGENTS.md` 是**受保护文件**，改它要审批（弹窗超时就停下请老板重批，别绕路）。
 - gitlink 只有一步能不能成，取决于技能仓 `main` 上是否已有内容：`.gitmodules` 先有、登记表后补，是**同一次 PR** 内完成的两件事。
+- 迁移 PR 合并后**回 main 常被旧目录挡住**：`git rm`+`submodule add` 之后，父仓库把子模块工作树里的内容看成 untracked，`git switch main` 报「untracked files 会被覆盖」。正解 `mv .agents/skills/orzmc <scratch>` → `git switch main` → `git pull --ff-only` → `git submodule update --init -- .agents/skills/orzmc`，最后清掉那份临时目录。
 - 之后 clone 主仓要 `git submodule update --init`，否则 `.agents/skills/orzmc` 是空目录。
 
 ## 发布后回读（不看回显）
