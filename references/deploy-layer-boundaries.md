@@ -152,3 +152,32 @@ docker ps -a --format '{{.Names}}{{"\t"}}{{.Label "com.docker.compose.project.co
 - 删目录：先 `git -C <克隆> status --porcelain --ignored` 全净 + 远端没有未推送提交，再 `cmd //c "rmdir /s /q <路径>"`；244M 的克隆用 `rmdir` 比 `rm -rf` 快得多（不受只读 `.git` 影响）。
 - 判定 PR/推送是否真落地**不看命令回显**（可能被截成 `1 lines output`），用 `gh pr view <n> --json state,mergeCommit` 或 `git ls-remote origin main` 回读。
 - squash 合并后本地 `main` 与远端 **diverged**（本地那笔内容已进远端但 hash 不同）→ `git switch main` 会 fast-forward 失败，必须先 `git fetch` 再重置；这是正常现象，不是冲突。
+
+## 8. 磁盘清理：先分层普查，再定可删/不可删
+
+**普查手法**（`du -sh` 整树在本机会超时，`exit 124`）：拆成几次后台跑并**把结果重定向到文件**，再 `read_file` 读——
+注意后台进程回执的 Output **必然是空的**（stdout 已进文件），空输出不等于失败，要去读那个 `.txt`：
+
+```bash
+OUT=$TMPDIR/survey.txt; { du -sh /e/orzmc/* 2>/dev/null | sort -hr; } > "$OUT" 2>&1   # 后台执行，然后 read_file $OUT
+```
+
+**按层定结论**：
+
+| 层 | 结论 |
+|:--|:--|
+| 程序 `E:\deploy\orzmc` | **整份都不动**。它就是 Release 包本体，删任何文件都破坏「原地覆盖升级 + `_dl` 旧包回滚」的可回滚性（通常只有几百 KB，本来也没有垃圾） |
+| 数据 `E:\orzmc` | 只动**可重建/已过期产物**，见下表 |
+| 备份 `E:\orzmc-backups` | 只清重复与新头旧史快照；备份本身不能因为占空间就删 |
+
+**可删（可重建或已过期）**：实例目录下的旧 `backup/` 整包、`upgrade-bak-<日期>/`（确认新 jar 已生效）、`cache/`（`mojang_*.jar` 启动自动重建）、
+`eagler/disabled` 与 `eagler/backup` 里的旧 jar、`_dl` 里已解包过的未压缩 tar、`daemon/logs/` 往月日志、备份层重复的 db dump。
+
+**绝不删**：
+- `E:/orzmc/caddy/data` —— 删了 CA 账号与历史证书，重签会撞 Let's Encrypt 「同域名每周 5 张」配额，等于把 HTTPS 自己封半小时到一周。
+- `world/`、`plugins/`、`libraries/`、核心 jar —— 数据与可运行性，体积大也要留（`world/` 是最大项，别当清理目标）。
+- `E:/orzmc/tools`（JDK/gradle/hugo，`JAVA_HOME` 硬编码）、`reports/`、`deliver/`（脚本与 cron 硬编码路径）。
+
+**汇报纪律**：先给「可删清单 + 各自体积 + 合计（原大小 → 预计大小）+ 保留清单」，**等一句确认再删**；
+这是不可逆且量大的动作，老板的偏好是列清单拍板，不是边删边汇报。世界备份与 `world/` 的关系、`cache/` 是否真能重建
+只属**推断**时，在清单里标明「未开包比对」，不要写成已核实。
