@@ -1,7 +1,7 @@
 ---
 name: orzmc
 description: "Minecraft 运维统一技能（唯一入口）：三端服务器运维/插件构建升级/性能诊断/权限体系/测试/基岩支持（含 NetherNet 迁移），74 份参考文档 + 170+ 脚本。"
-version: 2.6.23
+version: 2.6.25
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux, windows]
@@ -22,8 +22,9 @@ required_commands: [java, curl, tar]
 > | **国内服 MCSM（线上，Windows Server 2022，API 403 只能人工）：启动日志期望值/常态告警/需留意项/外部实测验收/基岩排障顺序** | `references/domestic-mcsm-log-runbook.md` |
 > | **EasyBot IM 网关运维（docker 容器/健康检查/QQ token/投递诊断 API 版 `scripts/easybot_deliveries.py`；0.0.33 起投递记录在 messages 表；原 easybot-gateway-ops 技能合并）** | `references/easybot-gateway.md` |
 > | **部署配置同步（config drift 判定/fallback 判断/补键同步；原 deployment-config-sync 技能合并）** | `references/config-sync.md` |
+> | **技能发布流（本机真源 → 独立技能仓 `OrzMCAdmin` → monorepo 子模块 gitlink）：三级拓扑 / 发布脚本三模式 / 镜像白名单按扩展名逐项补齐 / enc+leak 门禁与「中止了怎么办」/ 改子模块的一次性迁移与审批纪律 / `gh pr` 的 `CLOSED+merged:true` 判读** | `references/skill-publish-flow.md` |
 > | **Git 子模块全量同步（OrzMC monorepo 20 子模块；默认分支探测/发布后指针/分支清理/独立 clone 去重；原 git-submodule-sync 技能合并）** | `references/git-submodule-sync.md` |
-> | **部署分层职责边界（老板问「deploy 子模块管什么、哪些要部署后手工做」）：monorepo 子模块分类表 / deploy 自动做的四块（编排·orzmc.sh·Eagler 运行时·防火墙）/ 明确不做的四类（面板实例·paper-global secret·TLS+DDNS+路由器·密钥值）/ 站点增量只落 `compose.site.yaml` / 部署后手工清单 11 项（含「备份默认没排期」）/ 运行态核对法（`docker inspect` 的 `project.config_files` 标签反查容器由哪棵树起、两棵树漂移用 `diff --strip-trailing-cr` 排除 CRLF 假差异）/ **§7 统一运行树：只从 Release 产物起容器（单个固定目录 `E:/deploy/orzmc` 原地覆盖升级、回滚靠 `_dl` 里的旧 tarball；**不用 `orzmc-current` junction、不留多版本目录**——试过被老板否掉，多一层无收益；迁移前先 `tar` 解包 + `diff -r --strip-trailing-cr` + sha256 三件取证；删旧克隆前核引用面（含 `docker ps --format` 带 `\r` 导致 inspect 循环静默归零的假阴性）；破坏性命令的免审批替代）** | `references/deploy-layer-boundaries.md` |
+> | **部署分层职责边界（老板问「deploy 子模块管什么、哪些要部署后手工做」）：monorepo 子模块分类表 / deploy 自动做的四块（编排·orzmc.sh·Eagler 运行时·防火墙）/ 明确不做的四类（面板实例·paper-global secret·TLS+DDNS+路由器·密钥值）/ 站点增量只落 `compose.site.yaml` / 部署后手工清单 11 项（含「备份默认没排期」）/ 运行态核对法（`docker inspect` 的 `project.config_files` 标签反查容器由哪棵树起、两棵树漂移用 `diff --strip-trailing-cr` 排除 CRLF 假差异）/ **§7 统一运行树：只从 Release 产物起容器（单个固定目录 `E:/deploy/orzmc` 原地覆盖升级、回滚靠 `_dl` 里的旧 tarball；**不用 `orzmc-current` junction、不留多版本目录**——试过被老板否掉，多一层无收益；迁移前先 `tar` 解包 + `diff -r --strip-trailing-cr` + sha256 三件取证；删旧克隆前核引用面（含 `docker ps --format` 带 `\r` 导致 inspect 循环静默归零的假阴性）；破坏性命令的免审批替代；**§8 磁盘清理分层**——程序目录整份不动、`caddy/data` 删了撞 Let's Encrypt 每域名每周 5 张配额、`world/`/`plugins/`/`libraries/`/`tools/` 不动，可删项先把清单与体积列给老板拍板；`du` 整树超时改后台写文件再 `read_file`（后台回执 Output 必为空≠失败））** | `references/deploy-layer-boundaries.md` |
 > | **Java 测试编译陷阱 + 单测运行时陷阱（Mockito 泛型捕获/SuppressWarnings 位置/CI warnings 清零；**2026-09-12 并入 bukkit-plugin-testing**：Mockito UnfinishedStubbing/Stub 顺序/argThat null/异步进行中模拟、Bukkit API mock 限制（Material.isSolid 依赖注册表、Vector.clone 返回 null）、Jacoco 覆盖率缺口定位工作流）** | `references/java-test-pitfalls.md` |
 > | **AI 编码智能体协作（编程交给 Claude Code + Hermes 编排；三模式/acceptEdits 坑/合并前一次 review；原 ai-coding-agents 技能合并）** | `references/coding-agents.md` |
 > | Spark 性能分析（命令/JSON/判断/踩坑） | `references/spark-analysis.md` |
@@ -122,6 +123,8 @@ required_commands: [java, curl, tar]
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.6.25 | 2026-11-20 | **发布线口径从 references 提到 SKILL.md 正文 + 新增磁盘清理分层**：①「技能真源与编辑纪律」补齐三级单向流（本机真源 B → 技能仓 `OrzMC/OrzMCAdmin` → monorepo 子模块 gitlink）与三条硬纪律——改完技能必须 `orzmc_publish.sh` 发布、**不要在 monorepo 的技能目录里直接改文件**（那是脱敏版 checkout，改动回不到真源也会被下次发布覆盖）、bump 指针前 `git ls-tree` 必须是 `160000`（否则产出伪 bump PR），并写明「改技能 = 两步提交」是已接受的代价；②`references/deploy-layer-boundaries.md` 新增 §8 磁盘清理分层：程序目录整份不动、`caddy/data` 删了撞 LE 配额、`world/plugins/libraries/tools` 不动，可删项先列体积清单等拍板；`du` 整树超时改后台落文件再读（后台回执空输出≠失败） |
+| 2.6.24 | 2026-11-20 | **技能发布线改为「独立技能仓 + monorepo 子模块」**：`OrzMC/OrzMCAdmin` 从「已退役」复活为技能自己的版本线（可独立迭代、独立打 tag），monorepo 的 `.agents/skills/orzmc` 改为 git submodule 指向它 —— 老板口径是「技能有对应独立仓库，挂在主仓下也需要以子模块方式，才能统一真源和同步迭代」。`orzmc_publish.sh` 目标仓改为技能仓（默认 `E:/dev/OrzMCAdmin`），`--merge` 合并后额外 bump 主仓 gitlink；顺手补上**长期静默漏同步的 `scripts/*.ps1`** 与 `192.168.0.<x>` 脱敏规则。`references/skill-publish-flow.md` 整篇重写为三级拓扑（B→技能仓→主仓 gitlink），新增四条硬纪律：① **镜像白名单按 B 的扩展名分布逐项补齐**（漏一种扩展名不会报错，那类文件永远进不了仓）；② `git rm -r` / `submodule add` 属破坏性审批门，**先讲清删什么再请审批，被拦就等——不许用变相写法绕过用户同意**；③ `gh pr view --json state,merged`：**`CLOSED` + `merged:true` 就是成功的 squash 合并**，只看 state 会把合并误读成否决；④ 迁移成子模块后必须同步改 `.gitmodules`、`AGENTS.md`、`.agents/skills/README.md`（原文写「OrzMCAdmin 已退役」）三处文字 |
 | 2.6.23 | 2026-11-20 | **三目录铁律进 SKILL.md 正文（不再只放在 reference 里）**：程序 `E:/deploy/orzmc`（`up`/`stop`/`backup` 唯一执行处）/ 数据 `E:/orzmc`（DATA_ROOT）/ 备份 `E:/orzmc-backups`（唯一备份根）；升级=同目录原地覆盖、回滚=用 `_dl` 旧 tarball 覆盖回同路径，**禁止 junction / 版本目录 / 软链**；`tools/`、`reports/`、`deliver/` 留 DATA_ROOT；`backup.sh` 整份打包且默认无排期。**同时修正 `references/skill-publish-flow.md` 已过期的口径**：原文写「公网 IP 必须手工改」，实际已落 `{HOME_IP}`/`{CVM_IP}` 的 ENC_RULES → 改为「按 IP 网段前缀写正则规则，不靠手改文档」；新增《门禁中止了怎么办》四步（不改真源 → 认值归类 → 补 ENC 规则 → 发布后 grep 回证）与两条硬纪律：**已在 git 历史的真实值不会因新规则消失，清历史要改写+force push，只能告知老板拍板、不得默默强推或假装已清**；**发布后先做 `gh pr view` 回读 + `git pull --ff-only`，`git branch -D` 属审批门，别为删分支把整轮验证卡死** |
 | 2.6.22 | 2026-11-20 | **推翻 2.6.21 的 junction 方案：统一运行树 = 单个固定目录 `E:/deploy/orzmc`（原地覆盖升级，回滚靠 `_dl` 里的旧 tarball），不再有 `orzmc-current`、不再留 `orzmc-deploy-<ver>` 多版本目录**——老板直接质疑「这不是把部署搞复杂了吗」，且 `install.sh` 本就支持固定目录覆盖升级。同时定三目录职责：程序 `E:/deploy/orzmc` / 数据 `E:/orzmc`(DATA_ROOT) / 备份 `E:/orzmc-backups`（唯一备份根，`E:/orzmc/backup`、`E:/deploy/backups` 已并入）。§7 与 SKILL.md 索引、`eagler-client-access.md` 同步订正；`tools/` 留在 DATA_ROOT（挪它要改 `JAVA_HOME` + 5 处引用，收益不足），备份排除项留 v0.3.0 由 `backup.sh` 解决 |
 | 2.6.21 | 2026-11-20 | **`references/deploy-layer-boundaries.md` 新增 §7「统一运行树」**：老板定「部署必须走仓库 release 产物、开发克隆不参与运行」后，把目标形态固化成五层（`_dl` 下载缓存 / `orzmc-deploy-<ver>` **定版目录不可变** / `orzmc-current` junction 作唯一运行入口 / DATA_ROOT / `E:\dev\OrzMC` 只读）。三条可复用手法写进正文：① **换树前先证明产物可信** —— `tar` 解包到 scratch + `diff -r --strip-trailing-cr -q`（期望无输出）+ `sha256sum` 对 `.sha256`，三件全过才拿它当运行树；② **删旧克隆/退役目录前核引用面** —— 文件侧 `grep -rIl` 排除自身目录 + 容器侧一次 `docker ps -a --format '{{.Names}}{{"\t"}}{{.Label "com.docker.compose.project.config_files"}}'`；③ **迁移验收 = 五个容器 `config_files` 全指到定版目录 + `tests/acceptance_eagler.sh`**，面板/代理断 40–90 秒、实例容器不停、玩家会掉线故只选无人时段，回滚=junction 指回旧目录再 `stop && up`。同轮两条 Windows/git 坑：**`docker ps --format` 每行带 `\r`**，`while read c; do docker inspect "$c"; done` 会因 `orzmc-caddy\r` 全部 not found → 循环静默返回空（假阴性，据此删目录即埋雷），改用单命令带 label 或先 `tr -d '\r'`；**squash 合并后本地 main 与远端 diverged**（同一内容不同 hash）→ fast-forward 失败属正常，先 `fetch` 再重置；`reset --hard`/`rmdir /s /q` 属审批门（老板常不在），优先 `git branch -m main local-merged-<n>` + `git switch -c main origin/main` 的非破坏写法；**PR 是否真合并不看回显**（可能被截成 `1 lines output`），用 `gh pr view --json state,mergeCommit` 回读。 |
@@ -187,7 +190,19 @@ ViaVersion 最新一条是 `5.12.3-SNAPSHOT`，只看「最新一条」会把整
 
 > **一句话**：**Minecraft 相关的一切只在 Windows Hermes 上做，Mac 端不再处理 MC。** 本技能的唯一真源是 Windows `C:\Users\WangA\AppData\Local\hermes\skills\gaming\orzmc\`。
 
-- **编辑**：在 **Windows 侧**的 Hermes 会话里用 `skill_manage` 改；不要再在 Mac 上编辑本技能再同步（2026-11-16 的"Windows 唯一真源 + Mac 编辑后 tar 同步"是自相矛盾的，导致双端漂移：Mac 2.6.5/266 文件 vs Windows 2.6.4/269 文件）。
+- **编辑**：在 **Windows 侧**的 Hermes 会话里用 `skill_manage` 改本机技能目录（= 真源 B）；不要再在 Mac 上编辑本技能再同步（2026-11-16 的"Windows 唯一真源 + Mac 编辑后 tar 同步"是自相矛盾的，导致双端漂移：Mac 2.6.5/266 文件 vs Windows 2.6.4/269 文件）。
+- **发布（改完技能后必做）**：技能有**自己的仓库** `OrzMC/OrzMCAdmin`（独立版本线、独立打 tag），monorepo `OrzMC/OrzMC` 以 **git submodule** 挂在 `.agents/skills/orzmc`。三级单向流 `B 本机真源 → SK 技能仓（镜像+脱敏+leak 门禁+PR+tag）→ R 主仓 bump gitlink 指针`：
+  ```bash
+  bash ~/AppData/Local/hermes/scripts/orzmc_publish.sh --status   # 只看差异
+  bash ~/AppData/Local/hermes/scripts/orzmc_publish.sh           # 建分支 + 开技能仓 PR
+  bash ~/AppData/Local/hermes/scripts/orzmc_publish.sh --merge   # CI 绿后 squash 合并 + 打 tag + bump 主仓指针
+  ```
+  - **绝不反向拉取**：技能仓里是脱敏占位符版，拉回本机会污染真实域名/IP。
+  - **不要在 `E:/dev/OrzMC/.agents/skills/orzmc` 里直接改技能文件**：那是技能仓的 checkout（脱敏版），改动既回不到真源 B，也会被下一次发布覆盖。
+  - **`160000` 守卫**：bump 指针前 `git ls-tree HEAD -- .agents/skills/orzmc` 的模式必须是 `160000`；仍是普通目录时 `git submodule update --remote` 静默 no-op，`git add -- <SUB>` 会提交工作区残留差异，产出「只改 1–2 个文件」的伪 bump PR。
+  - **镜像白名单按扩展名逐项覆盖**：白名单漏一种扩展名不报错、那类文件永远进不了仓（`scripts/*.ps1` 曾长期漏同步）→ 先 `find <B> -type f | sed 's/.*\.//' | sort | uniq -c` 列全扩展名再补规则。
+  - **改技能 = 两步提交**（技能仓 PR + 主仓指针 bump PR），这是「独立版本线 / 可单独 clone」的必要成本，老板已明确接受。
+  - 完整流程（脱敏规则、门禁中止处置、submodule 一次性迁移、`CLOSED+merged:true` 判读）见 `references/skill-publish-flow.md`。
 - **Mac 侧已退休**：本地技能副本移出 skills 树（`~/.hermes/skills/` 下不再有 orzmc），Mac 的两条 orzmc cron 已删除，Mac 端脚本归档在 `~/.hermes/scripts/.archive-20261116/`。Mac 只保留"接收交付文件"这一件事（`S:\` = Mac `~/Downloads`）。
 - **同步纪律（若某天必须从他机同步）**：`tar -cf x.tar -C <skills>/gaming orzmc` → `scp` → **解压后必须回读 `SKILL.md` sha256 与文件数**；`tar` 解压**不会删除**目标侧多余文件，必须显式比对文件清单并清理（曾因此残留改名/归档前的旧文件）。
 - 迁移/双端状态的完整来龙去脉见 `references/hermes-ops-endpoint.md`。
