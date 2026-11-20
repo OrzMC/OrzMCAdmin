@@ -29,6 +29,19 @@ bash ~/AppData/Local/hermes/scripts/orzmc_publish.sh --merge    # 等 CI 绿后 
 bash ~/AppData/Local/hermes/scripts/orzmc_publish.sh --status   # 只看差异，不提交
 ```
 
+**`--merge` 的前置条件：monorepo 必须在 `main` 上。** 脚本先合并技能仓 PR、打 tag，最后才 bump 主仓指针；
+若主仓停在别的分支（例如刚开完一个 deploy bump PR），第三步会被跳过，回显只有一句
+「⚠️ 主仓在分支 X，先切回 main」——**这不是失败**，技能仓 PR 与 tag 都已成功，别重跑整轮。收尾三步：
+
+```bash
+cd E:/dev/OrzMC && git checkout main && git pull --ff-only
+git submodule update --init -- .agents/skills/orzmc
+cd .agents/skills/orzmc && git fetch -q --tags origin && git checkout -q vX.Y.Z && grep -m1 '^version:' SKILL.md
+```
+
+再 `git add .agents/skills/orzmc` → 单独一条 bump PR。回读用 `git ls-remote --tags origin vX.Y.Z`
+确认远端 tag 指向的技能仓 commit 与 `git ls-tree` 的 gitlink 一致，别只信脚本末尾的 ✅。
+
 脚本变量：`ORZMC_SKILL_REPO`（技能仓克隆）默认 `E:/dev/OrzMCAdmin`，
 `ORZMC_PROJECT_DIR`（monorepo）默认 `E:/dev/OrzMC`，子模块路径 `SUB=.agents/skills/orzmc`。
 

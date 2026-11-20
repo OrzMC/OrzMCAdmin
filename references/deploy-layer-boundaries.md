@@ -25,7 +25,7 @@
 - `ENABLE_VELOCITY=true` → 追加 `velocity`（占 `25565/tcp`）
 - 基岩托管在代理时 → 追加 `templates/compose.velocity-geyser.yaml`（`19132` TCP 信令 + UDP 媒体；`webrtc-port: 0` 时合成单端口）
 
-**生命周期** `orzmc.sh`：`init / up / stop / status / validate / backup / firewall show|apply / print-root`
+**生命周期** `orzmc.sh`：`init / up / stop / status / validate / backup / restore / doctor / cert / site init|render|apply|status / firewall show|apply / print-root`
 - `init` 建 `$DATA_ROOT` 目录树 + 生成 `.env` 模板（**只出模板，值要人填**）
 - `validate`：必需变量 + `compose config -q` + 端口冲突（`EAGLER_JAVA_PORT == EAGLER_BACKEND_PORT` 直接拦）
 - `stop`：`compose down --remove-orphans`
@@ -59,8 +59,8 @@
 | # | 事项 | 位置 |
 |:--|:--|:--|
 | 1 | `.env` 全部取值（`LAN_*` / `EAGLER_*` / `VELOCITY_SERVERS`·`TRY` / QQ·飞书凭据 / `CF_DNS_API_TOKEN` / `MC_PUBLIC_*`） | `$DATA_ROOT/.env` |
-| 2 | 站点增量：Caddy 服务 + DNS + 飞书凭据 | `$DATA_ROOT/compose.site.yaml` |
-| 3 | Caddyfile 内容（Host 分流、`flush_interval -1`、`X-Real-IP`） | `$DATA_ROOT/site/Caddyfile` |
+| 2 | 站点增量：Caddy 服务（v0.4.0 起由 `site apply` 写受管区块）+ velocity 的 `dns:` + 飞书凭据 | `$DATA_ROOT/compose.site.yaml` |
+| 3 | Caddyfile 内容（Host 分流、`flush_interval -1`、`X-Real-IP`）—— v0.4.0 起由 `.env` 的 `SITE_ROUTES` 生成（`site init` 可从旧文件反推），**不再手改**，详见 `references/site-tls.md` | `$DATA_ROOT/site/Caddyfile` |
 | 4 | 实例：`online-mode=false`、ViaVersion/ViaBackwards、`paper-global.yml` 的 velocity secret、`autoStart=false` | 面板 / 实例目录（**只能面板维护**） |
 | 5 | 实例端口让出 `25565`（eagler-proxy 拓扑必须，代理已占） | 面板端口映射 |
 | 6 | 路由器端口映射（脚本只写宿主防火墙） | 路由器：同端口 + 同协议成对转发（`TCP 25565,19132` / `UDP 19132,24454`） |
@@ -122,6 +122,10 @@ bash E:/dev/OrzMC/deploy/install.sh -d E:/deploy/orzmc -v vX.Y.Z
 cd /e/deploy/orzmc && ./orzmc.sh -d E:/orzmc doctor && ./orzmc.sh -d E:/orzmc cert
 ```
 
+⚠️ **`install.sh` 不带 `-d` 会自己再装一棵树**：默认落点是 `~/.local/share/orzmc-deploy`（不是当前目录，也不是“原地覆盖”），
+结果就是 doctor 报「容器分散在多棵树」、你又多一份待清理目录。**`-d E:/deploy/orzmc` 永远要写**，
+升级后立即用 `grep -m1 '^## \[<ver>\]' CHANGELOG.md` + `ls lib/site.sh lib/probe.sh` 确认包已落在**那棵树**里。
+
 只盖文件不重启容器；要生效还得 `stop && up`。升级完先跑 `doctor`，它会把「版本没盖全（缺 `lib/doctor.sh`）」「端口没发布」「`.env` 路径漂移」一次性点出来。
 
 **两个反复咬人的 Windows 路径坑**（写/改 deploy 脚本时都适用）：
@@ -132,6 +136,11 @@ cd /e/deploy/orzmc && ./orzmc.sh -d E:/orzmc doctor && ./orzmc.sh -d E:/orzmc ce
 - **路径形态不同会被当成两棵树**：docker 标签里是 `E:/deploy/orzmc`，从 Git Bash 跑脚本时 `REPO_ROOT` 是
   `/e/deploy/orzmc` → 字符串比较直接得出「容器由另一棵树启动」。判同一棵树前先归一（`win_path`），
   否则要么误报 WARN，要么反过来把真漂移当正常。
+- **改脚本时别拿 LF 字符串去 `replace` CRLF 文件**：仓库在 Windows 上 checkout 出 CRLF，而补丁里写的是 LF →
+  `str.replace(...)` **静默不命中、不报错**，你会以为改了其实没改（后面所有验证都对着旧代码跑）。
+  做法：`open(p, newline='')` 读 → `.replace('\r\n','\n')` 归一 → 替换 → **对每个替换 `assert old in s`** → 再以 `newline='\n'` 写回。
+- **验收要打到真实入口上**：升级后除了 `doctor`/`cert`，再跑 `./orzmc.sh -d E:/orzmc status --probe`。
+  `doctor` 只能证明「部署形状对」，`--probe` 才能证明「面板/端口/站点/实例真的能连」（口径见 `references/site-tls.md`）。
 
 **迁移前先证明产物可信**（不信封包就换树 = 把未知漂移带进生产）：
 
@@ -204,3 +213,17 @@ OUT=$TMPDIR/survey.txt; { du -sh /e/orzmc/* 2>/dev/null | sort -hr; } > "$OUT" 2
 **汇报纪律**：先给「可删清单 + 各自体积 + 合计（原大小 → 预计大小）+ 保留清单」，**等一句确认再删**；
 这是不可逆且量大的动作，老板的偏好是列清单拍板，不是边删边汇报。世界备份与 `world/` 的关系、`cache/` 是否真能重建
 只属**推断**时，在清单里标明「未开包比对」，不要写成已核实。
+
+## 9. 服务版本盘点（「有没有新版 / 要不要升」的标准答法）
+
+先出「现状 vs 最新稳定 + 影响面」表，**升级动作统一进一次发布版本**（用户口径：不要零碎发、也不要在运行树上手 `docker pull` 成浮动 tag，漂移后无处回滚）。
+
+| 服务 | 查最新稳定 | 口径 |
+|:--|:--|:--|
+| Velocity | `curl -s https://fill.papermc.io/v3/projects/velocity/versions` 取 `versions[].version.id`，再查 `…/versions/<id>/builds?channel=STABLE` | **只认 STABLE**：版本号只出现在 `channel: SNAPSHOT` 里**不算**「有新版」，不能当升级理由 |
+| Caddy | `gh api repos/caddyserver/caddy/releases/latest -q .tag_name` | 升级只换 digest（`lib/site.sh` 的 `SITE_CADDY_IMAGE` 单点维护），重启秒级 |
+| MCSManager web | `gh api "repos/MCSManager/MCSManager/releases?per_page=3"` | — |
+| MCSManager daemon | 4.x **不在** GitHub releases（`MCSManager/Daemon` 只到 3.4.0），查官方渠道/npm | 别把 3.4.0 当「最新」而误判成该降级 |
+| easybot | 上游 `gh api "repos/easyindie/easybot/releases?per_page=2"` + `docker image inspect <img> --format '{{.Created}}'` | 镜像 build 日与最新 tag 发布日接近即认定已最新 |
+
+代理/插件 jar 一律**文件名带版本号**（如 `velocity-4.3.1.jar`）：多版本共存、回滚、排查「跑的是哪个」都靠文件名；把版本号藏在目录或 `latest` 软链里会让回滚变成拷文件猜版本。

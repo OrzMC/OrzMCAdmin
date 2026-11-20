@@ -1,7 +1,7 @@
 ---
 name: orzmc
 description: "Minecraft 运维统一技能（唯一入口）：三端服务器运维/插件构建升级/性能诊断/权限体系/测试/基岩支持（含 NetherNet 迁移），74 份参考文档 + 170+ 脚本。"
-version: 2.6.28
+version: 2.7.3
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux, windows]
@@ -120,10 +120,23 @@ required_commands: [java, curl, tar]
 > - `scripts/skill_self_check.py` = **本技能自检**（frontmatter / 死链 / 孤儿文档 / 超长行 / 私有信息计数），改完技能跑一次，期望 `结果: PASS`。**删/改名脚本或 reference 前先 `grep -rl "<名字>" SKILL.md references/`**，把所有引用改完再删（否则自检会把旧路径报成死链——而它报的只是症状，真因是引用面没扫完）
 > - `scripts/fix_utf8_guard.py --dir <脚本目录>` = **给一批 Python 脚本补/修模块级 UTF-8 guard**（字节安全、幂等；`--check` 只体检，退出码 1=有不合格）——移植或修改 Windows 脚本后必跑，否则 emoji 告警会在 cp936 下变成 traceback
 >
+## 停复起与还原的硬约束
+
+- **`stop` → `up` 不拉起 MCSManager 实例**（`autoStart=false` 刻意如此：实例停了要报警，不能自动拉起掩盖故障）。
+  容器 5/5 Up + 面板 200 + TLS 200 + `doctor` 全绿只说明**平台在跑**；`docker exec orzmc-mcsmanager-daemon sh -c 'ps aux | grep -c "[j]ava"'` 为 0 就是**世界没在跑**。
+  任何停复起/升级/还原的汇报都必须显式写「实例需人工在面板启动」。
+- **面板凭据永不进聊天**：要面板交互就给「你去点」或「开 API Key 后我脚本化」两条路，绝不索要密码；
+  MCSM v4 daemon 直连没有公开的 `POST /api/instance/start`（实测 `Not Found`），别据此写自动化。
+- **恢复验收分两级**：文件级（不停机，另起同名兄弟目录）与启动级（占端口，要窗口）。只做完前级时汇报必须写「启动未验」。recipe 见 `references/backup-restore.md`。
+
 ## 最近变更（v2.x）
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.7.3 | 2026-11-20 | **ADR-040 补遗：入口容器的重启与自愈必须走面板 API，绝不能 `docker restart`**：① 对 MCSM 托管实例（`autoRestart=true`）执行 `docker restart orzmc-velocity` 会让 daemon 以为状态漂移→重复起容器→`Bind for 0.0.0.0:19132 failed: port is already allocated`→失败清理把容器删掉（入口整个消失）；advertise-sync 改为 `POST /api/protected_instance/stop` → 等 `status==0` → `open` → 等 25565，实测可用。② `orzmc_entry_probe.py` 发现入口容器**不存在**（不是 stopped，面板刻意停是合法态）时用面板 API 自动拉起一次，结果进 INFO 不进告警；实测 `docker rm -f orzmc-velocity` 后探针 6s 内恢复、`status --probe` 全绿。③ advertise-sync 的 Geyser 配置路径改扫实例目录（`VELOCITY_DIR` 或 `InstanceData/*/velocity*.jar` 定位）——写死 `$DATA_ROOT/eagler/proxy` 会让它去改**后端** Geyser 配置，改完再重启入口，等于白折腾。④ MCSM 10.x `PUT /api/instance` 只认**扁平字段**（`{"startCommand":…}`、`{"eventTask":{…}}`）；传 `{"config":{…}}` 回 200 但静默不生效，且实例运行中不接受改动（先 stop）。`remote_services_list` 里 daemon 主键是 `uuid` 不是 `daemonId`。⑤ EaglerXServer 的 `server-icon.png` 必须 **64×64**（128×128 报 `Image is not 64x64`）。⑥ JDK25 + Guice 的 `sun.misc.Unsafe` 四条 WARN 用 `--sun-misc-unsafe-memory-access=allow` 消除（写进实例启动命令）。⑦ paper/folia 实例 `eventTask.autoStart` 打开（`autoRestart` 保持关，避免崩溃循环）。⑧ `validate` 新增「实例 jar 版本 vs versions.env 锁定版本」漂移提示；注意 `var=$(cmd)` 在 `set -e` 下会因 `find` 找不到目录 rc=1 而无输出静默退出，赋值须 `|| true`。 |
+| 2.6.31 | 2026-11-20 | **还原的启动级验收实跑通过 + `stop→up` 不自启实例进正文**：① 启动级验收两条路固化——轻量路线是在主机还原副本里直接 `java -jar paper-*.jar --nogui --port 25599` 看 `Done (…s)!`（实测 129.7s，**不改 `server.properties`**），完整路线才需要停机窗口（副本 `up` 会占满 23333/443/25565/19132，且用**副本证书**对真域名回 200，别误读成现网在跑）；整轮约 6 分钟，收尾 `doctor` 19 OK / 0 WARN。② 文件级判据实测成立：文件数相差恰好 1（`.env.bak-restore`）、`server.properties`/`velocity.toml`/`forwarding.secret` md5 逐个相同、`.env` 的 `DATA_ROOT` 已改写。③ **`stop`→`up` 不拉起实例**（`autoStart=false` 刻意如此），daemon 里 java 进程 = 0 —— 平台在跑 ≠ 世界在跑，汇报必须写「需人工在面板启动实例」；MCSM v4 daemon 无公开 `POST /api/instance/start`（`Not Found`），不要据此写自动化，面板凭据照旧只走 vault、不进聊天。④ 线上顺带发现（与还原无关，现网本来就有）：Essentials 在 26.3 报 `unsupported server version`、Simple Voice Chat 起 UDP 24454 失败后自我禁用 —— 这类「插件与本体版本不匹配」要在升级清单里单独列，别混进部署结论。 |
+| 2.6.30 | 2026-11-20 | 站点层 TLS 供给下沉（`site init/render/apply/status`、SITE_ROUTES、compose 标记区、caddy adapt 校验 + 热重载失败回滚）→ 新参考 `references/site-tls.md`；恢复实操验收（真实归档、兄弟同名目录、四项判据、启动级需窗口）→ `references/backup-restore.md`；测试服备份每日 04:00 `--keep 1`；代理 jar 一律带版本号命名（`velocity-4.3.1.jar`），便于多版本并存与回滚；v0.4.0 承载 TLS 下沉 + 服务版本升级，两件做完再统一发版 |
+| 2.6.29 | 2026-11-20 | **发布与“新命令代替旧脚本”的两个判据**：① `orzmc_publish.sh --merge` 要求 monorepo 在 `main`——主仓停在别的分支时技能仓 PR 与 tag 已成功、只有指针 bump 被跳过（回显只有一行「先切回 main」），**不要重跑整轮**，按“checkout main → submodule update → 子模块 checkout vX.Y.Z → 单独 bump PR”收尾，并用 `ls-remote --tags` 对比 gitlink 回读（别只信脚本末尾的 ✅）。② **`orzmc.sh cert` 不能顶替 `caddy-cert-watch` 哨兵**——`cert` 只判剩余天数，哨兵还判期望子域齐全/`orzmc-caddy` 存活/24h ACME 报错，`cert` 是其子集；判“新命令能否替旧脚本”先比**检查项集合关系**，别只比主判据。③ 在线快照的 `world: file changed as we read it` 属正常，判据是退出码 0 + 条目数与上份一致；手工 `tar -czf E:/...` 同样要 `--force-local`（否则配 `2>/dev/null` 时会静默产出 0 字节）。 |
 | 2.6.28 | 2026-11-20 | **部署可自证：`doctor` / `cert` / `restore` 三条命令下沉到 `orzmc.sh`**：① `doctor` 五项组（环境/数据目录/备份/运行时/工具链），`[FAIL]` exit 1、`[WARN]` 需人确认；运行时判据是容器的 `com.docker.compose.project.config_files` —— 另一棵树启动只 WARN（发布期正常）、**分散在多树下才 FAIL**；唯一写操作是写探针后即删。② `cert [--min-days 21]` **只读** `.crt` + `openssl x509 -enddate`，不足阈值 exit 1，可挂 cron；**不续期、不动 `caddy/data`**，无 caddy 目录报「站点层未启用」exit 0。③ `restore <归档> [--force] [--start]`：脚本早就在包里，缺的只是入口接线。④ `lib/common.sh` 抽出 `tar_local` / `tar_parent_of` 供 backup 与 restore 共用（`tar $(...)` 式未加引号替换不要去加，用函数包）。⑤ **两个 Windows 路径坑**：`curl` 等原生程序不翻译 MSYS 的 `/tmp/...`（「系统找不到指定的文件」+ `client returned ERROR on write`）→ `mktemp -d` + `cd` 后用文件名；docker 标签是 `E:/...` 而 Git Bash 下 `REPO_ROOT` 是 `/e/...`，路径不归一会把同一棵树判成两棵（先 `win_path`）。⑥ 本机 lint 先 `tr -d '\r'` 转 LF 再 `shellcheck`（否则 CRLF 刷 SC1017/SC1094 假错），无 shellcheck 时用 `docker run koalaman/shellcheck:stable`；`find -printf` 是 GNU 专有，不要为了讨好 lint 引入平台专有参数。详见 `references/backup-restore.md` 与 `references/deploy-layer-boundaries.md` §7（install.sh 升级 runbook）。 |
 | 2.6.27 | 2026-11-20 | **子模块迁移后的本机收尾 + 无执行入口时的收尾口径**：① `references/git-submodule-sync.md` 新增「已跟踪目录改成子模块后本机 clone 的收尾」——目录仍是未跟踪文件时 `git switch main` 报 `untracked working tree files would be overwritten`，正解是把该目录 `mv` 让路（内容已在仓库，别原地删）→ switch/pull → `submodule update --init -- <path>` → 0 脏后再删让路目录；**禁用 `checkout -f` / `reset --hard`**（会连带清掉同工作区的其他改动）。② 指针落地验收固定三步：`ls-tree` 为 `160000`、`submodule status` 行首无 `-`、**进子模块回读 `version:` 与本次新增的 reference 文件**（只比 sha 看不出是不是上上版；`--merge` 回显被截成一行也不代表成败）。③ SKILL.md 三端拓扑新增「生产服无执行入口时怎么收尾」：不以「做不了」结束，固定给「要凭据 / 出手册」两条路，并先实测面板 23333 是否 200、外网端口 `refused`（无映射）vs `timeout`（被封）的区分。 |
 | 2.6.26 | 2026-11-20 | **`backup.sh` 首次实跑即失败 → Windows tar 盘符三坑修复（OrzMCDeploy#18 / `5c139d8`）**：① `tar -C "$(dirname "$DATA_ROOT")"` 在 `E:/orzmc` 上得到 `E:`，GNU tar 当远程主机 → `Cannot connect to E: resolve failed`；② 归档路径 `-czf E:/orzmc-backups/...` 同样被当 `host:path`；③ 校验 `tar tzf` 再加 `--force-local` 后裸 `tzf` 不再被当选项束解析，必须写 `-tzf`。修法：父目录只在**恰为盘符根**时补斜杠（早期写成 `[A-Za-z]:/*` 分支会把 `C:/Users/x/data` 算成 `C:/`，tar 报 `data: Cannot stat`）、Windows 下 `--force-local`、校验用 `-tzf`。首份真实归档：5.8G → 3.9G / 28657 项 / 13 分钟。新增 `references/backup-restore.md`（含恢复步骤与「部署目录仍是旧版 backup.sh」提醒）。 |
@@ -465,6 +478,46 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 - ⚠️ **实例 `eventTask.autoStart=false` + `autoRestart=false`，但容器 policy 是 unless-stopped**：断电重启后代理会自己起来、Paper/Folia 不会 → 玩家进不去。2026-11-15 老板明确要求**不要**开自动拉起，靠探针报警 + 人工处置
 - 两者脚本均读 `~/.hermes/.env` 凭据；cron 精简 PATH 实测通过（2026-08-12 全量体检）
 - 脚本维护记录：audit 脚本 `Bearer ***` bug 已修（2026-08-12）；version_check Geyser build 号比较已修（2026-08-12）
+
+## 代理（Velocity）是面板实例，不是 compose 服务（ADR-040 / OrzMCDeploy v0.5.0）
+
+- 实例 `Velocity`（uuid `e09d92431092412b940e1e77f307e946`），`containerName=orzmc-velocity`（Caddy 路由靠它，别改），`eventTask.autoStart=true`，端口 `25565:25565/tcp` + `19132:19132/tcp,udp` 写在**实例端口映射**里。
+- 数据在 `E:/orzmc/mcsmanager/daemon/data/InstanceData/<uuid>/`（容器内 `/server`）：`velocity-4.3.1.jar`、`plugins/`、`velocity.toml`、`forwarding.secret`、`logs/`。换版本 = 面板传 jar + 改启动命令 + 重启实例，**不用发版**。
+- `orzmc.sh up/stop/restart` 不碰代理；`eagler_proxy_dir()` 自动探测实例目录（`.env` 的 `VELOCITY_DIR` 可覆盖），`eagler_proxy_jar()` 认 `velocity-*.jar`，已有 jar 就不再下载（面板换的版本不会被打回）。
+- 🔴 **`$DATA_ROOT/compose.site.yaml` 里不能残留 `velocity:` 服务块**（旧站为躲 Mihomo fake-ip 加的 `dns:`），base compose 已删该服务 → 报 `service "velocity" has neither an image nor a build context specified: invalid compose project`，`status`/`up` 全废。实测新实例容器走 Docker 内建 DNS 已能解出真实 IP，且 Geyser `advertise-addresses` 是显式的，不再需要这条。
+- 🔴 **实例 `docker.extraVolumes` 别写 Windows 路径**：`E:/...` 的冒号被当分隔符 → MCSM 路径长度校验失败；统一用实例自带 `/server` 挂载。
+- 🔴 **实例目录根就是容器 `/server`**：把 jar/plugins 放进 `<instance>/server/` 会报 `Unable to access jarfile /server/xxx.jar`，必须提到实例根。
+- 备份：代理数据随 `$DATA_ROOT` 一起备份；旧的 `$DATA_ROOT/eagler/proxy` 已删（111M 重复，secret 与实例一致）。
+- 启停/查状态、改配置（扁平字段，`{"config":{...}}` 会静默失效）、「容器突然不见了」定位、启动日志分诊表、jar/插件升级流程 → `references/velocity-panel-instance.md`
+
+## 面板托管实例的运维细节（ADR-040 落地后踩到的）
+
+- **改实例配置必须传扁平字段**：`PUT /api/instance?daemonId=&uuid=&apikey=` 的 body 用 `{"startCommand":"..."}`
+  才真正写入；传 `{"config":{...}}` 或 `{"instanceUuid":...,"config":{...}}` 都返回 `status:200` 但**静默不生效**。
+  且实例必须处于停止状态（`POST /api/protected_instance/stop`，轮询 `status==0`），运行中改不落盘。
+  改完 `GET /api/instance` 复核 `config.startCommand`，并确认 `docker.ports` / `eventTask.autoStart` 没被吞。
+- 🔴 **不要对面板托管容器直接 `docker restart/stop/rm`**：daemon 会认为状态不一致而去"纠正"，表现为
+  `此容器的开放端口配置有误！`、`实例容器额外挂载路径配置长度不正确！`、
+  `Bind for 0.0.0.0:19132 failed: port is already allocated`，失败清理最终把容器删掉、实例变 `status=0`，
+  入口整段消失（25565/19132/18443 全 502）。需要重启一律走面板 API：`stop` → `open`。
+  历史坑：watchdog 的 advertise-sync 段为了 Geyser 重读 advertise 直接 `docker restart orzmc-velocity`，
+  20:20/20:56/23:08 各触发一次，导致 22:27–22:33 反复启动争端口 + 23:26 入口宕机。
+
+- **入口自愈（已固化）**：`orzmc_entry_probe.py` 发现入口容器**不存在**（区别于 `stopped`——面板刻意停是合法态）时，
+  用面板 API `open` 自动拉起一次并轮询 25565，结果进 INFO 不进告警。实测 `docker rm -f orzmc-velocity` 模拟事故后 6s 恢复。
+- **advertise-sync 的 Geyser 配置必须扫实例目录**：写死 `$DATA_ROOT/eagler/proxy/plugins/Geyser-*/config.yml` 时该目录已删（ADR-040），
+  脚本会静默回退去改**后端** paper/folia 的 Geyser 配置，再"重启入口"——等于每次都在改错的文件。现按 `VELOCITY_DIR` 或 
+  `InstanceData/*/velocity*.jar` 定位；`restart_entry()` 已改为面板 `stop`→`open`。
+- **`remote_services_list` 里 daemon 主键是 `uuid`**（不是 `daemonId`）：`GET /api/service/remote_services_list` 的 `data[]` 形如 
+  `{uuid, ip, port, prefix, available, remarks}`，拿 `daemonId` 会 `KeyError`。
+- **`server-icon.png` 必须 64×64**（EaglerXServer 只吃这个尺寸，给 128×128 会报
+  `IllegalArgumentException: Image is not 64x64 (found 128x128)`，缺图则 `Could not load server icon`）。
+- **JDK 25 + Guice 的 `sun.misc.Unsafe::staticFieldBase` 告警**：启动命令加 `--sun-misc-unsafe-memory-access=allow` 即消。
+  无害但会刷屏的三条 WARN 不要当故障：`running in offline mode`（Eaglercraft/Geyser 必需）、
+  `server channel initializer has been replaced`（插件注入）、`Update certificate was loaded: $dl.<hash>.cert`（下载中间名）。
+- **升级 Velocity / 代理插件**：jar 带版本号 → 传新 jar 到实例根、改启动命令里的 jar 名、重启实例（旧 jar 留着回滚）；
+  插件换 `plugins/` 下 jar（同一插件别留两版）后重启，无热重载。注意 `templates/eagler/versions.env` 的
+  `VELOCITY_VERSION` 不会自己跟随，清空 jar 后 `up` 会按锁回下载旧版。EaglerXServer 与 paper 侧 EaglerXPaper 必须同版本升。
 
 ## Pitfalls（跨后端通用）
 
