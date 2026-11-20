@@ -1,7 +1,7 @@
 ---
 name: orzmc
 description: "Minecraft 运维统一技能（唯一入口）：三端服务器运维/插件构建升级/性能诊断/权限体系/测试/基岩支持（含 NetherNet 迁移），74 份参考文档 + 170+ 脚本。"
-version: 2.7.6
+version: 2.7.7
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux, windows]
@@ -133,6 +133,7 @@ required_commands: [java, curl, tar]
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.7.7 | 2026-11-21 | **巡检脚本对齐面板托管实现 + 升级包分类**：① 三个 cron 脚本改真源单点 —— `orzmc_monday_report.py`/`caddy_cert_watch.py` 真身移进技能 `scripts/`，`hermes/scripts/` 只留转发 stub（此前 `orzmc_paths.py` 是 4.7KB 旧真身，与技能侧 8.3KB 漂移）；② `orzmc_selfcheck` 第 4 项由「java 进程名猜活 + paper/folia 应 stopped」改为面板 API `status`（3=运行中/0=停止）并打印 `startCommand` 与核心 jar，跳过 `global0001` 全局实例，代理插件缺失 warn；③ `orzmc_config_audit`/`orzmc_weekly_patrol` 不再写死 `$DATA_ROOT/eagler/proxy`，改 `velocity_dir()` 动态解析（面板实例目录）；④ 周一报告 `后端 RCON` 行：关闭时显示 `ℹ️ 已关闭` 而非 🔴；⑤ 新增 `references/upgrade-package-layout.md`（三端核心 + proxy/后端插件分档、线上服 `n/a` 标注）+ **Geyser 两份保留**（多部署模式回归用，禁止清理）；⑥ 清理 `orzmc_tunnel_guard.py`/`watch_render.py`/`_add_utf8_guard.py`，文档里 `eagler/proxy` 路径统一改 `InstanceData/<velocity-uuid>` |
 | 2.7.6 | 2026-11-21 | **ADR-042：核心 jar 与插件统一面板管理，启动走 start.sh 自动选版本**（OrzMCDeploy v0.6.1）：先是查清 paper/folia 的现状 —— 两者启动命令都是 `sh /server/start.sh` + `ls -1 paper-*.jar \| sort -V \| tail -1`，更新=传版本化 jar + 重启，命令不动；Velocity 之前还要求手改命令，节奏不一致。① 代理实例补 `start.sh`（`ls -1 velocity-*.jar \| sort -V \| tail -1`，回退 `velocity.jar`），启动命令改 `sh /server/start.sh`，三端同构 —— 这也解决了 ADR-041 的死结：MCSM 按空格硬切启动命令，但把 shell 放进**脚本文件**就没事（entrypoint 只见 `sh` + `/server/start.sh`），实测放 `velocity-4.3.2-1.jar` 后重启，容器内 `ps` 就是它，移走再重启回到 `-45`。② 插件（EaglerXServer/Geyser-Velocity/EaglerXPaper/EaglerXBackendRPC）不再下载，只 warn 缺件 + 移走不该有的；**删除 `templates/eagler/versions.env` 与 `eagler_lock`/`eagler_fetch`**，部署仓库零版本锁，「现在跑哪个版本」以面板实例目录为准。③ `up` 幂等补 `start.sh`（已存在不动），实测现网 `up` 输出四条就位 info、生成物与手工版 `diff` 一致。④ 顺带实测：`dev.{SERVER_NAME}.cn:25565` 外网可连，但**宿主访问自己的 LAN IP `{LAN_IP}:25565` 超时**（防火墙 inbound 无对应规则），探针里那条 `[WARN] Java(经 LAN IP)` 是长期现象、不影响外部玩家。 |
 | 2.7.5 | 2026-11-21 | **面板实例 `status` 语义实测**：`GET /api/instance` 的 `status` 在本架构里只有两种取值 —— `0` = 已停止、`3` = 运行中（运行中的 Velocity 与运行中的 paper 实例都读 `3`，stop 之后立刻读 `0`；`1`/`2` 从未出现）。依赖 `status` 的脚本（`nethernet_advertise_sync.restart_entry()`）必须**等 `0` 判停**，别按官方枚举去等 `1`。另记：paper/folia 容器实际是 `Up` 着的（37h），早前「刻意保持停止」的判断是错的 —— 判断实例在不在跑要看 `docker ps`，不要只看面板状态。 |
 | 2.7.4 | 2026-11-21 | **ADR-041：Velocity 的版本完全交给面板，部署侧不再锁版本**（OrzMCDeploy v0.6.0）：① jar 以**官方原名**落地 `velocity-4.3.1-45.jar`（带 build），不再简化成 `velocity-4.3.1.jar`；② `templates/eagler/versions.env` 删掉全部 `VELOCITY_*`（只留 EaglerXServer/Geyser/EaglerXPaper 插件锁），`lib/eagler.sh` 不再下载 Velocity jar，`validate` 只判「实例目录里有没有 `velocity-*.jar`」；v0.5.2 的版本漂移 warn 一并删除（锁没了不会漂移）。③ **MCSM 启动命令按空格硬切、不经 shell**：想把启动命令写成 `sh -c '... $(ls velocity-*.jar | sort -V | tail -1) ...'` 做「自动选最新 jar」是**行不通**的——daemon 日志会记成 `Container Entrypoint: sh` + `Container Start Command: -c,'exec,java,...,"$(ls ...)"'`（引号未解析、逗号当分隔），容器停在 `Created`；换版本必须在面板里改一次启动命令的文件名。④ 实例重启后实测 `Done (6.57s)`、Geyser `Done (4.996s)`，`WARN` 仍只有 3 条已知无害项；`status --probe` 全绿。 |
@@ -526,6 +527,12 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 - **代理插件全由面板管**：`plugins/EaglerXServer.jar`、`plugins/Geyser-Velocity.jar` 面板上传（同一插件别留两版），
   换版本后重启实例，无热重载；`up` 只做「拓扑该有/该无」检查（缺了 warn、不该有的移走）。OrzMCDeploy 0.6.1 起
   `templates/eagler/versions.env` 与 `eagler_lock`/`eagler_fetch` 已删除 —— 部署仓库里没有任何版本锁。
+- **升级包分类（`references/upgrade-package-layout.md`）**：出包固定 `core/{paper,folia,velocity}/` + 
+  `plugins/{proxy,paper,folia}/` + `production/` + `MANIFEST.md`（含 sha256）。**三端核心同批评估、同批出包**，
+  代理插件只进 `plugins/proxy/`（落 Velocity 实例，不进后端 `plugins/`）；线上服档只带 paper 一系并把 velocity/proxy 标 `n/a`。
+- **Geyser 两份都要留，禁止清理**：`proxy/Geyser-Velocity.jar`（代理模式入口）+ `paper|folia/Geyser-Spigot-*.jar`
+  （直连模式必需）—— OrzMCDeploy 支持多部署模式，删掉就没法回归两种拓扑；代理模式下 Geyser-Spigot 打
+  「behind a Velocity proxy」WARN 后自禁用，属预期噪音。
   **为什么用 start.sh**：MCSM 启动命令按空格硬切、不经 shell（`sh -c '... $(ls ...)'` 会让容器停在 `Created`），
   所以 shell 逻辑必须放进脚本文件，entrypoint 只看到 `sh` + `/server/start.sh` 两个 token。
   EaglerXServer 仍须与 paper 侧 EaglerXPaper 同版本。

@@ -130,6 +130,109 @@ def lan_ip() -> str:
         return env("LAN_HOST_IP", "127.0.0.1")
 
 
+# ---------------------------------------------------------------- MCSM 面板 / 代理实例（ADR-040..042）
+DATA_ROOT = pathlib.Path(os.environ.get("ORZMC_DATA_ROOT") or "E:/orzmc")
+INSTANCE_DATA = DATA_ROOT / "mcsmanager" / "daemon" / "data" / "InstanceData"
+INSTANCE_CONFIG = DATA_ROOT / "mcsmanager" / "daemon" / "data" / "InstanceConfig"
+MCSM_WEB = "http://127.0.0.1:23333/api"
+
+
+def data_env(key: str) -> str:
+    """读 DATA_ROOT/.env（部署侧真 env；注意与 Hermes 的 ~/.hermes/.env 不是一个文件）"""
+    try:
+        for line in (DATA_ROOT / ".env").read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                if k.strip() == key:
+                    return v.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return ""
+
+
+def velocity_dir() -> pathlib.Path | None:
+    """代理（Velocity）实例目录：.env 的 VELOCITY_DIR → 扫 InstanceData（velocity.toml / velocity*.jar）→ None
+
+    ADR-040 起代理数据在面板实例目录里，$DATA_ROOT/eagler/proxy 已废弃。"""
+    override = data_env("VELOCITY_DIR")
+    if override:
+        p = pathlib.Path(override)
+        if p.is_dir():
+            return p
+    if INSTANCE_DATA.is_dir():
+        for d in sorted(INSTANCE_DATA.iterdir()):
+            if d.is_dir() and ((d / "velocity.toml").is_file() or any(d.glob("velocity*.jar"))):
+                return d
+    return None
+
+
+def mcsm_apikey() -> str:
+    """管理员 apikey（permission==10）——从面板 web 数据目录读，不写死、不打印"""
+    import json
+    for p in sorted((DATA_ROOT / "mcsmanager/web/data/User").glob("*.json")):
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if d.get("apiKey") and d.get("permission") == 10:
+            return d["apiKey"]
+    return ""
+
+
+def mcsm_get(path: str, **params) -> dict | None:
+    """调面板 API；自动摘掉 HTTP(S)_PROXY（localhost 会被 Clash 劫持），失败返回 None"""
+    import json
+    import urllib.parse
+    import urllib.request
+    key = mcsm_apikey()
+    if not key:
+        return None
+    params["apikey"] = key
+    url = "%s/%s?%s" % (MCSM_WEB, path, urllib.parse.urlencode(params))
+    saved = {k: os.environ.pop(k) for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy") if k in os.environ}
+    try:
+        with urllib.request.urlopen(url, timeout=15) as r:
+            return json.loads(r.read().decode("utf-8", "replace"))
+    except Exception:
+        return None
+    finally:
+        os.environ.update(saved)
+
+
+def mcsm_daemon_id() -> str:
+    r = mcsm_get("service/remote_services_list") or {}
+    for d in (r.get("data") or []):
+        if d.get("uuid"):
+            return d["uuid"]
+    return ""
+
+
+def mcsm_instances() -> list[dict]:
+    """[{uuid, nickname, status, type, startCommand}]；status 语义实测：0=停止、3=运行中（MCSM 10.22.1）"""
+    dm = mcsm_daemon_id()
+    if not dm:
+        return []
+    out = []
+    for cfg in sorted(INSTANCE_CONFIG.glob("*.json")):
+        uuid = cfg.stem
+        if uuid.startswith("__"):   # __MCSM_GLOBAL_INSTANCE__ 是全局实例组配置，不是实例
+            continue
+        r = mcsm_get("instance", daemonId=dm, uuid=uuid) or {}
+        d = r.get("data") or {}
+        c = d.get("config") or {}
+        _nick = str(d.get("nickname") or c.get("nickname") or "")
+        if _nick.startswith("__") or uuid.startswith("global"):
+            continue   # 全局实例组（uuid=global0001、type=universal），不是可运行实例
+        out.append({
+            "uuid": uuid,
+            "nickname": d.get("nickname") or c.get("nickname") or uuid[:8],
+            "status": d.get("status"),
+            "type": c.get("type") or d.get("type") or "",
+            "startCommand": c.get("startCommand") or "",
+        })
+    return out
+
 if __name__ == "__main__":
     d, note = deliver_dir()
     print("deliver_dir:", d, "|", note)

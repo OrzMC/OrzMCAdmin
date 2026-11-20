@@ -79,7 +79,7 @@ New-NetFirewallHyperVRule -Name "OrzMC-RCON-25575" -DisplayName "OrzMC RCON 2557
 
 测慢的方法：`curl -o file -w '%{time_starttransfer}'` 对比容器内 `node -e "fetch('http://127.0.0.1:23333/…')"`。上游本地 100~200ms、隧道 700~900ms 即隧道往返主导。静态资源已由 Cloudflare zstd 压缩并缓存（`cf-cache-status: HIT`、`max-age=86400`），不是带宽问题。
 
-## 6. ⚠️ `orzmc.sh up` 会重生成 `cloudflared/config.yml`
+## 6. ⚠️ `orzmc.sh up` 会重生成 `cloudflared/config.yml`（**已废弃：2026-10-29 起改 Caddy 直连，无 cloudflared**）
 
 当它判定 config 与 `.env` 不一致时，会备份并**用模板覆盖**，模板只含 4 条官方 ingress：`mcs` / `easybot` / `mcs-node` / `orzmcs`。站点手工加的 `music.{SERVER_NAME}.cn → host.docker.internal:8080` 会被**静默删掉**（表现：音乐站 404/530）。
 

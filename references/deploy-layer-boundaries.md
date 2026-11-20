@@ -31,7 +31,8 @@
 - `stop`：`compose down --remove-orphans`
 
 **Eagler 运行时**（`lib/eagler.sh`，自动化程度最高的一块）
-- 按 `templates/eagler/versions.env` 下载并校验 sha256：Velocity / EaglerXServer / EaglerXPaper / Geyser-Velocity / EaglerXBackendRPC
+- **不再下载任何 jar**（ADR-041/042）：核心与插件由 MCSM 面板实例持有；`templates/eagler/versions.env`、
+  `eagler_lock`、`eagler_fetch` 已在 0.6.1 删除，缺失只 warn
 - 渲染 `velocity.toml`（`[servers]`/`try`/`bind`）、生成 `forwarding.secret`（**已存在不覆盖**）
 - 拓扑切换时把当前实现用不到的插件挪到 `$DATA_ROOT/eagler/disabled/`（否则关掉开关后 Web 端点照样可连）
 - `eagler_post_up` 自动改三份配置：`listeners.toml`（`forward_ip=true` + `X-Real-IP`）、`settings.toml`（`http_websocket_max_frame_length=65535`）、`Geyser-Velocity/config.yml`（`port`/`webrtc-port`/`transport`/`advertise-addresses`/`stun-discovery=false`/`auth-type`）
@@ -67,7 +68,7 @@
 | 7 | DDNS：公网 IP 变了要 `up` 重渲染 `advertise-addresses` | 路由器/客户端 + `.env` 的 `EAGLER_PUBLIC_HOST` |
 | 8 | 面板首次配置（`dataPlane=proxy`、节点、改口令） | 面板，一次性 |
 | 9 | EasyBot 后台初始化 + API key + 插件 `easybot.yml` | 面板后台，一次性 |
-| 10 | 升级流程：改 `versions.env`/镜像 digest → `stop && up`，**禁用面板自助升级** | 仓库 |
+| 10 | 升级流程：核心/插件 jar 面板上传 → 面板重启实例（ADR-042）；镜像 digest 仍走 `stop && up` | 面板 + 仓库 |
 | 11 | **备份排期** | 计划任务 —— 默认**没有**，`backup.sh` 只是命令；别假设「已经有人在备份」 |
 
 ## 6. 运行态核对法（回答「现在到底跑的是哪套配置」）
@@ -101,7 +102,7 @@ diff --strip-trailing-cr -u <仓库>/compose.yaml <tarball>/compose.yaml | head
 |:--|:--|:--|
 | 程序 | `E:\deploy\orzmc\` | Release tarball 解包内容，**单个固定目录，原地覆盖升级**；`up/stop/status` 只在这里执行 |
 | 下载缓存 | `E:\deploy\_dl\orzmc-<ver>.tar.gz` + `.sha256` | 原始产物 + 校验；**回滚靠它，不靠旧目录** |
-| 数据 | `E:\orzmc`（DATA_ROOT） | `.env`、`compose.site.yaml`、`site/Caddyfile`、实例、`caddy/data`、`eagler/proxy/` 全在这里；只放运行数据 |
+| 数据 | `E:\orzmc`（DATA_ROOT） | `.env`、`compose.site.yaml`、`site/Caddyfile`、实例、`caddy/data`、`E:/orzmc/mcsmanager/daemon/data/InstanceData/e09d92431092412b940e1e77f307e946/` 全在这里；只放运行数据 |
 | 备份 | `E:\orzmc-backups` | `backup.sh` 默认落点，**唯一备份根**（技能/迁移快照、别的项目备份都归到这里） |
 | 开发克隆 | `E:\dev\OrzMC` | **只读参考，永远不 `up`** |
 

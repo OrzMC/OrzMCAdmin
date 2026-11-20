@@ -80,7 +80,7 @@
 **先取现有环境真值（不看这一步的评估全是空谈）**：
 
 - 每个后端实例的 `InstanceData/<uuid>/plugins/` 命名空间（本机 MCSM 栈 = `E:/orzmc/mcsmanager/daemon/data/InstanceData/<uuid>/`，Paper 与 Folia 各一套），再读 `server.properties` / `start.sh` 确认核心与端口。
-- **代理层 `eagler/proxy/plugins/`**（容器 `orzmc-velocity`，挂载 `-> /srv`）——登录/转发/基岩相关插件的冲突常常只在代理侧暴露。
+- **代理层 `E:/orzmc/mcsmanager/daemon/data/InstanceData/e09d92431092412b940e1e77f307e946/plugins/`**（容器 `orzmc-velocity`，挂载 `-> /srv`）——登录/转发/基岩相关插件的冲突常常只在代理侧暴露。
 - 自研插件（`OrzMC-*.jar`）用 `zipfile` 枚举 `plugin.yml`/`paper-plugin.yml` + class 包前缀，反推它已覆盖的命令面（`unzip -p x.jar plugin.yml` 对该 jar 可能空输出，别据此判「没有元数据」）。
 
 **冲突判定三轴**（三轴任一命中就不叫「可加」，最多「需测试」）：

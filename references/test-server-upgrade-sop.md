@@ -379,7 +379,10 @@ orzmc-upgrade-YYYYMMDD/
 
 **不起服时验收链 = 三层证据**：① 上游→本地哈希直验 ② 远端 `Get-FileHash` 与本地逐字节一致 ③ 目录里只剩目标版本（旧件已 Move 出 `plugins/`）。**启动验收留给老板自用时做**，交付包 `SYNC-GUIDE.md` 里必须写清「串行启动 + 首启会做世界数据升级 + 重点看哪几个插件 Enabling」。
 
-**代理侧 jar 换版顺序（唯一可行写法）**：备份旧 jar 到 `E:/orzmc/tmp/` → `docker stop orzmc-velocity` → `scp` 覆盖 `E:/orzmc/eagler/proxy/plugins/Geyser-Velocity.jar` → `Get-FileHash` 校验 → `docker start` → 看日志。原因见 SKILL.md Pitfalls「运行中容器的 bind mount jar 无法覆盖」。
+**代理侧 jar 换版（ADR-042，别再用 scp/docker stop）**：面板实例 `Velocity` → 上传 jar 到实例目录
+（核心 `velocity-<版本>-<build>.jar`、插件 `plugins/Geyser-Velocity.jar`）→ 面板**重启实例**。
+`start.sh` 里 `ls -1 velocity-*.jar | sort -V | tail -1` 自动选最高版本，启动命令始终是
+`sh /server/start.sh`，**不需要改命令、不需要 docker 层操作**；旧 jar 留着即回滚路径。 → `Get-FileHash` 校验 → `docker start` → 看日志。原因见 SKILL.md Pitfalls「运行中容器的 bind mount jar 无法覆盖」。
 
 **跨大版本线（Folia 26.2 → 26.3）必须同时给出回滚路径**：`start.sh` 取 `sort -V | tail -1`，所以回滚 = 删新版核心 jar + 把 `upgrade-bak-<日期>/<旧核心>.jar` 移回根目录，无需改启动命令。跨线前用 Modrinth `game_versions` 逐件核对 folia 侧插件是否声明新版本线；查不到声明的（如 GP3D / EssentialsC / SimpleLogin）单独列成「启动时重点观察项」，不要默认它们能用。
 
