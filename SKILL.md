@@ -1,7 +1,7 @@
 ---
 name: orzmc
 description: "Minecraft 运维统一技能（唯一入口）：三端服务器运维/插件构建升级/性能诊断/权限体系/测试/基岩支持（含 NetherNet 迁移），74 份参考文档 + 170+ 脚本。"
-version: 2.7.3
+version: 2.7.4
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux, windows]
@@ -133,6 +133,7 @@ required_commands: [java, curl, tar]
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.7.4 | 2026-11-21 | **ADR-041：Velocity 的版本完全交给面板，部署侧不再锁版本**（OrzMCDeploy v0.6.0）：① jar 以**官方原名**落地 `velocity-4.3.1-45.jar`（带 build），不再简化成 `velocity-4.3.1.jar`；② `templates/eagler/versions.env` 删掉全部 `VELOCITY_*`（只留 EaglerXServer/Geyser/EaglerXPaper 插件锁），`lib/eagler.sh` 不再下载 Velocity jar，`validate` 只判「实例目录里有没有 `velocity-*.jar`」；v0.5.2 的版本漂移 warn 一并删除（锁没了不会漂移）。③ **MCSM 启动命令按空格硬切、不经 shell**：想把启动命令写成 `sh -c '... $(ls velocity-*.jar | sort -V | tail -1) ...'` 做「自动选最新 jar」是**行不通**的——daemon 日志会记成 `Container Entrypoint: sh` + `Container Start Command: -c,'exec,java,...,"$(ls ...)"'`（引号未解析、逗号当分隔），容器停在 `Created`；换版本必须在面板里改一次启动命令的文件名。④ 实例重启后实测 `Done (6.57s)`、Geyser `Done (4.996s)`，`WARN` 仍只有 3 条已知无害项；`status --probe` 全绿。 |
 | 2.7.3 | 2026-11-20 | **ADR-040 补遗：入口容器的重启与自愈必须走面板 API，绝不能 `docker restart`**：① 对 MCSM 托管实例（`autoRestart=true`）执行 `docker restart orzmc-velocity` 会让 daemon 以为状态漂移→重复起容器→`Bind for 0.0.0.0:19132 failed: port is already allocated`→失败清理把容器删掉（入口整个消失）；advertise-sync 改为 `POST /api/protected_instance/stop` → 等 `status==0` → `open` → 等 25565，实测可用。② `orzmc_entry_probe.py` 发现入口容器**不存在**（不是 stopped，面板刻意停是合法态）时用面板 API 自动拉起一次，结果进 INFO 不进告警；实测 `docker rm -f orzmc-velocity` 后探针 6s 内恢复、`status --probe` 全绿。③ advertise-sync 的 Geyser 配置路径改扫实例目录（`VELOCITY_DIR` 或 `InstanceData/*/velocity*.jar` 定位）——写死 `$DATA_ROOT/eagler/proxy` 会让它去改**后端** Geyser 配置，改完再重启入口，等于白折腾。④ MCSM 10.x `PUT /api/instance` 只认**扁平字段**（`{"startCommand":…}`、`{"eventTask":{…}}`）；传 `{"config":{…}}` 回 200 但静默不生效，且实例运行中不接受改动（先 stop）。`remote_services_list` 里 daemon 主键是 `uuid` 不是 `daemonId`。⑤ EaglerXServer 的 `server-icon.png` 必须 **64×64**（128×128 报 `Image is not 64x64`）。⑥ JDK25 + Guice 的 `sun.misc.Unsafe` 四条 WARN 用 `--sun-misc-unsafe-memory-access=allow` 消除（写进实例启动命令）。⑦ paper/folia 实例 `eventTask.autoStart` 打开（`autoRestart` 保持关，避免崩溃循环）。⑧ `validate` 新增「实例 jar 版本 vs versions.env 锁定版本」漂移提示；注意 `var=$(cmd)` 在 `set -e` 下会因 `find` 找不到目录 rc=1 而无输出静默退出，赋值须 `|| true`。 |
 | 2.6.31 | 2026-11-20 | **还原的启动级验收实跑通过 + `stop→up` 不自启实例进正文**：① 启动级验收两条路固化——轻量路线是在主机还原副本里直接 `java -jar paper-*.jar --nogui --port 25599` 看 `Done (…s)!`（实测 129.7s，**不改 `server.properties`**），完整路线才需要停机窗口（副本 `up` 会占满 23333/443/25565/19132，且用**副本证书**对真域名回 200，别误读成现网在跑）；整轮约 6 分钟，收尾 `doctor` 19 OK / 0 WARN。② 文件级判据实测成立：文件数相差恰好 1（`.env.bak-restore`）、`server.properties`/`velocity.toml`/`forwarding.secret` md5 逐个相同、`.env` 的 `DATA_ROOT` 已改写。③ **`stop`→`up` 不拉起实例**（`autoStart=false` 刻意如此），daemon 里 java 进程 = 0 —— 平台在跑 ≠ 世界在跑，汇报必须写「需人工在面板启动实例」；MCSM v4 daemon 无公开 `POST /api/instance/start`（`Not Found`），不要据此写自动化，面板凭据照旧只走 vault、不进聊天。④ 线上顺带发现（与还原无关，现网本来就有）：Essentials 在 26.3 报 `unsupported server version`、Simple Voice Chat 起 UDP 24454 失败后自我禁用 —— 这类「插件与本体版本不匹配」要在升级清单里单独列，别混进部署结论。 |
 | 2.6.30 | 2026-11-20 | 站点层 TLS 供给下沉（`site init/render/apply/status`、SITE_ROUTES、compose 标记区、caddy adapt 校验 + 热重载失败回滚）→ 新参考 `references/site-tls.md`；恢复实操验收（真实归档、兄弟同名目录、四项判据、启动级需窗口）→ `references/backup-restore.md`；测试服备份每日 04:00 `--keep 1`；代理 jar 一律带版本号命名（`velocity-4.3.1.jar`），便于多版本并存与回滚；v0.4.0 承载 TLS 下沉 + 服务版本升级，两件做完再统一发版 |
@@ -482,7 +483,7 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 ## 代理（Velocity）是面板实例，不是 compose 服务（ADR-040 / OrzMCDeploy v0.5.0）
 
 - 实例 `Velocity`（uuid `e09d92431092412b940e1e77f307e946`），`containerName=orzmc-velocity`（Caddy 路由靠它，别改），`eventTask.autoStart=true`，端口 `25565:25565/tcp` + `19132:19132/tcp,udp` 写在**实例端口映射**里。
-- 数据在 `E:/orzmc/mcsmanager/daemon/data/InstanceData/<uuid>/`（容器内 `/server`）：`velocity-4.3.1.jar`、`plugins/`、`velocity.toml`、`forwarding.secret`、`logs/`。换版本 = 面板传 jar + 改启动命令 + 重启实例，**不用发版**。
+- 数据在 `E:/orzmc/mcsmanager/daemon/data/InstanceData/<uuid>/`（容器内 `/server`）：`velocity-4.3.1-45.jar`（**官方原始文件名**）、`plugins/`、`velocity.toml`、`forwarding.secret`、`logs/`。换版本 = 面板传官方 jar + 改启动命令里的文件名 + 重启实例，**不用发版**；部署侧已无版本锁（OrzMCDeploy 0.6.0 / ADR-041）。
 - `orzmc.sh up/stop/restart` 不碰代理；`eagler_proxy_dir()` 自动探测实例目录（`.env` 的 `VELOCITY_DIR` 可覆盖），`eagler_proxy_jar()` 认 `velocity-*.jar`，已有 jar 就不再下载（面板换的版本不会被打回）。
 - 🔴 **`$DATA_ROOT/compose.site.yaml` 里不能残留 `velocity:` 服务块**（旧站为躲 Mihomo fake-ip 加的 `dns:`），base compose 已删该服务 → 报 `service "velocity" has neither an image nor a build context specified: invalid compose project`，`status`/`up` 全废。实测新实例容器走 Docker 内建 DNS 已能解出真实 IP，且 Geyser `advertise-addresses` 是显式的，不再需要这条。
 - 🔴 **实例 `docker.extraVolumes` 别写 Windows 路径**：`E:/...` 的冒号被当分隔符 → MCSM 路径长度校验失败；统一用实例自带 `/server` 挂载。
@@ -515,9 +516,11 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 - **JDK 25 + Guice 的 `sun.misc.Unsafe::staticFieldBase` 告警**：启动命令加 `--sun-misc-unsafe-memory-access=allow` 即消。
   无害但会刷屏的三条 WARN 不要当故障：`running in offline mode`（Eaglercraft/Geyser 必需）、
   `server channel initializer has been replaced`（插件注入）、`Update certificate was loaded: $dl.<hash>.cert`（下载中间名）。
-- **升级 Velocity / 代理插件**：jar 带版本号 → 传新 jar 到实例根、改启动命令里的 jar 名、重启实例（旧 jar 留着回滚）；
-  插件换 `plugins/` 下 jar（同一插件别留两版）后重启，无热重载。注意 `templates/eagler/versions.env` 的
-  `VELOCITY_VERSION` 不会自己跟随，清空 jar 后 `up` 会按锁回下载旧版。EaglerXServer 与 paper 侧 EaglerXPaper 必须同版本升。
+- **升级 Velocity / 代理插件**：jar 用官方原名 `velocity-<版本>-<build>.jar` → 传新 jar 到实例根、把启动命令里的文件名改成它、
+  重启实例（旧 jar 留着回滚）；插件换 `plugins/` 下 jar（同一插件别留两版）后重启，无热重载。
+  **启动命令不能写 shell**（实测）：MCSM 按空格硬切后直接给 entrypoint，`sh -c '... $(ls velocity-*.jar) ...'` 会让
+  daemon 记成 `Entrypoint: sh` + 逗号串参数，容器停在 `Created` 起不来 —— 版本更新只能靠手改文件名这一处。
+  OrzMCDeploy 0.6.0 起部署侧不再锁 Velocity 版本、也不下载（`versions.env` 只剩插件锁），EaglerXServer 仍须与 paper 侧 EaglerXPaper 同版本升。
 
 ## Pitfalls（跨后端通用）
 
