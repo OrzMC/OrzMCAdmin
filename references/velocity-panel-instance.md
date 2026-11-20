@@ -46,7 +46,7 @@ PUT /api/instance?daemonId=&uuid=&apikey=
 2. `docker logs --since 4h orzmc-mcsmanager-daemon | grep -E "启动成功|启动时错误"` 取时间线。
 3. 典型连锁：反复点启动 → 前一个容器仍占着 19132 → `Bind for 0.0.0.0:19132 failed: port is already allocated` → 失败那次把容器清掉 → 实例 `status=0` 且容器消失。其它同族报错：`此容器的开放端口配置有误！`、`实例容器额外挂载路径配置长度不正确！`（后者= `extraVolumes` 里写了 Windows 路径的冒号）。
 4. 恢复：确认只有一个同名容器、端口没被占 → `POST /protected_instance/open` → 轮询 `Up` → 验证 `./orzmc.sh -d <DATA_ROOT> status --probe` 里 `Velocity java`/`Geyser tcp`/`ws dev.<域>` 三项。
-5. 面板实例没有 compose 的 `restart: unless-stopped` 自愈能力，容器被杀后只剩 autoStart（仅在 daemon 启动时生效）→ 需要额外的存活告警/自动拉起。
+5. 面板实例没有 compose 的 `restart: unless-stopped` 自愈能力：容器被杀后只剩 autoStart（仅在 daemon 启动时生效）。自愈已由两条脚本固定下来——`orzmc_entry_probe.py` 判到容器**不存在**（非 stopped）时用面板 `open` 自动拉起并轮询 25565（INFO，不进告警）；advertise-sync 的 `restart_entry()` 也只走面板 `stop`→`open`。🔴 任何脚本里都不要对面板托管容器写 `docker restart/stop/rm`：外部改动会让 daemon 以为状态漂移→重复起容器→端口冲突→失败清理删容器，入口整段消失。
 
 ## 5. 启动日志分诊表（Velocity 4.x + EaglerXServer + Geyser）
 
@@ -75,4 +75,12 @@ PUT /api/instance?daemonId=&uuid=&apikey=
 
 **两条联动约束**
 - EaglerXServer 与 paper 实例里的 `EaglerXPaper` 版本必须匹配，**不能只升一侧**，否则网页端连不上。
-- `templates/eagler/versions.env` 的 Velocity 版本锁只影响「实例目录里没有任何 `velocity*.jar` 时的首次下载」。面板升版后要同步改锁，否则某天清空 jar 时 `up` 会拉回旧版。`up` 绝不覆盖已存在的 jar，也不会改 `startCommand`。
+- **版本完全由面板管（OrzMCDeploy 0.6.0 / ADR-041）**：`versions.env` 已无 `VELOCITY_*`，`up` 不下 Velocity jar、不改 `startCommand`；`validate` 只判实例目录里有没有 `velocity-*.jar`。
+- jar 用**官方原名** `velocity-<版本>-<build>.jar`（如 `velocity-4.3.1-45.jar`），启动命令写完整路径 `/server/<该文件名>`。
+- **启动命令不能写 shell**：MCSM 按空格硬切后直接传 entrypoint，`sh -c '... $(ls velocity-*.jar) ...'` 实测会让容器停在 `Created`（daemon 日志：`Entrypoint: sh` + `-c,'exec,java,...,"$(ls ...)"'`）。换版本 = 面板传新 jar + 手改启动命令里的文件名 + 重启。
+
+## 7. 改部署脚本本身的两个必做验收
+
+- 🔴 **`set -e` 下不要把命令替换直接赋给变量**：`vjar="$(eagler_proxy_jar)"` 里 `find` 在目录不存在时 rc=1，会让整个 `validate` **无任何输出直接 exit 1**（本地与 CI 表现一致，只剩 `Process completed with exit code 1`）；赋值写成 `$(... || true)`，或用 `if [ -z "$(...)" ]` 形式（条件里的替换失败不算失败）。
+- 改完 `lib/eagler.sh` 这类文件必须跑**两种**数据目录各一次：无 jar 的临时树（走 warn 分支）和有 jar 的现网（走正常分支）。只测现网会漏掉「目录不存在」路径。
+- 临时数据目录用 `./orzmc.sh -d <tmp> init` 造，再用 `sed -i` 改 `.env` 造象限；脚本里带 `rm -rf` 的清理命令会触发审批，不要把验证和清理写进同一条命令。
