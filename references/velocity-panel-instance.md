@@ -84,3 +84,5 @@ PUT /api/instance?daemonId=&uuid=&apikey=
 - 🔴 **`set -e` 下不要把命令替换直接赋给变量**：`vjar="$(eagler_proxy_jar)"` 里 `find` 在目录不存在时 rc=1，会让整个 `validate` **无任何输出直接 exit 1**（本地与 CI 表现一致，只剩 `Process completed with exit code 1`）；赋值写成 `$(... || true)`，或用 `if [ -z "$(...)" ]` 形式（条件里的替换失败不算失败）。
 - 改完 `lib/eagler.sh` 这类文件必须跑**两种**数据目录各一次：无 jar 的临时树（走 warn 分支）和有 jar 的现网（走正常分支）。只测现网会漏掉「目录不存在」路径。
 - 临时数据目录用 `./orzmc.sh -d <tmp> init` 造，再用 `sed -i` 改 `.env` 造象限；脚本里带 `rm -rf` 的清理命令会触发审批，不要把验证和清理写进同一条命令。
+
+- **`GET /api/instance` 的 `status` 实测语义（MCSM 10.22.1）**：`0` = 已停止，`3` = 运行中（运行中的 Velocity 与运行中的 paper 实例都读 3；stop 之后立刻读 0）。所以「等停止」要等 `0`，别等 `1` —— `1`/`2` 在本架构里没出现过。
