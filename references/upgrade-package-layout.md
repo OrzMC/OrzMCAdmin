@@ -6,13 +6,6 @@
 ## 0. 落在哪
 
 - 包目录：`E:/orzmc/packages/upgrade-<YYYYMMDD>/`（DATA_ROOT 下，与 `E:/orzmc-backups` 分开：包是待部署件，备份是回滚件）
-- 包内只放**本批要变的件** + `MANIFEST.md` + `README.md`；未变的组件在 MANIFEST 里单列「本批不动」并写原因
-  （例：`core/velocity/` 留空 + `README-本批不动.txt`，说明 4.3.2 只有 SNAPSHOT）
-- 体积参考：Paper+Folia+Velocity 核心约 55MB/件（Paperclip 自带库），Geyser 两档各 50MB → 一批约 300MB
-
-## 0. 落在哪
-
-- 包目录：`E:/orzmc/packages/upgrade-<YYYYMMDD>/`（DATA_ROOT 下，与 `E:/orzmc-backups` 分开：包是待部署件，备份是回滚件）
 - 包内只放**本批要变的件** + `MANIFEST.md` + `README.md`；未变组件在 MANIFEST 单列「本批不动」并写原因
   （例：`core/velocity/` 留空 + `README-本批不动.txt`，说明 4.3.2 只有 SNAPSHOT）
 - 体积参考：Paper/Folia/Velocity 核心各约 42~56MB（Paperclip 自带库），Geyser 两档各 50MB → 一批约 300MB
@@ -35,7 +28,7 @@ upgrade-<YYYYMMDD>/
 │   │   └── …（LuckPerms / ViaVersion / GrimAC …）
 │   └── folia/                  # → 面板实例 Folia 的 plugins/
 │       └── …
-├── production/                 # 线上服专用档（{SERVER_HOST}），见 §4
+├── production/                 # 线上服专用档（mc.fantuantim.xyz），见 §4
 ├── MANIFEST.md                 # 每件：组件 / 当前版本 / 目标版本 / 来源 URL / sha256 / 回滚方式
 └── README.md                   # 部署顺序 + 验证项（含「面板重启」不是 docker restart）
 ```
@@ -61,9 +54,59 @@ upgrade-<YYYYMMDD>/
 
 ## 4. 线上服（production/）分类
 
-线上服 `{SERVER_HOST}` 与测试服拓扑不同（无 Caddy/Nginx、装 EaglerXPaper、25565 只给明文 ws）：
+线上服 `mc.fantuantim.xyz` 与测试服拓扑不同（无 Caddy/Nginx、装 EaglerXPaper、25565 只给明文 ws）：
 
 - 只带 `core/paper/` + `plugins/paper/` + 该服特有件（EaglerXPaper 及其配置）；
 - `core/velocity/`、`plugins/proxy/` 在该档 **标 `n/a`（不适用）**，不要静默省略——否则下次核对时无法区分「不需要」和「漏打」；
 - 线上服没有面板托管时的落盘路径与重启方式写进 `production/README.md`（当前是手工覆盖 + 重启进程）；
 - 灰度顺序：测试服跑稳 → 同批 jar 拷进 `production/` → 线上验证 Java/网页两个入口。
+- 线上服若由 Exaroton 托管，写文件前服必须处于 **OFFLINE**；落地后 `GET` 回读 sha256 再 `DELETE` 旧 jar。
+
+## 5. 件从哪来（下载 + 校验）
+
+- **核心**：PaperMC **Fill API v3**（旧 `api.papermc.io/v2` 已 410 Gone）——
+  `GET https://fill.papermc.io/v3/projects/{paper|folia|velocity}/versions/<MC版本>/builds` 返回**按时间倒序的 list**，
+  只取 `channel == STABLE`；下载地址在 `downloads["server:default"].url`，官方 sha256 在 `checksums.sha256`。
+  **字段名坑（写成脚本必踩）**：build 号的主键是 `id`（不是 `build`，`b["build"]` 直接 KeyError），
+  版本列表 `GET /v3/projects/<project>` 返回的 `versions` 是 **dict（版本线 → 该线下版本号列表）**、首个 key 是最新线，
+  不能当 list 取 `versions[0]`；脚本里应先取 key 再判断「当前版本线在不在里面」，不在才回落到最新线。
+  实测 26.3 的 paper/folia 各约 55MB（Paperclip 已含依赖），比想象的大，别按 40MB 估剩余空间。
+- **velocity 版本线**：`versions` 里带 `-SNAPSHOT` 的大版本号不是稳定线，稳定取不带后缀的最高版本；
+  线内只有 1 个 build 时（如 4.3.1-45）直接写「本批不动」，不要把 SNAPSHOT 当新版本报给老板。
+- **插件**：Modrinth `GET https://api.modrinth.com/v2/project/{slug}/version` —— **同一 `version_number` 会按 loader
+  重复出现多条，每条有独立的 version id 与 CDN 路径**（Geyser 的 velocity / paper+spigot / neoforge / fabric / bungeecord 各一条）。
+  拿 velocity 那条的 id 去拼 `Geyser-Spigot.jar` 的地址，CDN 会回 `403 OnDemandMigrationSourceStatus`（XML 正文里一个 403），
+  看着像封禁/限流，其实是 id 与文件名不匹配 → **永远按 `files[].filename` 精确匹配选条目**，别用数组下标。
+- **校验**：Paper 直接比官方 sha256；Modrinth 只给 `sha512`/`sha1` → 用 sha1 比（够用），MANIFEST 里记自算 sha256。
+  落盘后再 `zipfile.is_zipfile()` 过一遍：CDN 断流会留下「体积看着差不多」的残包。
+- **下载通道**：`export HTTPS_PROXY=http://127.0.0.1:7897`，`curl -sL --retry 3 --max-time 400 -o <目标>`；
+  **`-o` 必须写原生正斜杠绝对路径**（`E:/orzmc/packages/...`），传给原生 curl 的 `/tmp` 或 `/e/...` 会报
+  `client returned ERROR on write`（不是网络问题）。Python `urllib` 下 50MB 级文件容易撞 300s 工具超时 → 大件优先 curl。
+
+## 6. 自动化流水线（`scripts/orzmc_upgrade_sync.py`，2026-11-21 起并入周一 cron）
+
+一条命令跑完「检测 → 出包 → 测试服三实例 → 验收 → S: 交接件 → Exaroton 同步 → 清理旧包」：
+
+```bash
+python %LOCALAPPDATA%/hermes/scripts/orzmc_upgrade_sync.py --dry-run   # 只看差异
+python %LOCALAPPDATA%/hermes/scripts/orzmc_upgrade_sync.py --require-idle  # cron 用：有玩家在线只出包不重启
+python %LOCALAPPDATA%/hermes/scripts/orzmc_upgrade_sync.py --force     # 演练：即使已最新也重跑全链
+python ... --exaroton-only | --skip-exaroton | --no-clean | --paper-only
+```
+
+行为约定：
+- **版本判定**：Paper/Folia 取 Fill API 当前版本线的最高 `STABLE` build（不自动跳版本线，跳线只在报告里提示）；
+  Geyser 取 Modrinth 最新 `2.12.1-bXXXX`，比较的是 `b` 后的 build 号（**不是整串数字**，否则 `2.12.1-b1306`
+  会被当成 21211306 误判成"有新版"）。
+- **下载校验**：Paper 用 Fill 给的 sha256、Geyser 用 Modrinth 的 sha1，逐件比对后才落盘；包里同名同哈希则跳过。
+- **部署**：直接写实例目录（daemon 容器 bind mount，等价于面板上传）→ 删后端旧 `Geyser-Spigot-*`（先备份到
+  `E:/orzmc-backups/pre-upgrade-<日期>/<实例>/`）→ **面板 API stop/open**（禁 docker restart）。
+- **验收**：等 `logs/latest.log` 出现 `Done (`、目标版本串、`Geyser 2.12.1-bXXXX`；超时或缺失记 ⚠️ 并停在上线前。
+- **Exaroton**：只有测试服验收通过才同步；服务器非 `status=0(OFFLINE)` 一律不动，上传后 `GET` 回读 sha256 比对，
+  再删旧同名件；**不擅自开服**。核心由 Exaroton 软件版本通道管，不传 jar。
+- **S: 交接件**：`S:/orzmc-upgrade/upgrade-<日期>/`（core/paper、plugins/paper + n/a 档 + MANIFEST/README）。
+- **清理**：`E:/orzmc/packages` 与 `S:/orzmc-upgrade` 下只留本次 `upgrade-<日期>`，其余 `shutil.rmtree`（`--no-clean` 可关）。
+- **在线人数守卫**：`--require-idle` 用 `mc_ping_probe.mc_status("127.0.0.1", 25565)["players"]["online"]` 判断，
+  有玩家时**只出包+报告、不重启实例**（无人值守重启会把在线玩家踢掉）；探测失败视为未知、不阻断。
+- **已有 jar 不覆盖**：除目标版本与 Geyser 同名替换外一律不动；旧核心 jar 留在实例目录做回滚，
+  `orzmc_selfcheck.py` 对"版本低于基线"的 jar 显示 ℹ️ 旧版保留、不计漂移。

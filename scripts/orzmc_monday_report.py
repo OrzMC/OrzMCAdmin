@@ -30,21 +30,24 @@ REPORT_ROOT = Path("E:/orzmc/reports")
 BLOCK_TIMEOUT = 420
 
 BLOCKS = [
-    ("配置审查", "orzmc_config_audit.py"),
-    ("版本巡检", "mc_version_check.py"),
-    ("运行巡检", "orzmc_weekly_patrol.py"),
+    ("配置审查", "orzmc_config_audit.py", ()),
+    ("版本巡检", "mc_version_check.py", ()),
+    ("运行巡检", "orzmc_weekly_patrol.py", ()),
+    # 第四段：升级流水线（检测→出包→测试服三实例→验收→S: 交接件→Exaroton 同步→清理旧包）
+    # --require-idle：有玩家在线时只出包不重启实例
+    ("升级同步", "orzmc_upgrade_sync.py", ("--require-idle",)),
 ]
 
 
 # ------------------------------------------------------------------ 执行
-def run_block(script):
+def run_block(script, extra=()):
     path = SCRIPTS / script
     if not path.is_file():
         return {"rc": -1, "out": "", "err": "脚本不存在: %s" % path, "secs": 0.0, "ok": False}
     env = dict(os.environ, PYTHONPATH="", PYTHONIOENCODING="utf-8")
     t0 = time.time()
     try:
-        p = subprocess.run([sys.executable, str(path)], cwd=str(SCRIPTS),
+        p = subprocess.run([sys.executable, str(path)] + list(extra), cwd=str(SCRIPTS),
                            capture_output=True, timeout=BLOCK_TIMEOUT, env=env)
         out = (p.stdout or b"").decode("utf-8", "replace").strip()
         err = (p.stderr or b"").decode("utf-8", "replace").strip()
@@ -179,8 +182,27 @@ def build_todo(cfg, ver, pat, failed):
     return todo
 
 
+def parse_upgrade(txt):
+    """解析 orzmc_upgrade_sync.py 输出：STATUS_LINE + 「版本与取证」「动作」要点"""
+    ok = "STATUS_LINE: ✅" in txt
+    status = _f(r"STATUS_LINE:\s*(.+)", txt, "")
+    bullets = [l[2:].strip() for l in txt.splitlines() if l.startswith("- ")]
+    actions_at = next((i for i, l in enumerate(txt.splitlines()) if l.strip() == "### 动作"), None)
+    lines = txt.splitlines()
+    acts = []
+    if actions_at is not None:
+        for l in lines[actions_at + 1:]:
+            if l.startswith("#"):
+                break
+            if l.startswith("- "):
+                acts.append(l[2:].strip())
+    return {"ok": ok, "status": status, "ev": bullets[:6], "actions": acts[:8],
+            "has_content": bool(bullets or acts)}
+
+
 def render(now, blocks, outdir, full_path):
-    cfg, ver, pat = (b["parsed"] for b in blocks)
+    cfg, ver, pat = (b["parsed"] for b in blocks[:3])
+    up = blocks[3]["parsed"] if len(blocks) > 3 else {"ok": True, "status": "未运行", "ev": [], "actions": []}
     # 注意：rc=0 但解析不出内容同样算失败（实测 orzmc_weekly_patrol 曾因 import 劫持静默退出、rc=0）
     failed = [b for b in blocks if not (b["ok"] and b["parsed"].get("ok"))]
     secs = sum(b["secs"] for b in blocks)
@@ -211,8 +233,10 @@ def render(now, blocks, outdir, full_path):
         v = "✅ %d 项全部最新" % ver["latest"]
     p = "🔴 后端未启动" if backend_down else ("✅ 全部正常" if pat.get("ok") else "❌ 失败")
 
+    u = ("✅ 已最新" if "无需升级" in (up.get("status") or "") else
+         ("⚠️ " + up["status"] if up.get("status") else "⚠️ 有异常"))
     L += ["| 段 | 结果 | 用时 |", "|:--|:--|--:|"]
-    for b, res in zip(blocks, (c, v, p)):
+    for b, res in zip(blocks, (c, v, p, u)):
         L.append("| %s | %s | %.0fs |" % (b["name"], _cell(res), b["secs"]))
     L.append("")
 
@@ -277,6 +301,15 @@ def render(now, blocks, outdir, full_path):
               "- Exaroton %s" % _c(cfg.get("other")),
               "- 差异 %s" % _c(cfg.get("diff")), ""]
 
+    # 升级流水线（第四段）
+    if len(blocks) > 3:
+        L += ["## 升级流水线", "", "- 结论 %s" % _c(up.get("status") or "—")]
+        for e in (up.get("ev") or [])[:4]:
+            L.append("- %s" % _c(e))
+        for a in (up.get("actions") or [])[:6]:
+            L.append("  - %s" % _c(a))
+        L.append("")
+
     L += ["---", "明细 `%s`" % (full_path or "报告目录")]
     if outdir:
         L.append("原始输出 `%s`" % outdir)
@@ -296,13 +329,15 @@ def main():
         outdir = None
 
     blocks = []
-    for name, script in BLOCKS:
-        r = run_block(script)
+    for name, script, extra in BLOCKS:
+        r = run_block(script, extra)
         r["name"], r["script"] = name, script
         if script == "orzmc_config_audit.py":
             r["parsed"] = parse_config(r["out"])
         elif script == "mc_version_check.py":
             r["parsed"] = parse_version(r["out"])
+        elif script == "orzmc_upgrade_sync.py":
+            r["parsed"] = parse_upgrade(r["out"])
         else:
             r["parsed"] = parse_patrol(r["out"])
         if outdir:

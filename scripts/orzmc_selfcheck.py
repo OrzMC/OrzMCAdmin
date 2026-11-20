@@ -75,12 +75,13 @@ EXPECT_RUNNING = ["orzmc-velocity", "orzmc-caddy", "orzmc-easybot"]
 DAEMON_CONTAINER = "orzmc-mcsmanager-daemon"
 ENTRY_PORTS = [(25565, "Java 入口"), (19132, "基岩入口")]
 
-# 版本基线：与 SKILL.md「第八轮升级后基线（当前权威）」一致。只比对，绝不改动实例文件。
+# 版本基线：与 SKILL.md「第九轮升级后基线（当前权威）」一致。只比对，绝不改动实例文件。
 # (实例, 说明, 文件名正则, 期望版本)
 BASELINE = [
-    ("paper", "Paper 核心", r"^paper-(.+)\.jar$", "26.3-253"),
-    ("paper", "Geyser-Spigot", r"^Geyser-Spigot-b?(.+)\.jar$", "1303"),
-    ("folia", "Folia 核心", r"^folia-(.+)\.jar$", "26.3-8"),
+    ("paper", "Paper 核心", r"^paper-(.+)\.jar$", "26.3-257"),
+    ("paper", "Geyser-Spigot", r"^Geyser-Spigot-b?(.+)\.jar$", "1306"),
+    ("folia", "Folia 核心", r"^folia-(.+)\.jar$", "26.3-26"),
+    ("folia", "Geyser-Spigot", r"^Geyser-Spigot-b?(.+)\.jar$", "1306"),
     ("folia", "ExecutableEvents", r"^ExecutableEvents-(.+)\.jar$", "3.26.11.15"),
     ("folia", "SCore", r"^SCore-(.+)\.jar$", "5.26.11.15"),
     ("velocity", "Velocity 核心", r"^velocity-(.+)\.jar$", "4.3.1-45"),
@@ -337,7 +338,7 @@ def session_probe():
 def _latest_delivered_report():
     """交付目录里最近一份 orzmc-selfcheck-*.md（S: / UNC 能看到才记）。返回 (路径, 时间) 或 None。"""
     best = None
-    for base in (pathlib.Path("S:/"), pathlib.Path(r"\\{LAN_IP}\下载")):
+    for base in (pathlib.Path("S:/"), pathlib.Path(r"\\192.168.0.35\下载")):
         try:
             if not base.is_dir():
                 continue
@@ -494,6 +495,12 @@ def instance_root(inst):
     return velocity_dir() or (INSTANCE_ROOT / inst)
 
 
+def _verkey(v):
+    """版本串比大小：26.3-257 / 4.3.1-45 / 3.26.11.15 → 数字元组（非数字段取 0）"""
+    import re as _re
+    return tuple(int(x) for x in _re.findall(r"\d+", str(v))) or (0,)
+
+
 def chk_baseline():
     ev = []
     level = "ok"
@@ -518,13 +525,17 @@ def chk_baseline():
             continue
         for fname, ver in cands:
             same = (ver == expect)
+            older = (not same) and _verkey(ver) < _verkey(expect)
             _PROTECT.update({ver, expect, fname})
+            icon = "✅" if same else ("ℹ️" if older else "⚠️")
             ev.append("%s %-6s %-16s %-34s 实测 %-12s 基线 %s"
-                      % ("✅" if same else "⚠️", inst, label, fname, ver, expect))
-            if not same:
+                      % (icon, inst, label, fname, ver, expect))
+            if older:
+                ev.append("      ↑ 旧版保留（回滚件，ADR-042 不删旧 jar；不算漂移）")
+            elif not same:
                 mismatches.append("%s %s 实测 %s ≠ 基线 %s（%s）" % (inst, label, ver, expect, fname))
                 level = "warn"
-    ev.append("口径：只读文件名比对，不改动实例；基线来源 = SKILL.md「第八轮升级后基线」")
+    ev.append("口径：只读文件名比对，不改动实例；基线来源 = SKILL.md「第九轮升级后基线」")
     if mismatches:
         ev.append("不一致清单：")
         ev.extend("  · " + m for m in mismatches)
