@@ -3,6 +3,20 @@
 > 2026-11-21 定稿。ADR-042：核心 jar 与插件**全部由 MCSM 面板实例持有**，升级 = 面板传文件 + 面板重启实例，
 > 启动命令永远是 `sh /server/start.sh`。本文件只规定「包里怎么分类」和「哪一档进哪个实例」。
 
+## 0. 落在哪
+
+- 包目录：`E:/orzmc/packages/upgrade-<YYYYMMDD>/`（DATA_ROOT 下，与 `E:/orzmc-backups` 分开：包是待部署件，备份是回滚件）
+- 包内只放**本批要变的件** + `MANIFEST.md` + `README.md`；未变的组件在 MANIFEST 里单列「本批不动」并写原因
+  （例：`core/velocity/` 留空 + `README-本批不动.txt`，说明 4.3.2 只有 SNAPSHOT）
+- 体积参考：Paper+Folia+Velocity 核心约 55MB/件（Paperclip 自带库），Geyser 两档各 50MB → 一批约 300MB
+
+## 0. 落在哪
+
+- 包目录：`E:/orzmc/packages/upgrade-<YYYYMMDD>/`（DATA_ROOT 下，与 `E:/orzmc-backups` 分开：包是待部署件，备份是回滚件）
+- 包内只放**本批要变的件** + `MANIFEST.md` + `README.md`；未变组件在 MANIFEST 单列「本批不动」并写原因
+  （例：`core/velocity/` 留空 + `README-本批不动.txt`，说明 4.3.2 只有 SNAPSHOT）
+- 体积参考：Paper/Folia/Velocity 核心各约 42~56MB（Paperclip 自带库），Geyser 两档各 50MB → 一批约 300MB
+
 ## 1. 目录约定
 
 ```
