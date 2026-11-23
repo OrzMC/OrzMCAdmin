@@ -77,6 +77,17 @@
 
 ## 调用姿势的三处硬坑（2026-11-10 实测，全部踩过）
 
+**端点不确定时别猜，直接读面板源码**：web 容器里是单文件 bundle `/opt/mcsmanager/web/app.js`（无源码目录），拷出来 grep 路由即可看到真实路径、方法与权限级别：
+
+```bash
+wsl -e mkdir -p /mnt/c/Users/WangA/AppData/Local/hermes/cache/scratch/mcsm
+wsl -e docker cp orzmc-mcsmanager-web:/opt/mcsmanager/web/app.js /mnt/c/.../scratch/mcsm/web-app.js
+# 然后在本地用 python 定位：app.js 里搜 router.put("/xxx") / "权限不足" / 限流函数名
+grep -o '\.\(put\|post\|delete\)("/[a-z_]*"' web-app.js | sort -u
+```
+
+容器内没有 python/grep -P 的复杂能力时，`grep -ob` 取字节偏移再 `dd` 截取会失败（MSYS 路径不转换），**拷到本地再读最省事**。
+
 写自动化脚本（升级/巡检）时按「直觉」拼参数会连环 400，正确姿势如下：
 
 | 目标 | 错误写法（实测报错） | 正确写法 |
@@ -165,10 +176,67 @@ for info in zf.infolist():
 EOF
 ```
 
+## 实例容器时区（2026-11-23 起设为 Asia/Shanghai）
+
+> 相关：宿主机容器日志无限增长与轮转配置（daemon.json log-opts、重建容器、重启 dockerd 会吃掉实例容器）见 `references/docker-log-rotation.md`。
+
+**症状**：实例日志时间戳比本地慢 8 小时、`logs/` 滚动文件名按 UTC 日期切（本地 23:30 的日志还叫 `2026-11-22-x`）。根因是 MCSM 建容器时 `docker.env` 为 `null`，temurin 镜像 `/etc/localtime → Etc/UTC`，JVM 默认时区 = UTC。面板自身（`orzmc-mcsmanager-daemon`）和 caddy 因为 compose 里写了 `TZ`，一直是 CST —— 所以「只有游戏实例时间错」属预期，不是日志系统毛病。
+
+**修复**：给实例 docker 环境变量加一条 `TZ=Asia/Shanghai`（temurin 镜像自带 tzdata，`docker exec <c> TZ=Asia/Shanghai date` 实测直接出 CST，不用改 start.sh、不用挂 `/etc/localtime`）。改完必须**停-启一次**让面板重建容器。已处理：`MCSM-716c2f`(paper) / `MCSM-8A932D`(folia) / `orzmc-velocity`(velocity)，配置已落 `InstanceConfig/<uuid>.json` 的 `docker.env`，以后重启保持。
+
+**API 姿势（本机面板实测）**：
+
+| 环节 | 正确写法 | 坑 |
+|:--|:--|:--|
+| apikey 认证 | 一律拼 **query**：`?apikey=<key>` | 放 `apikey` **请求头** → `403 权限不足`（本次实测，两个账号全挂）|
+| 管理员 key | `web/data/User/<uuid>.json` 的 `apiKey`（`admin` permission=10 / `joker` permission=1） | 本地面板 `http://127.0.0.1:23333`；key 每次保留 32 位 |
+| daemonId | `web/data/RemoteServiceConfig/<daemonId>.json` 的**文件名** | 本机 = `fbb3492c9622482f8465f2a77bbaa6d5` |
+| 改实例配置（含 docker.env） | `PUT /api/instance?daemonId&uuid`，body = `GET /api/instance` 返回的**整个 config 原样回传**只改目标字段（ROLE.ADMIN） | `PUT /api/instance/instance_update` 是**普通用户**端点，只覆盖 rcon/ping/eventTask/terminal/extraService，**改不了 docker** |
+
+**验收**：`docker inspect <c> --format '{{json .Config.Env}}'` 有 `TZ=Asia/Shanghai`；`docker exec <c> date` 出 CST；新 `latest.log` 首行时间 = 本地时间；`logs/` 出现按本地日期命名的 `2026-11-23-1.log.gz`。历史 `.gz` 仍是 UTC，翻旧日志记得 -8（或 +8）。
+
+**easybot 不同**：镜像基于 Alpine 3.22 且**没装 tzdata**（`/usr/share/zoneinfo` 与 `/etc/localtime` 都不存在），设了 `TZ` 也只会回落到 UTC，`docker logs` 固定 `…Z` 结尾。老板决定**提上游修、不在本机挂 `/etc/localtime` 绕过**（上游 issue：EasyIndie/EasyBot#203，装 tzdata + 日志跟随 TZ）。
+
+⚠️ **别把「网页看起来时间对」当成已修**：easybot 管理后台是服务端吐 HTML + 前端 `new Date(e.timestamp).toLocaleTimeString()` / `toLocaleString()` 渲染，日志页、会话列表、消息列表都按**浏览器时区**转，所以 UI 永远显示本地时间；API 返回的 `timestamp` 仍是 UTC 纪元值。判定标准只有一条：`docker exec orzmc-easybot date` 是不是 CST。回复老板时把这一点说清（「显示正确 ≠ 容器时区正确」），否则会反复被当成「已经好了」。
+
+**复查时顺手看的两项**：`docker inspect <c> --format '{{.RestartCount}} {{.State.OOMKilled}}'`（OOM 循环会体现为 RestartCount 疯长）、`docker stats --no-stream` 对内存限额比值。
+
+## 实例启动日志判读（本机 Docker 栈）
+
+**日志在哪**：`E:/orzmc/mcsmanager/daemon/data/InstanceData/<uuid>/logs/`——`latest.log` 是当前会话，`YYYY-MM-DD-N.log.gz` 按**本地日期**滚动。面板 `outputlog` 只是滚动缓冲、会残留上一轮，要精确判读就读文件；容器 stdout 兜底用 `wsl -e docker logs --tail N <容器>`。
+
+**一轮扫读（一条命令出全貌）**：
+
+```bash
+cd /e/orzmc/mcsmanager/daemon/data/InstanceData
+for u in <paper-uuid> <folia-uuid> <velocity-uuid>; do echo "== $u"; \
+  sed -e 's/\x1b\[[0-9;]*m//g' $u/logs/latest.log | grep -E '/(ERROR|FATAL)\]|Done \(' | cut -c1-110; done
+# 历史会话里复发性错误的分布
+zgrep -hE '/(ERROR|FATAL)\]' <uuid>/logs/*.log.gz | sed -E 's/^\[[^]]*\] //' | sort | uniq -c | sort -rn | head
+```
+
+日志含 ANSI 转义，先 `sed` 剥掉再 grep，否则 `uniq -c` 聚合会把同一行拆成多份。
+
+**启动完成基线**（本机 2.1G 世界）：paper `Done (120–155s)`、folia `Done (95–125s)`、velocity `Done (10–11s)` + Geyser `Done (8–9s)`。没有 `Done (` 行、或远超这个区间才算异常；冷启动本身慢不是错误。
+
+**预期告警（回「无需修」）**：`RUNNING AS ROOT USER`、velocity `OFFLINE/INSECURE MODE`、Geyser-Spigot 提示「代理侧已装 Geyser-Velocity，请移除本插件」、EaglercraftXServer 的 `server channel initializer has been replaced` 与证书加载、spark `Timed out waiting for world statistics`（每次启动 ×4）、Paper `N build behind`、OrzMC 自更新到新 dev 版本、`jline tcgetattr() failed`（容器无 TTY）。
+
+**需要跟进的真问题**：
+
+| 现象 | 判定 |
+|:--|:--|
+| EssentialsX `unsupported server version!` | 上游未适配 Paper 26.x，本轮唯一真 ERROR，等新版本 |
+| GrimAC 警告 ViaBackwards 载具异常（1.21.2+） | 上游已知限制，不修 |
+| SkinsRestorer「代理模式但未配 MySQL/PostgreSQL」 | 皮肤不共享，按需补数据库 |
+| Folia `Tick region ... has not responded` | **启动期偶发 1 次=瞬态**（栈常停在村民 POI 查找）；同一会话反复十余次才是真卡顿，转性能诊断 |
+| Paper `Server thread` 卡顿 dump | 同上，先看是否只在启动期 |
+
+**日志轮转缺口（本机常见）**：`/etc/docker/daemon.json` 只有 `userland-proxy` / `live-restore`，**没有 `log-opts`** → 所有容器 json-file 无上限（easybot 被 UI 轮询刷，约 14MB/天）。治本：加 `"log-opts":{"max-size":"50m","max-file":"3"}` 再重启 dockerd（等价全容器重启一次）；只给单服务加则写 compose 的 `logging:`，但部署包内的 compose 会在下次部署被覆盖，属临时手段。
+
 ## 插件更新（MCSM 端）
 
 - ⚠️⚠️ **2026-10-05 更新：`/upload/{pwd}` 通道已不可用** —— `POST /api/files/upload` 取证后向 `{addr}/upload/{password}` multipart 推送**全线 403 Forbidden / Broken pipe**（addr 现为 `wss://mcs-node.{SERVER_NAME}.cn:443` 形态）。**统一改用 `POST /api/files/download_from_url`** body `{"url":官方直链,"file_name":"/plugins/update/<名>.jar"}`（2026-10-05 实测 7 文件含 47MB Geyser 全部一次成功）+ 投递后 sha256 回读验收。详见 `references/test-server-upgrade-sop.md` §1③
 - ✅ **plugins/update 实测可用**（2026-08-03）：上传 jar 到 `/plugins/update` → restart → Paper 自动替换并清空 update/。**文件操作期间服务器运行中无碍**（jar 上传不触发锁定，仅读取被运行中 jar 锁定会 500）
-- ⚠️ **`PUT /api/instance`（改实例配置/启动命令）对普通 apikey 返回 403「密钥不正确」** → 启动命令等实例配置**只能老板在面板改**；文件类 API（list/download/touch/PUT 文件/DELETE/move/mkdir/copy/download_from_url）普通 apikey 均可用
+- ⚠️ **`PUT /api/instance`（改实例配置/启动命令）对普通 apikey 返回 403「密钥不正确」** → 改用**管理员 apikey**（`web/data/User/*.json` 里 `permission=10` 的那个）即可改，body 回传 `GET` 回来的整个 config 只改目标字段（姿势见上「实例容器时区」表）；文件类 API（list/download/touch/PUT 文件/DELETE/move/mkdir/copy/download_from_url）普通 apikey 均可用
 - ✅ **删除插件/文件用 `scripts/cmp3/mcsm_delete.py`**（2026-08-06 起标准方案）：`python3 mcsm_delete.py /plugins/xxx.jar` → DELETE /api/files/ + 自动删后验证（真实 GET 确认）。**旧方案「上传 0B 占位覆盖」已废弃**（Paper 会对无效 jar 报 `Directory 'plugins\xxx.jar' failed to update!` 启动 ERROR，不如直接删干净）
 - 上传插件脚本：`scripts/cmp3/mcsm_upload_update.py deathchest.jar GriefPrevention.jar` + `mcsm_verify_update.py`

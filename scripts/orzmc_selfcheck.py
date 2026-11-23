@@ -338,7 +338,7 @@ def session_probe():
 def _latest_delivered_report():
     """交付目录里最近一份 orzmc-selfcheck-*.md（S: / UNC 能看到才记）。返回 (路径, 时间) 或 None。"""
     best = None
-    for base in (pathlib.Path("S:/"), pathlib.Path(r"\\192.168.0.35\下载")):
+    for base in (pathlib.Path("S:/"), pathlib.Path(r"\\{LAN_IP}\下载")):
         try:
             if not base.is_dir():
                 continue

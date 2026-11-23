@@ -35,6 +35,11 @@ import os
 import subprocess
 import time
 
+# 导入即生效：$ORZMC_DATA_ROOT/.env 里 DOCKER_BACKEND=wsl 时，本进程（及其派生的
+# entry-probe / route-guard 等子脚本）的 docker CLI 会指向 WSL dockerd。
+# 不加这行，Desktop 停用后所有 docker 探测都会连不上，守卫会集体误报。
+import orzmc_paths  # noqa: F401
+
 HERMES = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "hermes")
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERMES, "state", "orzmc_watchdog.json")

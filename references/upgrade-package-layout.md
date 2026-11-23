@@ -28,7 +28,7 @@ upgrade-<YYYYMMDD>/
 │   │   └── …（LuckPerms / ViaVersion / GrimAC …）
 │   └── folia/                  # → 面板实例 Folia 的 plugins/
 │       └── …
-├── production/                 # 线上服专用档（mc.fantuantim.xyz），见 §4
+├── production/                 # 线上服专用档（{SERVER_HOST}），见 §4
 ├── MANIFEST.md                 # 每件：组件 / 当前版本 / 目标版本 / 来源 URL / sha256 / 回滚方式
 └── README.md                   # 部署顺序 + 验证项（含「面板重启」不是 docker restart）
 ```
@@ -54,7 +54,7 @@ upgrade-<YYYYMMDD>/
 
 ## 4. 线上服（production/）分类
 
-线上服 `mc.fantuantim.xyz` 与测试服拓扑不同（无 Caddy/Nginx、装 EaglerXPaper、25565 只给明文 ws）：
+线上服 `{SERVER_HOST}` 与测试服拓扑不同（无 Caddy/Nginx、装 EaglerXPaper、25565 只给明文 ws）：
 
 - 只带 `core/paper/` + `plugins/paper/` + 该服特有件（EaglerXPaper 及其配置）；
 - `core/velocity/`、`plugins/proxy/` 在该档 **标 `n/a`（不适用）**，不要静默省略——否则下次核对时无法区分「不需要」和「漏打」；
@@ -111,7 +111,7 @@ python ... --exaroton-only | --skip-exaroton | --no-clean | --paper-only
 - **已有 jar 不覆盖**：除目标版本与 Geyser 同名替换外一律不动；旧核心 jar 留在实例目录做回滚，
   `orzmc_selfcheck.py` 对"版本低于基线"的 jar 显示 ℹ️ 旧版保留、不计漂移。
 
-## 7. 写/改这条流水线的四个坑（都实测踩过）
+## 7. 写/改这条流水线的六个坑（都实测踩过）
 
 1. **验收 needle 必须抄真实日志串，别按版本号拼**。实际打印是：
    Paper `This server is running Paper version 26.3-257-main@…`（**没有** `build 257` 这种串）、
@@ -127,3 +127,10 @@ python ... --exaroton-only | --skip-exaroton | --no-clean | --paper-only
 4. **跳过下载时要回填待部署件清单**。包内已有同哈希件时下载会跳过，`got` 变空 → S: 导出与 Exaroton 同步会静默
    什么都不做（MANIFEST 只剩半张表、线上"未执行"）。任何"包已存在则跳过"的分支都必须从包目录把件名扫回来
    （`core/paper/paper-*.jar`、`plugins/proxy/Geyser-Velocity*`、`plugins/paper/Geyser-Spigot-*`）再往下走。
+5. **所有退出路径必须吐同一套结构化输出**。这脚本是周一报告（`no_agent`）的第四段，父脚本按
+   `## 升级流水线` + `### 版本与取证` + `### 动作` + `STATUS_LINE:` 解析结论。"无变更 / 有玩家在线跳过 / 全绿"
+   三种提前 return 若只 `print` 几行裸文本，父报告那条就显示「段无有效结果」并把整份报告判成 ❌。
+   做法：所有分支收口到一个 `emit(status_ok, note)`，先填 `EV`/`ACTIONS`/`WARN` 再调它；新增分支时不许自己 `print`。
+6. **扫实例目录判"现装版本"要取最高版**，别用 `glob` 第一个命中：ADR-042 不删旧 jar，目录里常同时躺着
+   `paper-26.3-253.jar` 与 `paper-26.3-257.jar`，而 `start.sh` 用 `sort -V | tail -1` 跑的是最高版。
+   取首个命中会报「现装 253、落后 4 个 build」这种假告警，还会连带生成假的升级待办。

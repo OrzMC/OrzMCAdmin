@@ -71,4 +71,10 @@ Velocity 的核心 jar、`velocity.toml`、`plugins/Geyser-Velocity/config.yml`�
 
 - 删主机目录里没真身的遗留脚本（CF 隧道时代的东西、渲染 watcher、一次性 helper）。
 - 文档里引用已删脚本/旧路径的段落同步改掉，**只把历史段落标注废弃**，不留「现在也能这么用」的错觉。
-- paper/folia 的 `plugins/Geyser-Spigot*.jar` 是残留：检测到 Velocity 会自禁用并持续刷 WARN，纯噪音，可删。
+- **`Geyser-Spigot*.jar` 不是残留，禁止删**：OrzMCDeploy 支持代理 / 直连多种部署模式，后端那一份是直连模式回归的必需品；
+  代理模式下它检测到 Velocity 会自禁用并持续刷「behind a Velocity proxy」WARN，**属预期噪音**，不是故障。
+  同理别把 `plugins/proxy/Geyser-Velocity.jar` 与后端 `Geyser-Spigot*` 当重复件择一删掉。
+- 判定「真残留」的唯一标准是**没有任何部署模式会加载它**（CF 隧道时代的 helper、一次性渲染 watcher、
+  已被 stub 取代的旧真身）。拿不准的先列进清单让老板拍板，不要直接删。
+- **报告口径：既定关闭 / 不适用的项用 `ℹ️ 已关闭`、`n/a`，不要用 ❌/🔴**。反例：周报把「后端 RCON 已关闭」
+  判成 🔴，于是「N 项待处理」永远清不掉，真问题被噪音埋掉。判定顺序 = 先看该项在配置里是否本就没开，再决定符号。
