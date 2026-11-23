@@ -238,3 +238,33 @@ if __name__ == "__main__":
     print("deliver_dir:", d, "|", note)
     print("lan_ip:", lan_ip())
     print("redact test:", redact("real {HOME_IP} lan {LAN_IP} loop 127.0.0.1"))
+
+# ---------------------------------------------------------------- 容器引擎后端
+# 为什么：Docker Desktop 的端口转发把 LAN 访问源地址统一改写成网关（172.18.0.1），
+# 站点日志与游戏里都拿不到真实玩家 IP。切到 WSL 原生 dockerd（mirrored +
+# userland-proxy=false）后源 IP 保留，但 docker CLI 必须经 tcp 连进 WSL。
+# 开关在 $ORZMC_DATA_ROOT/.env 的 DOCKER_BACKEND（desktop=默认 / wsl）。
+# 本函数幂等，导入本模块即自动执行一次：子进程（docker ps/exec…）继承环境。
+def apply_docker_backend() -> str:
+    root = os.environ.get("ORZMC_DATA_ROOT") or r"E:/orzmc"
+    backend = ""
+    f = pathlib.Path(root) / ".env"
+    try:
+        if f.is_file():
+            for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+                s = line.strip()
+                if s.startswith("DOCKER_BACKEND="):
+                    backend = s.split("=", 1)[1].strip().strip('"').strip("'")
+                    break
+    except Exception:
+        backend = ""
+    if backend == "wsl":
+        os.environ.setdefault("DOCKER_HOST", "tcp://127.0.0.1:2375")
+        os.environ.pop("DOCKER_CONTEXT", None)
+    return backend or "desktop"
+
+
+try:
+    apply_docker_backend()
+except Exception:
+    pass
