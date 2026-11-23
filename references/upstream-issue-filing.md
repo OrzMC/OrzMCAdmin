@@ -6,6 +6,8 @@
 
 - 插件/程序源码：`OrzMC/OrzMCPlugin`（父仓 `OrzMC/OrzMC` 只放 submodule 指针）。
 - **issue 开在 `OrzMC/OrzMCPlugin`**，不是父仓。开之前 `gh issue list --repo OrzMC/OrzMCPlugin --state open --json number,title,labels` 查重（列表里会混着 `automation`/`quality-trend` 这类机器维护的看板 issue，别误当同类问题）。
+- **查重必须覆盖 `--state all` + 关键词搜索，且搜中文与英文两侧**：`gh issue list -R OrzMC/OrzMCPlugin --state all --search "心跳 OR heartbeat OR 1006 OR 重连"`。同一现象往往早已有一条跟踪位（可能被标 `need-info` 或挂着旧假设），**新开一条会把同一缺陷拆成两半，上游两边都问一遍**。
+- **已有跟踪 issue 时的正确动作 = 追加评论，不是新建**：`gh issue comment <n> -R … -F <文件>`（正文同样用 `--body-file`/`-F`，别塞命令行），提交后 `gh api repos/<owner>/<repo>/issues/comments/<comment_id>` 回读正文长度确认没截断。
 - 正文写长文时用文件传，别塞命令行：`gh issue create --repo … --title … --body-file <path>`（body 里有反引号/换行/表格时 `--body` 必翻车）。
 - **提交后回读验证**（外部写入必须读回）：`gh issue view <n> --repo … --json number,title,state,url,body --jq '{number,state,url,body_len:(.body|length)}'` —— 确认 state=OPEN、body 长度正常（长度骤小=截断）。
 - 别在 issue 里贴 token/密钥/连接串；日志摘录先把凭据打码成 `[REDACTED]`。
@@ -30,3 +32,13 @@
 - 历史对照：翻 `logs/*.log.gz` 抓告警计数，区分「本次新出现」还是「长期存在但无人看」，并写进 issue（例如「最近 40 次会话仅 2 次出现该告警，均在长时空闲会话」极能帮上游定位）。
 
 > 统计历史归档时 `zcat` 在 Git-Bash 下不一定有，统一走 `wsl.exe -d Ubuntu -e sh -c 'zcat … | grep -c …'` 并 `| tr -d '\0'`。
+
+## 4. 追评（补量化基线）的写法
+
+已经开过的 issue 再来一轮取证时，评论要能让上游「不读旧文也能定性」：
+
+1. **先给窗口与版本**：一句话写清「单次进程生命周期内、<起>→<止>、插件 <版本>、`backend: <x>`」，否则时序数字无意义。
+2. **一张双平台对照表**：断开次数 / 间隔 min·中位·max / 实测静默值 / 期间收到的入站帧数 / 重连耗时 —— 中位数比次数更能说明「是否与空闲时长相关」。
+3. **必须显式撤回被自己推翻的原假设**：写「原 issue 把 X 列为首要嫌疑，本轮实测 <证据> 推翻了它，可疑点改为 Y」。上游据此才敢往深处查；悄悄换口径会让旧文的优先级顺序继续误导人，也降低自己的可信度。
+4. **给可执行的改进项**（2–4 条，带量化收益，如「tick 30s→5s，把丢消息窗口从 +30s 压到 +5s」），别只写「请修复」。
+5. 涉及「我方环境是否有可能」的推断，**写完就自己验证一遍再发**（如怀疑代理劫持，就先 `Get-NetAdapter` 查虚拟网卡、容器内查 proxy 环境变量）—— 评论里留下的每条排除项都要有本机实测支撑。
