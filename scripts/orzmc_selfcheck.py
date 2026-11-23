@@ -48,6 +48,8 @@ try:  # 必须在其他 import 之前：Windows 控制台默认 cp936
 except Exception:
     pass
 
+from orzmc_paths import docker_argv  # noqa: E402  本机无 Windows docker.exe（DOCKER_BACKEND=wsl）→ 退回 `wsl -e docker`
+
 import argparse
 import json
 import locale
@@ -413,7 +415,7 @@ def chk_instances():
     level = "ok"
     ev.append("口径：容器看 docker ps（Up=运行）；MCSM 实例看面板 API status（3=运行中、0=停止），"
               "实例 java 进程跑在 daemon 容器内、不是独立容器")
-    rc, out = run(["docker", "ps", "-a", "--format", "{{.Names}}\t{{.Status}}"], timeout=60)
+    rc, out = run(docker_argv() + ["ps", "-a", "--format", "{{.Names}}\t{{.Status}}"], timeout=60)
     if rc is None or rc != 0:
         return {"level": "fail", "evidence": ["docker ps 失败 rc=%s：%s" % (rc, first_line(out))]}
     states = {}
@@ -436,12 +438,17 @@ def chk_instances():
     if not inst_list:
         ev.append("  ℹ️ 面板 API 不可用（apikey 读不到 / HTTP 失败）→ 跳过实例判定，不计告警")
     else:
+        phantoms = []
         for it in inst_list:
             nick = it.get("nickname") or it["uuid"][:8]
             st = it.get("status")
             running = str(st) == "3"
             root = INSTANCE_ROOT / it["uuid"]
             cores = sorted(p.name for p in root.glob("*.jar")) if root.is_dir() else []
+            # 面板占位记录：昵称仍是 Undefined、目录里没有任何 jar/文件（实测 5 个空壳，删不掉也不该算故障）
+            if str(nick).strip() in ("", "Undefined", "None") and not cores:
+                phantoms.append(it["uuid"])
+                continue
             ev.append("  %s %-18s %-8s %s"
                       % ("✅" if running else "❌", nick,
                          "运行中" if running else ("停止" if str(st) == "0" else "status=%s" % st),
@@ -452,6 +459,9 @@ def chk_instances():
                     ev.append("       startCommand: " + cmd[:90])
             else:
                 level = "fail"
+        if phantoms:
+            ev.append("  ℹ️ 面板占位记录 %d 个（昵称 Undefined、目录空，不计告警）：%s"
+                      % (len(phantoms), ", ".join(u[:8] for u in phantoms)))
         # 代理插件（ADR-042：面板上传，缺失即 warn）
         vd = velocity_dir() if velocity_dir else None
         if vd:

@@ -29,9 +29,17 @@ bash ~/AppData/Local/hermes/scripts/orzmc_publish.sh --merge    # 等 CI 绿后 
 bash ~/AppData/Local/hermes/scripts/orzmc_publish.sh --status   # 只看差异，不提交
 ```
 
-**`--merge` 的前置条件：monorepo 必须在 `main` 上。** 脚本先合并技能仓 PR、打 tag，最后才 bump 主仓指针；
-若主仓停在别的分支（例如刚开完一个 deploy bump PR），第三步会被跳过，回显只有一句
-「⚠️ 主仓在分支 X，先切回 main」——**这不是失败**，技能仓 PR 与 tag 都已成功，别重跑整轮。收尾三步：
+**`--merge` 的前置条件：两棵树都在 `main` —— 技能仓克隆（`E:/dev/OrzMCAdmin`）与 monorepo（`E:/dev/OrzMC`）。**
+脚本先合并技能仓 PR、打 tag，最后才 bump 主仓指针，所以两个前置失败点后果完全不同：
+
+- **monorepo 不在 main**：技能仓 PR 与 tag 都已成功，只有指针 bump 被跳过，回显一句「⚠️ 主仓在分支 X，先切回 main」
+  —— 不是失败，按下面收尾三步补齐即可。
+- **技能仓克隆不在 main**（上一轮把它留在了 `chore/skill-sync-*` 上）：脚本在第一步就 `exit 1` 报「先切回 main」，
+  **一个 PR 都没合并、tag 也没打**。正确处置是 `cd E:/dev/OrzMCAdmin && git checkout main && git pull --ff-only`
+  后**再跑一次 `--merge`**；退回默认模式会另开一条 PR，等它成功后就多出一条重复 PR，还得手工关一条。
+
+`--merge` 失败后先看实际落地到哪一步再决定重跑哪一档：`gh pr list` 与 `git ls-remote --tags origin` 都没产出
+才说明整轮没落地；已有 PR + tag 就只差指针。收尾三步（monorepo 那一档）：
 
 ```bash
 cd E:/dev/OrzMC && git checkout main && git pull --ff-only
@@ -113,6 +121,14 @@ git commit -m "chore: 技能目录改子模块" && git push -u origin HEAD
    （squash 合并后本地 main 会 diverged，属正常）。
 3. 清 `chore/skill-sync-*` 本地分支：`git branch -D` 属审批门 → **回读确认主分支与工作树干净即可**，
    别为删分支把整轮验证卡死。
+4. **tag 上的内容单独回读，脚本末尾的 ✅ 不算证据**：脚本证明的是它自己跑完了，不是 tag 里装的是这一版。
+   `gh api repos/<owner>/<repo>/contents/SKILL.md?ref=vX.Y.Z --jq .size` 看体量 → `base64 -d | head -3`
+   看首行 `description:` 与 `version:`；本次新加的 reference 同法查一个 `.size`。字节数与本地差一截就是没发上去。
+   这几条**分开跑**：把多个字段塞进一条 `--jq` 时回显常只剩一行，数值会掉出上下文。
+5. **技能仓没有 CI checks**（`gh pr checks` 空是正常态，只有 monorepo 有 `verify`）→ 流程里不要写「等绿灯再合并」，
+   实际顺序就是「脚本合并 → 打 tag → bump 指针」。
+6. **重复 PR 必须显式收口**，不要留在仓库里让人猜哪条有效：
+   `gh pr close <n> --comment "内容与 #<keep> 一致，#<keep> 已合并并打 tag vX.Y.Z，故关闭"`。
 
 ## 仓库侧约定
 
