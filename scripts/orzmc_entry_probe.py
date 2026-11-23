@@ -15,6 +15,9 @@
 """
 from __future__ import annotations
 import sys
+
+from orzmc_paths import docker_argv  # 本机无 Windows docker.exe（DOCKER_BACKEND=wsl）→ 退回 `wsl -e docker`
+
 try:  # Windows console/pipe defaults to cp936: lock UTF-8 or emoji print raises
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -74,7 +77,7 @@ def save_state(st: dict) -> None:
 def container_running(name: str) -> tuple[bool, str]:
     try:
         r = subprocess.run(
-            ["docker", "inspect", "-f", "{{.State.Status}}", name],
+            docker_argv() + ["inspect", "-f", "{{.State.Status}}", name],
             capture_output=True, text=True, timeout=DOCKER_TIMEOUT,
         )
         status = r.stdout.strip()
@@ -91,7 +94,7 @@ def instance_containers() -> dict[str, str]:
     out = {v: "缺失" for v in want.values()}
     try:
         r = subprocess.run(
-            ["docker", "ps", "-a", "--format", "{{.Names}}|{{.State}}"],
+            docker_argv() + ["ps", "-a", "--format", "{{.Names}}|{{.State}}"],
             capture_output=True, text=True, timeout=DOCKER_TIMEOUT,
         )
         if r.returncode != 0:

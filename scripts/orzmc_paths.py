@@ -268,3 +268,25 @@ try:
     apply_docker_backend()
 except Exception:
     pass
+
+
+# ---------------------------------------------------------------- docker CLI 入口
+# 为什么：本机（DOCKER_BACKEND=wsl）**没有 Windows 版 docker.exe**（Docker Desktop
+# 的 CLI 已不在 PATH 上，`/c/Program Files/Docker/Docker/resources/bin` 是空壳）。
+# 任何脚本直接 subprocess.run(["docker", ...]) 都会 FileNotFoundError，于是容器检查
+# 集体假红（2026-11-23 caddy-cert-watch 就因此每天报「容器查不到」）。
+# 统一走这个函数：有本地 CLI 就用，没有就 `wsl -e docker`（WSL 原生 CLI 连同一个 dockerd）。
+_DOCKER_ARGV: list[str] | None = None
+
+
+def docker_argv() -> list[str]:
+    global _DOCKER_ARGV
+    if _DOCKER_ARGV is None:
+        import shutil
+        if shutil.which("docker"):
+            _DOCKER_ARGV = ["docker"]
+        elif os.name == "nt" and shutil.which("wsl"):
+            _DOCKER_ARGV = ["wsl", "-e", "docker"]
+        else:
+            _DOCKER_ARGV = ["docker"]  # 让调用方拿到原始 FileNotFoundError，便于归因
+    return list(_DOCKER_ARGV)
