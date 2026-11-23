@@ -13,6 +13,9 @@
 from __future__ import annotations
 import sys
 
+from orzmc_paths import docker_argv  # 本机无 Windows docker.exe（DOCKER_BACKEND=wsl）→ 退回 `wsl -e docker`
+
+
 try:  # Windows console/pipe defaults to cp936: lock UTF-8 or emoji print raises
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -93,7 +96,7 @@ def human(n: float) -> str:
 
 # ---------------------------------------------------------------- sections
 def sec_containers() -> tuple[str, list[str]]:
-    raw = sh(["docker", "ps", "--format", "{{.Names}}|{{.Status}}|{{.Ports}}"])
+    raw = sh(docker_argv() + ["ps", "--format", "{{.Names}}|{{.Status}}|{{.Ports}}"])
     rows, todos = [], []
     for line in raw.splitlines():
         parts = line.split("|")
@@ -343,7 +346,7 @@ def sec_disk() -> tuple[str, list[str]]:
                 todos.append(f"备份已 {age:.0f} 天没更新")
         except OSError:
             pass
-    df = sh(["docker", "system", "df", "--format", "{{.Type}} {{.Size}} {{.Reclaimable}}"], timeout=60)
+    df = sh(docker_argv() + ["system", "df", "--format", "{{.Type}} {{.Size}} {{.Reclaimable}}"], timeout=60)
     if df and "失败" not in df:
         lines.append("- docker：\n" + "\n".join(f"  - `{x}`" for x in df.splitlines()[:5]))
     return "### 7. 磁盘与备份\n\n" + "\n".join(lines), todos

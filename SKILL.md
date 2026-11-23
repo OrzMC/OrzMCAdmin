@@ -1,7 +1,7 @@
 ---
 name: orzmc
 description: "MC 运维唯一入口：三端服务器运维、升级、巡检与基岩支持。"
-version: 2.7.11
+version: 2.7.13
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux, windows]
@@ -109,7 +109,7 @@ required_commands: [java, curl, tar]
 > | 巡检 / 升级流水线 | `references/cron-script-layout.md` | cron 只认 `%LOCALAPPDATA%\hermes\scripts`、真源在技能 `scripts/` + stub 转发；改脚本后必须两处同步 |
 > | 巡检 / 升级流水线 | `references/upgrade-package-layout.md` | 升级包分类（core 三端 + plugins proxy/后端 + production 档 + MANIFEST）与落盘 `E:/orzmc/packages/upgrade-<日期>/`、`orzmc_upgrade_sync.py` 全自动流水线 |
 > | 版本 / 历史 | `references/version-baseline-history.md` | 逐轮版本基线快照（09-20→11-02）+ 协议生态演进；**历史快照，不作口径** |
-> | 版本 / 历史 | `references/changelog-archive.md` | 技能变更记录存档（2.3.1 及以前 + 2.3.2–2.7.7 全量） |
+> | 版本 / 历史 | `references/changelog-archive.md` | 技能变更记录存档（2.3.1 及以前 + 2.3.2–2.7.7 全量 42 条） |
 > | 运维 / 日志 | `references/docker-log-rotation.md` | 容器日志轮转（daemon.json `log-opts`）；**改完必须重建容器**，重启 dockerd 会吃掉 MCSM 实例容器（预留 3 分钟） |
 > | 运维 / 实例 | `references/mcsm-instance-jar-restart.md` | 换插件 jar 并重启测试服实例（容器名/宿主路径/日志位置） |
 > | 运维 / 自检 | `references/skill-selfcheck-hygiene.md` | 每日 08:30 selfcheck 判绿规则（死链/孤儿/超长行）；新建 references 必须同批加索引 |
@@ -143,12 +143,11 @@ required_commands: [java, curl, tar]
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.7.13 | 2026-11-23 | **cron 容器检查假红根治：本机没有 Windows docker.exe** —— `caddy-cert-watch` 每天报「orzmc-caddy 容器查不到」，根因是脚本裸调 `docker`（Docker Desktop CLI 已不在 PATH），`FileNotFoundError` 被当成容器不存在；同类假红还有 4 个脚本。修法：`orzmc_paths.docker_argv()` 统一解析（有本地 CLI 用之，否则 `wsl -e docker`），`caddy_cert_watch` / `orzmc_entry_probe` / `orzmc_selfcheck` / `orzmc_weekly_patrol` / `mcsm_env` 五处改完；顺手修 `mcsm_env.cmd_status` 容器名取 uuid **前 6 位**（真实名 `MCSM-716c2f`，原来取 8 位永远 missing）；`orzmc_selfcheck` 第 4 项把面板 5 条占位记录（昵称 `Undefined`、目录空）降为 ℹ️ 不再判失败。验证：caddy-cert-watch 空输出（全绿）、entry_probe 全通过、selfcheck ❌0 ⚠️1（仅自身 last_status 残留） |
+| 2.7.12 | 2026-11-23 | **发布流与 skill_manage 硬限制补漏**（全部来自刚发完 2.7.11 那一轮）：① `references/skill-publish-flow.md` 补四条 —— `--merge` 要求**技能仓克隆也在 main**（否则 `exit 1`「先切回 main」，此时一个 PR 都没合、重跑即可）、失败后用默认模式重跑会留**孤儿 PR** 必须 `gh pr close` 并注明以哪条为准、OrzMCAdmin **没有 CI checks** 不要等绿灯、验收改用 `gh api contents?ref=<tag>` 回读 tag 上的真实 SKILL.md/新 reference；② `references/skill-selfcheck-hygiene.md` 补 `skill_manage` 的硬限制（SKILL.md ≤100,000 字符、description ≤60 字符、批量 ops 非原子失败后要回读）；③ 变更记录最旧的 2.7.7 整行移入 `references/changelog-archive.md`（该段现 42 条），本体回到只留 3 条（2.7.12/2.7.11/2.7.10） |
 | 2.7.11 | 2026-11-23 | **SKILL.md 瘦身 + 容器日志轮转落地**：① 本体 107,264 → **80,291 字符**（已超 skill_manage 的 10 万字符上限、本体无法再编辑）—— `最近变更` 只留最近 3 条，2.3.2–2.7.7 共 41 条（27,115 字符）整段迁入 `references/changelog-archive.md`（零信息丢失，双向指针）；② 新增 `references/docker-log-rotation.md`：宿主 `/etc/docker/daemon.json` 全局 `log-opts{max-size:50m,max-file:3}`（实测 10 个容器全生效），**两个坑**——只改 daemon.json 不重建容器无效；**重启 dockerd 会吃掉 MCSM 实例容器**（compose 的 7 个存活，`MCSM-*`/`orzmc-velocity` 被销毁、面板随后自动重建拉起，约 2.5 分钟）；附三条重建命令（orzmusic 必须显式 `IMAGE_REF`、`--no-deps` 避免误跑 migrate）与验收清单；③ `references/mcsm-backend.md` 补「实例容器时区」段（`docker.env=["TZ=Asia/Shanghai"]`，改完必须停-启）与面板 API 姿势表；④ easybot 上游两个 issue：`EasyIndie/EasyBot#203`（日志时间戳固定 UTC、Alpine 缺 tzdata）、`#204`（`logging.output=file` 无轮转参数）；⑤ `description` 精简为 29 字符（原 91 字符超 60 字符索引上限，且「74 篇/170+ 脚本」计数陈旧——实为 93 篇 / 82 个）；原描述里的细分能力（插件构建/性能诊断/权限体系/测试）改由本体场景表 + `references` 索引行覆盖 |
-| 2.7.10 | 2026-11-21 | **让升级流水线真正能被 cron 解析并报准版本**：① `orzmc_upgrade_sync.py` 三种退出路径（全绿/有玩家在线只出包/无变更）统一走 `emit()` 输出同一套 `## 升级流水线` + `### 版本与取证` + `### 动作` + `STATUS_LINE`，此前无变更路径只 print 裸 EV 行 → 周一报告第四段报「段无有效结果」；② 验收 needle 改用实测日志串（`Paper version 26.3-257`、`Folia version 26.3-26`、后端 `Geyser-Spigot v2.12.1`（无 build 号）、代理侧 `geyser 2.12.1-b1306`），原来查 `Paper 26.3 build 257` 恒失败；③ velocity 重启的 uuid 不再 `.upper()`（大写导致 `instance` API 返回空、status 恒 None → 误报「停止超时/启动超时」），并加日志兜底判定；④ `orzmc_weekly_patrol.installed_versions()` 改为取**最高版本** jar（与 `start.sh` 的 `sort -V \| tail -1` 同口径），原来 `glob` 第一个命中 → 旧 jar 未删时报 `26.3-253 落后 4`（假告警）；⑤ Geyser 版本比较改取 `b` 后段数字。 |
-| 2.7.9 | 2026-11-21 | **升级流水线自动化（并入周一 cron 第四段）**：新增 `scripts/orzmc_upgrade_sync.py` —— Fill API/Modrinth 查最新 → 分类出包（core 三端 + plugins proxy/后端 + production，sha256/sha1 逐件校验）→ 写实例目录 + **面板 API stop/open** 部署测试服三实例 → 等 `Done (`/版本串/`Geyser bXXXX` 验收 → `S:/orzmc-upgrade/upgrade-<日期>/` 生产交接件 → Exaroton 仅 OFFLINE 时上传+回读 sha256+删旧件 → 清理旧包只留本次。`--require-idle` 时有人在线只出包不重启。配套：`orzmc_selfcheck` 对低于基线的 jar 改判 ℹ️ 旧版保留（回滚件不计漂移）；`exa_sync_plugins.py` 凭证改走 `exa_file`（原 `~/.hermes/.env` 在 Windows 不存在，脚本直接崩）；周一报告解析升级段结论。本轮实机：paper 26.3-257 / folia 26.3-26 / Geyser b1306，Exaroton 已同步 |
-| 2.7.7 | 2026-11-21 | **巡检脚本对齐面板托管实现 + 升级包分类**：① 三个 cron 脚本改真源单点 —— `orzmc_monday_report.py`/`caddy_cert_watch.py` 真身移进技能 `scripts/`，`hermes/scripts/` 只留转发 stub（此前 `orzmc_paths.py` 是 4.7KB 旧真身，与技能侧 8.3KB 漂移）；② `orzmc_selfcheck` 第 4 项由「java 进程名猜活 + paper/folia 应 stopped」改为面板 API `status`（3=运行中/0=停止）并打印 `startCommand` 与核心 jar，跳过 `global0001` 全局实例，代理插件缺失 warn；③ `orzmc_config_audit`/`orzmc_weekly_patrol` 不再写死 `$DATA_ROOT/eagler/proxy`，改 `velocity_dir()` 动态解析（面板实例目录）；④ 周一报告 `后端 RCON` 行：关闭时显示 `ℹ️ 已关闭` 而非 🔴；⑤ 新增 `references/upgrade-package-layout.md`（三端核心 + proxy/后端插件分档、线上服 `n/a` 标注）+ **Geyser 两份保留**（多部署模式回归用，禁止清理）；⑥ 清理 `orzmc_tunnel_guard.py`/`watch_render.py`/`_add_utf8_guard.py`，文档里 `eagler/proxy` 路径统一改 `InstanceData/<velocity-uuid>` |
 
-> 📜 **更早变更（2.3.2 – 2.7.7，41 条全量）** → `references/changelog-archive.md`；**2.3.1 及以前** → 同文件下部。
+> 📜 **更早变更（2.3.2 – 2.7.7，42 条全量）** → `references/changelog-archive.md`；**2.3.1 及以前** → 同文件下部。
 >
 > ⚙️ **本体只留最近 3 条**：`skill_manage` 对 SKILL.md 有 **100,000 字符硬限**（超过后本体无法再编辑，2026-11-23 就撞过）。新增变更条目时，把表尾最旧一条移到 `references/changelog-archive.md`，保持本体在 ~80K。
 
@@ -190,7 +189,7 @@ ViaVersion 最新一条是 `5.12.3-SNAPSHOT`，只看「最新一条」会把整
   ```bash
   bash ~/AppData/Local/hermes/scripts/orzmc_publish.sh --status   # 只看差异
   bash ~/AppData/Local/hermes/scripts/orzmc_publish.sh           # 建分支 + 开技能仓 PR
-  bash ~/AppData/Local/hermes/scripts/orzmc_publish.sh --merge   # CI 绿后 squash 合并 + 打 tag + bump 主仓指针
+  bash ~/AppData/Local/hermes/scripts/orzmc_publish.sh --merge   # 前提：技能仓克隆 E:/dev/OrzMCAdmin 与 monorepo E:/dev/OrzMC 都在 main；合并 + 打 tag + bump 主仓指针
   ```
   - **绝不反向拉取**：技能仓里是脱敏占位符版，拉回本机会污染真实域名/IP。
   - **不要在 `E:/dev/OrzMC/.agents/skills/orzmc` 里直接改技能文件**：那是技能仓的 checkout（脱敏版），改动既回不到真源 B，也会被下一次发布覆盖。
@@ -450,6 +449,7 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 > ⚠️ **在 Windows 宿主上手动执行脚本的三条硬前提**（从 Mac 侧编排 Windows 任务时同样适用）：
 > 1. **解释器**：Windows PATH 上的 `python` 可能是 0 字节的 Store stub（敲了才报错）—— 用 Hermes 自带 venv `%LOCALAPPDATA%\hermes\hermes-agent\venv\Scripts\python.exe`（含 yaml/ruamel/requests），或干脆交 cron 托管执行。
 > 2. **盘符/凭据**：映射盘（如指向 Mac SMB 共享的 `S:`）与 UNC 都需要 **SMB 凭据**；脚本内**优先写 UNC**（`\\<IP>\<共享名>\`，不依赖盘符映射）。写不进先读错误码：`WinError 1326 用户名或密码不正确` = 缺凭据（`cmdkey /list` 为空即证实），**与 Session 号无关**；凭据就绪后 `S:\` 与 UNC 都 `writable=True`。`WinError 5` 才是权限/路径问题。
+> 4. **docker CLI 不在本机**：这是 WSL dockerd（`DOCKER_BACKEND=wsl`），**没有 Windows 版 `docker.exe`**，裸调 `subprocess.run(["docker", ...])` 必定 `FileNotFoundError`，却极易被当成「容器不存在」误报（2026-11-23 caddy-cert-watch 连续假红）。脚本里一律用 `orzmc_paths.docker_argv()`（自动退回 `wsl -e docker`）。
 > 3. **凭据**：Windows 侧 `.env` 只保证有它自己那几条键（Feishu/model）。用到 `MCSM_LOCAL_*` / `EXAROTON_*` / `RCON_PASSWORD` / `LAN_HOST_IP` 的脚本拷过去前先确认这些键存在，否则表现为「查询全空但不报错」。
 
 - 本机（Windows）cron 现状（2026-11-17 20:15 实测 `jobs.json`，**共 3 条，全部 active**）：**active** —— `orzmc-watchdog` 每 5m（`330d431ac384`，2026-11-17 20:05 由 advertise 15m + 入口探针 30m + route-guard 10m + gateway-session-guard 5m **四条合并**，详见 2.6.14）、`orzmc-selfcheck` 每日 08:30（`ca0e89c8579d`）、`orzmc-monday-report` 周一 09:15（`1404c6fc14f8`）。原三条周一单任务（config-audit/version-check/weekly-patrol）的 **job 定义已于 20:13 全部删除**，脚本全留（聚合器正是调它们），要恢复单任务按脚本名重建即可，不必回滚历史 job。⚠️ 后三条的 pause 与 `orzmc-monday-report` 的创建**发生在 2026-11-17 20:02:43~45，由另一个 Feishu 会话完成**（`created_at`/`paused_at` 字段可查，origin=feishu），**不是 2.6.14 这轮 G1 的动作**；G1 全程只新建 watchdog + 删除上面四条，未读写这三条。回滚方式不是 `resume`（定义已删）：按脚本名重建三条 09:05/09:10/09:15 的 job，或先 `remove` 聚合器再重建。四个原脚本仍在 `%LOCALAPPDATA%\hermes\scripts\`，可单独手跑（watchdog 就是调它们）。

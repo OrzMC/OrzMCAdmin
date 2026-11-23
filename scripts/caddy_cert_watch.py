@@ -17,6 +17,10 @@ try:
 except Exception:
     pass
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from orzmc_paths import docker_argv  # noqa: E402  本机无 Windows docker.exe → 自动退回 wsl -e docker
+
+DOCKER = docker_argv()
 DATA = pathlib.Path(r"E:/orzmc/caddy/data/caddy/certificates")
 EXPECTED = {"dev.{SERVER_NAME}.cn", "mcs.{SERVER_NAME}.cn", "easybot.{SERVER_NAME}.cn", "music.{SERVER_NAME}.cn"}
 MIN_DAYS = 21
@@ -62,14 +66,14 @@ for d in sorted(EXPECTED - seen):
     problems.append(f"{d}: 没有找到证书文件")
 
 # 3 容器
-rc, out = sh(["docker", "inspect", "-f", "{{.State.Running}}", "orzmc-caddy"], timeout=20)
+rc, out = sh(DOCKER + ["inspect", "-f", "{{.State.Running}}", "orzmc-caddy"], timeout=60)
 if rc != 0:
-    problems.append("orzmc-caddy 容器查不到（docker inspect 失败）")
+    problems.append("orzmc-caddy 容器查不到（docker inspect 失败：" + out.strip()[:160] + "）")
 elif "true" not in out.lower():
     problems.append("orzmc-caddy 容器未运行")
 
 # 4 ACME 报错
-rc, logs = sh(["docker", "logs", "--since", "24h", "orzmc-caddy"], timeout=60)
+rc, logs = sh(DOCKER + ["logs", "--since", "24h", "orzmc-caddy"], timeout=90)
 if rc == 0:
     # 只认 TLS/ACME 子系统的 error；http.log.error.* 里的 404/EOF 是正常扫描与探测噪声
     bad = [l for l in logs.splitlines()

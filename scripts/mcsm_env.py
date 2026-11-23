@@ -17,6 +17,9 @@
 """
 from __future__ import annotations
 import sys
+
+from orzmc_paths import docker_argv  # 本机无 Windows docker.exe（DOCKER_BACKEND=wsl）→ 退回 `wsl -e docker`
+
 try:  # Windows console/pipe defaults to cp936: lock UTF-8 or emoji print raises
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -154,10 +157,10 @@ def mcsm_api_post(*args, **kwargs):
 def cmd_status(uuid: str = "") -> dict:
     """实例是否在跑（本地：看 MCSM 容器是否存在）——供巡检脚本判活"""
     import subprocess
-    short = (uuid or PAPER_UUID)[:8]
+    short = (uuid or PAPER_UUID)[:6]  # 面板容器名 = MCSM- + uuid 前 6 位（实测 MCSM-716c2f / MCSM-8A932D）
     name = "MCSM-" + short
     try:
-        r = subprocess.run(["docker", "inspect", "-f", "{{.State.Status}}", name],
+        r = subprocess.run(docker_argv() + ["inspect", "-f", "{{.State.Status}}", name],
                            capture_output=True, text=True, timeout=20)
         return {"container": name, "status": (r.stdout or "").strip() or "missing"}
     except Exception as e:
