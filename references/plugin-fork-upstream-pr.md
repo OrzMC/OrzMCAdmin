@@ -45,3 +45,17 @@
 ## 6. shell 引号坑
 
 - `gh issue comment --body "含 \`反引号\` 的正文"`：bash 会把反引号当命令替换执行，正文被吞词。**带反引号或多行的正文一律写文件用 `--body-file`**，或 Python `subprocess` 传参。发完用 `gh api .../comments --jq` 读回确认没被截断。
+
+## 7. `git status` 里的 `M plugin` 不一定是脏数据（2026-11-23 定论）
+
+`E:/dev/OrzMC` 显示 `M plugin` 时先分辨两种情况，别急着「对齐回记录指针」：
+
+| 现象 | 含义 | 处置 |
+|:--|:--|:--|
+| 本地 plugin 在 **`develop`** 分支，gitlink 记的是 plugin **`main`** 的 SHA | 正常开发态：开发线比发布线新，主仓指针本就该指向 main | **留着**，等 plugin 自己的 develop→main 里程碑再 bump 指针 |
+| 本地 plugin 有 **未推送提交**或工作区脏 | 真正的未同步工作 | 先推 fork / 提 PR，再 bump |
+
+判定命令：`git -C plugin rev-parse --abbrev-ref HEAD` + `git -C plugin branch -r --contains HEAD`（若 HEAD 在 `origin/develop` 上，说明提交已进仓，只是没进 main）。
+
+**老板 2026-11-23 决策**：保持 `develop` 检出，不做 `--detach` 对齐 —— 对齐会让 monorepo 构建悄悄用旧插件版本，反而更难查。
+
