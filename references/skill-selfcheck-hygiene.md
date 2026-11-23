@@ -23,6 +23,23 @@
 是脚本位置约定问题（`hermes/scripts/` 放 stub，真源在技能 `scripts/`），只有报容器/端口/磁盘才是环境。
 同类内容出现在两个地方时（例如面板 API key 有两套读取口径），先记进报告再动，别在同一轮里既改脚本又改文档。
 
+## 批量改 Python 脚本：定位式字符串替换会钻进 docstring
+
+绕过 `skill_manage` 直接改脚本时，用 `s.replace("import sys", "import sys\n...", 1)` 这种「第一个出现就插」的写法极易命中**模块 docstring 里被引用的代码片段**（本技能的 `orzmc_selfcheck.py` 开头就写着
+`* 先 import sys 再 UTF-8 guard`），结果新 import 被插在 `"""` 里面：编译仍通过，运行时才报
+`NameError: name 'X' is not defined`。纪律：
+
+1. 插入前算位置——`s.index(目标) > s.index('"""', s.index('"""') + 3)` 即「在 docstring 之后」才算安全；宁可锚定一段唯一的多行上下文（如 `except Exception:\n    pass\n`）。
+2. 每次改完 `py_compile.compile(path, doraise=True)`（只能证明语法，不能证明位置对）。
+3. **必须实际跑一遍脚本**（cron 入口从主机 stub 路径跑），NameError 只在这一步暴露。
+4. 批量改 N 个脚本时先 `grep -c` 确认命中次数为 1，把「预期次数」写成断言，不要默默替换。
+
+## 瘦身（把变更表外置）的验收
+
+本体只留最近 3 条变更，其余移入 `references/changelog-archive.md`。移动完必须证明「零信息丢失」：
+把移动前的 SKILL.md 备份一份，用 `re.findall(r'^\| (2\.\d+\.\d+) \|', s, re.M)` 分别取**备份 / 新本体 / 归档**的版本号全集，
+断言 `set(备份) - set(本体 + 归档) == 空` 且无重复。只看「文件变小了」不算验收。
+
 ## `skill_manage` 的硬限制（改技能前先算体积）
 
 - **SKILL.md 上限 100,000 字符**：超限后工具对本体的一切 patch 直接拒绝（报 `SKILL.md content is N characters`），

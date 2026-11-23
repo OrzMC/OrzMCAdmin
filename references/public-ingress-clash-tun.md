@@ -273,15 +273,19 @@ curl -s -H 'accept: application/dns-json' 'https://cloudflare-dns.com/dns-query?
 
 ```caddyfile
 music.{SERVER_NAME}.cn:18443 {
-    reverse_proxy orzmusic:8080
+    reverse_proxy host.docker.internal:8080   # 优先：走宿主发布端口
 }
 ```
 
+**上游优先写 `host.docker.internal:<宿主发布端口>`，不要默认写容器名。** 容器名反代要求两个容器在同一 docker 网络，而 vendor 的 compose 一重建/升级（`--force-recreate`、换版本）就会把手工 `docker network connect` 的那条连接丢掉，表现为「昨天还好、今天 502」。走宿主发布端口与重建完全解耦，实测两者延迟差亚毫秒。只有在应用**根本没发布宿主端口**时才退回容器名写法：
+
 ```bash
-# 容器不在 Caddy 同一 docker 网络时先连上（按服务名反代的前提）
+# 仅当应用不发布宿主端口时（按服务名反代的前提）
 docker network connect orzmc_default <应用容器>
 docker restart orzmc-caddy
 ```
+
+⚠️ 用容器名反代的话，**每次重建该应用容器都要重跑 `network connect`**，并把它写进升级后的验收清单。
 
 访问改走 `https://<子域>:18443/`（证书对域名有效，与端口无关）；局域网内直接用 `http://<LAN_HOST_IP>:<发布端口>`。
 
