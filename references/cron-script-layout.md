@@ -54,11 +54,20 @@ cron 走的是前者。看退出码 + `STATUS_LINE`，别只看有没有异常�
 
 ## 判活口径（ADR-040..042 之后）
 
+- **docker CLI 不在本机（WSL dockerd）**：没有 Windows 版 `docker.exe`，脚本里裸写 `["docker", ...]` 会 `FileNotFoundError`。
+  一律用 `orzmc_paths.docker_argv()`（有本地 CLI 用之，否则自动退回 `wsl -e docker`）。
+- **「命令起不来」与「对象不存在」必须分开报**：`rc != 0` 就把结论写成「容器查不到」是错的——先看是
+  `FileNotFoundError`/超时（环境问题）还是 docker 真的返回 no such container（对象问题）。错误文本要带进告警
+  （`docker inspect 失败：<stderr 前 160 字>`），否则每天一条一模一样的假红、没人能定位。
 - 容器：`docker ps` 的 Up 才算跑（`orzmc-velocity`/`orzmc-caddy`/`orzmc-easybot` + daemon）。
+- **面板容器名 = `MCSM-` + uuid 前 6 位**（`MCSM-716c2f`/`MCSM-8A932D`）。取 8 位拼名字会永远 `missing`，
+  看上去像「实例没起」实则名字拼错。
 - MCSM 实例（paper/folia/velocity）跑在 **daemon 容器内的 java 进程**，不是独立容器；
   状态以面板 API 为准：`status` **0=停止、3=运行中**。别再靠 `ps -C java` 猜、也别断言「paper/folia 应 stopped」。
 - 面板实例列表里 **`uuid=global0001` / `nickname=__MCSM_GLOBAL_INSTANCE__` / `type=universal`** 是全局实例组，
   不是可运行实例——遍历 `InstanceConfig/*.json` 时必须跳过，否则巡检永远报一条 ❌。
+- 同理，**`nickname` 仍是 `Undefined` 且 `InstanceData/<uuid>/` 里 0 个文件的记录是建实例的半途残骸**：
+  既没配置也没数据，判 `ℹ️ 面板占位记录 N 个`、不计失败（要清就删配置 + 空目录，零数据损失，删前先列清单让老板拍板）。
 - 面板 apikey 现读 `E:/orzmc/mcsmanager/web/data/User/*.json`（`permission==10`），不写死、不进仓库。
 
 ## 数据路径已迁移（别再写 eagler/proxy）
