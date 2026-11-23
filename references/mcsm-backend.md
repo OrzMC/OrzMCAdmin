@@ -240,3 +240,19 @@ zgrep -hE '/(ERROR|FATAL)\]' <uuid>/logs/*.log.gz | sed -E 's/^\[[^]]*\] //' | s
 - ⚠️ **`PUT /api/instance`（改实例配置/启动命令）对普通 apikey 返回 403「密钥不正确」** → 改用**管理员 apikey**（`web/data/User/*.json` 里 `permission=10` 的那个）即可改，body 回传 `GET` 回来的整个 config 只改目标字段（姿势见上「实例容器时区」表）；文件类 API（list/download/touch/PUT 文件/DELETE/move/mkdir/copy/download_from_url）普通 apikey 均可用
 - ✅ **删除插件/文件用 `scripts/cmp3/mcsm_delete.py`**（2026-08-06 起标准方案）：`python3 mcsm_delete.py /plugins/xxx.jar` → DELETE /api/files/ + 自动删后验证（真实 GET 确认）。**旧方案「上传 0B 占位覆盖」已废弃**（Paper 会对无效 jar 报 `Directory 'plugins\xxx.jar' failed to update!` 启动 ERROR，不如直接删干净）
 - 上传插件脚本：`scripts/cmp3/mcsm_upload_update.py deathchest.jar GriefPrevention.jar` + `mcsm_verify_update.py`
+
+## 实例删除（清空壳/占位实例）的姿势与副作用（2026-11-23 实测）
+
+面板 API 删实例是**批量 + 带文件**的一条命令（普通 apikey 即 200）：
+
+```http
+DELETE /api/instance?daemonId=<daemonId>&apikey=<管理员key>
+Content-Type: application/json
+
+{"uuids":["<uuid1>","<uuid2>"],"deleteFile":true}
+```
+
+删前先自证是空壳：`InstanceConfig/<uuid>.json` 里 `nickname=Undefined` 且 `InstanceData/<uuid>/` 递归 0 文件 —— 这种是「建实例时中途放弃」留下的占位记录，删它零数据损失；配置先备份到 scratch 再删。删后校验：`InstanceConfig` 只剩真实例 + `global0001`、`InstanceData` 目录同步消失、`mcsm_instances()` 不再列出。
+
+⚠️ **副作用（已遇到，机制未确认）**：本次删 5 个空壳后，**同一分钟两分钟内 PaperMC 与 Velocity 的容器被面板重新创建**（`docker inspect` 的 `StartedAt` 变了、玩家瞬断），Folia 与其它 compose 容器未受影响；daemon 日志里只有 `实例 xxx 启动成功`、**没有对应的停止/退出记录**。推断是 `instance/delete` 触发的实例列表重载让部分实例容器被重建。**结论：删实例要安排在无人时段，删后立刻看三个实例的 `StartedAt` 是否被动过。**
+
