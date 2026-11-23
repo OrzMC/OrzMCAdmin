@@ -1,7 +1,7 @@
 ---
 name: orzmc
 description: "MC 运维唯一入口：三端服务器运维、升级、巡检与基岩支持。"
-version: 2.7.16
+version: 2.7.17
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux, windows]
@@ -116,7 +116,7 @@ required_commands: [java, curl, tar]
 > | 插件 / 登录 | `references/login-auth-plugins.md` | 登录认证选型：明文密码落盘风险、ProtocolLib 必要性、Folia 上的危险 |
 > | 构建 / 测试 | `references/ezshops-build-test.md` | EzShops 子模块构建与测试（本机无 mvn，用 `E:/deploy/tools` Maven 3.9.16 包装脚本） |
 > | 上游 / 协作 | `references/plugin-fork-upstream-pr.md` | 第三方插件 fork 维护与上游 PR（fork 判定、detached HEAD 坑、bump 指针） |
-> | 上游 / 协作 | `references/upstream-issue-filing.md` | 把问题整理成上游 issue（开在 `OrzMC/OrzMCPlugin`、先查重、正文用 `--body-file`） |
+> | 上游 / 协作 | `references/upstream-issue-filing.md` | 把问题整理成上游 issue（开在 `OrzMC/OrzMCPlugin`、**查重必须 `--state all` + 中英关键词两侧搜**、已有跟踪位就**追评而不是新开**、追评要带量化基线并显式撤回被推翻的原假设） |
 > | 部署 / 站点 | `references/site-tls.md` | 站点层 TLS 供给（`orzmc.sh site`，OrzMCDeploy v0.4.0+）：`compose.site.yaml` + `site/Caddyfile` 声明式生成 |
 > | 版本 / 历史 | `references/version-check-pitfalls.md` | `mc_version_check.py` 10 条已知坑 + Exa 侧覆盖缺口 |
 > | 插件行为 | `references/orzmc-plugin-features.md` | GeoIP / permission.yml 语义 / member-threshold / 维护文案模板 / prison / 耗时中文化 / 防刷阈值 / 权限四组 / BackOnDeath / Brigadier greedy |
@@ -143,9 +143,9 @@ required_commands: [java, curl, tar]
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.7.17 | 2026-11-23 | **补发两处未落仓的经验 + 归因纪律**：① 索引行（上游 issue）改成「**查重必须 `--state all` + 中英关键词两侧搜**；已有跟踪位就**追评而非新开**；追评要带量化基线并**显式撤回被推翻的假设**」；② 硬前提 4 重排并把 docker CLI 缺失升级为通用规则 —— **脚本报「X 查不到/不存在/未部署」时先证明调用本身成功（打印 rc + stderr 前 160 字）**，因为 `FileNotFoundError`、`No such container` 与「确实没有」在旧代码里长一样；**验收 = 用 cron 真正调用的那一份跑出空输出**（宿主 `scripts/X.py` 与技能 `scripts/X.py` 是两份）；③ `references/upstream-issue-filing.md` 新增 §4 追评写法五条（窗口与版本、双平台对照表、撤回原假设、带量化收益的改进项、排除项须自证） |
 | 2.7.16 | 2026-11-23 | **IM 入站断流定为已知缺陷 + 子模块 `M plugin` 去噪**：① `references/easybot-gateway.md` 新增段 —— builtin IM 建连后 100~130s 必入站断流，附 57 分钟基线表（QQ 12 次/中位 129s/静默 123.6s，飞书 18 次/中位 96s/静默 270~360s、入站 0 帧），并钉死四条已排除项（非 TUN/Clash、非读线程死、非凭据冲突、出站全程正常 → 断流期 IM 命令真丢）与「看门狗 tick 30s」口径，指向上游 `OrzMC/OrzMCPlugin#616`；② `references/plugin-fork-upstream-pr.md` 新增 §7 —— `M plugin` 是「本地在 develop、主仓记 main」的正常开发态，判定命令 + 老板决策「保持 develop 检出、等里程碑再 bump」，避免下次误 `--detach` 对齐把构建悄悄换成旧插件 |
 | 2.7.15 | 2026-11-23 | **面板删实例的姿势与副作用入档**：`references/mcsm-backend.md` 新增「实例删除」段 —— `DELETE /api/instance`（body `{uuids,deleteFile:true}`）一条命令批量删、普通 apikey 即 200；删前用「`nickname=Undefined` + `InstanceData` 0 文件」自证空壳并备份配置；⚠️ 实测副作用：删 5 个空壳后 **PaperMC/Velocity 容器在 1-2 分钟内被面板重建（StartedAt 变化、玩家瞬断）**，daemon 日志只有启动成功、无停止记录，机制未确认 → 删实例必须安排在无人时段并复查三实例 `StartedAt` |
-| 2.7.14 | 2026-11-23 | **占位实例清理 + 入口文档纠错**：① 面板里 5 条 `nickname=Undefined`、`InstanceData` 目录 0 文件的空壳实例经 `DELETE /api/instance`（body `{uuids,deleteFile:true}`）删除，剩 PaperMC/FoliaMC/Velocity 三个真实例（配置已备份到 scratch `mcsm/phantom-instances-20261123`）——selfcheck 第 4 项从此连 ℹ️ 都不再出现；② `references/public-ingress-clash-tun.md` §9c：反代上游**优先 `host.docker.internal:<宿主发布端口>`**，容器名 + `docker network connect` 降级为「应用不发布宿主端口」时的退路（vendor compose 一重建就丢网络连接 → 表现为「昨天好今天 502」）；③ SKILL.md「公网入口排障」索引行 1,224 → 388 字符，细节归文档，超长行归零 |
 
 > 📜 **更早变更（2.3.2 – 2.7.7，42 条全量）** → `references/changelog-archive.md`；**2.3.1 及以前** → 同文件下部。
 >
@@ -449,8 +449,10 @@ post_json(cfg, "api/files/download_from_url", {"url": 官方直链(内容寻址�
 > ⚠️ **在 Windows 宿主上手动执行脚本的三条硬前提**（从 Mac 侧编排 Windows 任务时同样适用）：
 > 1. **解释器**：Windows PATH 上的 `python` 可能是 0 字节的 Store stub（敲了才报错）—— 用 Hermes 自带 venv `%LOCALAPPDATA%\hermes\hermes-agent\venv\Scripts\python.exe`（含 yaml/ruamel/requests），或干脆交 cron 托管执行。
 > 2. **盘符/凭据**：映射盘（如指向 Mac SMB 共享的 `S:`）与 UNC 都需要 **SMB 凭据**；脚本内**优先写 UNC**（`\\<IP>\<共享名>\`，不依赖盘符映射）。写不进先读错误码：`WinError 1326 用户名或密码不正确` = 缺凭据（`cmdkey /list` 为空即证实），**与 Session 号无关**；凭据就绪后 `S:\` 与 UNC 都 `writable=True`。`WinError 5` 才是权限/路径问题。
-> 4. **docker CLI 不在本机**：这是 WSL dockerd（`DOCKER_BACKEND=wsl`），**没有 Windows 版 `docker.exe`**，裸调 `subprocess.run(["docker", ...])` 必定 `FileNotFoundError`，却极易被当成「容器不存在」误报（2026-11-23 caddy-cert-watch 连续假红）。脚本里一律用 `orzmc_paths.docker_argv()`（自动退回 `wsl -e docker`）。
 > 3. **凭据**：Windows 侧 `.env` 只保证有它自己那几条键（Feishu/model）。用到 `MCSM_LOCAL_*` / `EXAROTON_*` / `RCON_PASSWORD` / `LAN_HOST_IP` 的脚本拷过去前先确认这些键存在，否则表现为「查询全空但不报错」。
+> 4. **docker CLI 不在本机**：这是 WSL dockerd（`DOCKER_BACKEND=wsl`），**没有 Windows 版 `docker.exe`**，裸调 `subprocess.run(["docker", ...])` 必定 `FileNotFoundError`，却极易被当成「容器不存在」误报（caddy-cert-watch 曾因此每天假红）。脚本里一律用 `orzmc_paths.docker_argv()`（`shutil.which` 有则裸 `docker`，否则退回 `wsl -e docker`），不要逐脚本手写分支。
+>    - **通用规则（比这条本身更重要）**：脚本报「X 查不到 / 不存在 / 未部署」时，先证明**调用本身成功**（打印 rc + stderr 前 160 字）再谈对象状态。`FileNotFoundError`、`No such container` 与「确实没有」在旧代码里长得一模一样，假红会连续刷到没人再看告警。捕获异常后把 stderr 带进提示文案，是让下一次一眼分辨「CLI 起不来」与「容器真没了」的唯一办法。
+>    - **修 cron 脚本的验收 = 用 cron 真正执行的那一份跑出空输出**。宿主 `%LOCALAPPDATA%\hermes\scripts\X.py` 与技能 `scripts/X.py` 是两份（stub 转发或副本），只改一边等于没修；改完两边同步，然后在宿主侧手跑一次确认全绿（静默 = 通过）。
 
 - 本机（Windows）cron 现状（2026-11-17 20:15 实测 `jobs.json`，**共 3 条，全部 active**）：**active** —— `orzmc-watchdog` 每 5m（`330d431ac384`，2026-11-17 20:05 由 advertise 15m + 入口探针 30m + route-guard 10m + gateway-session-guard 5m **四条合并**，详见 2.6.14）、`orzmc-selfcheck` 每日 08:30（`ca0e89c8579d`）、`orzmc-monday-report` 周一 09:15（`1404c6fc14f8`）。原三条周一单任务（config-audit/version-check/weekly-patrol）的 **job 定义已于 20:13 全部删除**，脚本全留（聚合器正是调它们），要恢复单任务按脚本名重建即可，不必回滚历史 job。⚠️ 后三条的 pause 与 `orzmc-monday-report` 的创建**发生在 2026-11-17 20:02:43~45，由另一个 Feishu 会话完成**（`created_at`/`paused_at` 字段可查，origin=feishu），**不是 2.6.14 这轮 G1 的动作**；G1 全程只新建 watchdog + 删除上面四条，未读写这三条。回滚方式不是 `resume`（定义已删）：按脚本名重建三条 09:05/09:10/09:15 的 job，或先 `remove` 聚合器再重建。四个原脚本仍在 `%LOCALAPPDATA%\hermes\scripts\`，可单独手跑（watchdog 就是调它们）。
 - **合并纪律（2026-11-17 定）**：只有「同节奏 + 同投递目标 + 互不依赖」的任务才合并出报告（周一周任务 3→1，实测串行 199s：配置 153s + 版本 32s + 巡检 14s）。**高频看守（advertise/route-guard/entry-probe）默认不合并**——它们分属「动作型」与「只报警型」，且各自有去重状态，合成一个会让一次异常同时吞掉三类监控；只有段间隔离成立（独立子进程 + 独立告警分节，见下条 G1）时才允许并成 watchdog。`gateway-session-guard` 更不并（救生员不能和要救的人绑一起）。聚合器 `scripts/orzmc_monday_report.py`：单段失败只标红该段、退出码恒 0。报告分两层——**正文只出浓缩摘要**（结论一览表 + 按优先级排的待办 + 运行态/版本/配置三张小表，约 1.2KB；老板要求「10 秒判断要不要动手」），三段完整输出落 `monday-full.md` 与三份 `<script>.txt`（目录 `E:/orzmc/reports/monday-YYYYMMDD/`）。新增异常类型记得同步 `build_todo()`，否则会静默不出现在待办里（正文结构、表格竖线清洗、数字重组的硬规则 → `references/entry-monitoring.md` §6）。 **2026-11-17 G1 补充**：老板批准把「高频看守」也合并时，合并的前提不是「节奏一致」，而是**段间隔离必须成立** —— `orzmc-watchdog` 用独立子进程 + 独立 try/except + 按段名分节聚合（`## entry-probe`）+ 任一段 exit≠0 只把该段标红，因此一次异常不会吞掉其余段；这条隔离是允许合并的前置条件，缺了它就该退回多条独立 job。
