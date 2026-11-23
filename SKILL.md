@@ -1,7 +1,7 @@
 ---
 name: orzmc
 description: "MC 运维唯一入口：三端服务器运维、升级、巡检与基岩支持。"
-version: 2.7.14
+version: 2.7.15
 author: Hermes Agent
 tags: [minecraft, papermc, server, maintenance, upgrade, plugin, exaroton, mcsm, luckperms, testing]
 platforms: [macos, linux, windows]
@@ -143,9 +143,9 @@ required_commands: [java, curl, tar]
 
 | 版本 | 日期 | 变更 |
 |:--|:--|:--|
+| 2.7.15 | 2026-11-23 | **面板删实例的姿势与副作用入档**：`references/mcsm-backend.md` 新增「实例删除」段 —— `DELETE /api/instance`（body `{uuids,deleteFile:true}`）一条命令批量删、普通 apikey 即 200；删前用「`nickname=Undefined` + `InstanceData` 0 文件」自证空壳并备份配置；⚠️ 实测副作用：删 5 个空壳后 **PaperMC/Velocity 容器在 1-2 分钟内被面板重建（StartedAt 变化、玩家瞬断）**，daemon 日志只有启动成功、无停止记录，机制未确认 → 删实例必须安排在无人时段并复查三实例 `StartedAt` |
 | 2.7.14 | 2026-11-23 | **占位实例清理 + 入口文档纠错**：① 面板里 5 条 `nickname=Undefined`、`InstanceData` 目录 0 文件的空壳实例经 `DELETE /api/instance`（body `{uuids,deleteFile:true}`）删除，剩 PaperMC/FoliaMC/Velocity 三个真实例（配置已备份到 scratch `mcsm/phantom-instances-20261123`）——selfcheck 第 4 项从此连 ℹ️ 都不再出现；② `references/public-ingress-clash-tun.md` §9c：反代上游**优先 `host.docker.internal:<宿主发布端口>`**，容器名 + `docker network connect` 降级为「应用不发布宿主端口」时的退路（vendor compose 一重建就丢网络连接 → 表现为「昨天好今天 502」）；③ SKILL.md「公网入口排障」索引行 1,224 → 388 字符，细节归文档，超长行归零 |
 | 2.7.13 | 2026-11-23 | **cron 容器检查假红根治：本机没有 Windows docker.exe** —— `caddy-cert-watch` 每天报「orzmc-caddy 容器查不到」，根因是脚本裸调 `docker`（Docker Desktop CLI 已不在 PATH），`FileNotFoundError` 被当成容器不存在；同类假红还有 4 个脚本。修法：`orzmc_paths.docker_argv()` 统一解析（有本地 CLI 用之，否则 `wsl -e docker`），`caddy_cert_watch` / `orzmc_entry_probe` / `orzmc_selfcheck` / `orzmc_weekly_patrol` / `mcsm_env` 五处改完；顺手修 `mcsm_env.cmd_status` 容器名取 uuid **前 6 位**（真实名 `MCSM-716c2f`，原来取 8 位永远 missing）；`orzmc_selfcheck` 第 4 项把面板 5 条占位记录（昵称 `Undefined`、目录空）降为 ℹ️ 不再判失败。验证：caddy-cert-watch 空输出（全绿）、entry_probe 全通过、selfcheck ❌0 ⚠️1（仅自身 last_status 残留） |
-| 2.7.12 | 2026-11-23 | **发布流与 skill_manage 硬限制补漏**（全部来自刚发完 2.7.11 那一轮）：① `references/skill-publish-flow.md` 补四条 —— `--merge` 要求**技能仓克隆也在 main**（否则 `exit 1`「先切回 main」，此时一个 PR 都没合、重跑即可）、失败后用默认模式重跑会留**孤儿 PR** 必须 `gh pr close` 并注明以哪条为准、OrzMCAdmin **没有 CI checks** 不要等绿灯、验收改用 `gh api contents?ref=<tag>` 回读 tag 上的真实 SKILL.md/新 reference；② `references/skill-selfcheck-hygiene.md` 补 `skill_manage` 的硬限制（SKILL.md ≤100,000 字符、description ≤60 字符、批量 ops 非原子失败后要回读）；③ 变更记录最旧的 2.7.7 整行移入 `references/changelog-archive.md`（该段现 42 条），本体回到只留 3 条（2.7.12/2.7.11/2.7.10） |
 
 > 📜 **更早变更（2.3.2 – 2.7.7，42 条全量）** → `references/changelog-archive.md`；**2.3.1 及以前** → 同文件下部。
 >
